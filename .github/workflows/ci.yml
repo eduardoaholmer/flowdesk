@@ -66,6 +66,7 @@ jobs:
       - name: Alembic upgrade head
         env:
           DATABASE_URL: postgresql+asyncpg://flowdesk:flowdesk@localhost:5432/flowdesk
+          REDIS_URL: redis://localhost:6379/0
         run: poetry run alembic upgrade head
 
       - name: Pytest
