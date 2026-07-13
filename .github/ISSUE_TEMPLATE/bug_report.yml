@@ -1,0 +1,50 @@
+name: Bug report
+description: Reportar um comportamento incorreto no FlowDesk
+labels: ["bug"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Descrição
+      description: O que aconteceu? O que você esperava que acontecesse?
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Passos para reproduzir
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Área afetada
+      options:
+        - Backend (API)
+        - Frontend (SPA)
+        - Infra (Docker/CI)
+        - Documentação
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Commit / branch
+      description: Em qual commit ou branch você observou o problema?
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Contexto adicional
+      description: Logs, screenshots, ou qualquer outra informação relevante.
+    validations:
+      required: false

@@ -1,0 +1,37 @@
+name: Feature request
+description: Propor uma nova funcionalidade ou melhoria para o FlowDesk
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problema
+      description: Qual problema real esta funcionalidade resolve? Evite descrever a solução ainda.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposta
+      description: Como você imagina que isso deveria funcionar?
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternativas consideradas
+      description: Outras abordagens que você avaliou e por que não escolheu.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Antes de enviar
+      options:
+        - label: Verifiquei o roadmap (`docs/08-roadmap.md`) e este pedido não está já planejado para uma sprint futura.
+          required: false
+        - label: Esta proposta é compatível com os princípios de `CLAUDE.md` §1 (clareza, previsibilidade, YAGNI).
+          required: false
