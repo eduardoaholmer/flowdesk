@@ -5,10 +5,19 @@ from alembic import context
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from src.core.config import get_settings
 from src.db.base import Base
+from src.features.attachments import models as attachments_models  # noqa: F401,E402
 
-# Modelos de domínio (Sprint 2+) se registram em Base.metadata ao serem importados
-# em algum módulo carregado pela aplicação — nenhum import necessário aqui ainda,
-# pois nenhuma tabela de domínio existe nesta sprint.
+# Importar cada features/*/models.py registra suas classes em Base.metadata —
+# necessário aqui para que o autogenerate do Alembic enxergue todas as tabelas.
+# Ordem segue a dependência de FK entre features (import isolado não cria ciclo).
+from src.features.auth import models as auth_models  # noqa: F401,E402
+from src.features.comments import models as comments_models  # noqa: F401,E402
+from src.features.issues import models as issues_models  # noqa: F401,E402
+from src.features.labels import models as labels_models  # noqa: F401,E402
+from src.features.notifications import models as notifications_models  # noqa: F401,E402
+from src.features.projects import models as projects_models  # noqa: F401,E402
+from src.features.teams import models as teams_models  # noqa: F401,E402
+from src.features.workspaces import models as workspaces_models  # noqa: F401,E402
 
 config = context.config
 
