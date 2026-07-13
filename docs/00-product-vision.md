@@ -74,9 +74,10 @@ Justificativa do corte: o MVP precisa provar a arquitetura multi-tenant + RBAC +
 Detalhamento completo em `docs/08-roadmap.md`. Visão de alto nível:
 
 1. **Fundação** — setup de monorepo, CI, convenções, esqueleto das duas aplicações.
-2. **Auth & Workspaces** — autenticação completa, multi-tenancy, RBAC básico.
-3. **Núcleo de Issues** — CRUD de times e issues, board por status.
-4. **Colaboração** — comentários, atividade/auditoria, busca e filtros avançados.
-5. **Planejamento** — projetos e ciclos, relatórios de progresso.
-6. **Polimento e observabilidade** — notificações, rate limiting, hardening de segurança, métricas.
-7. **Extensões futuras (pós-portfólio)** — integrações externas, mobile, tempo real via WebSocket para colaboração ao vivo.
+2. **Modelagem de domínio** — schema completo (models, repositories, migrations) para todo o domínio, antes de qualquer regra de negócio.
+3. **Auth & Workspaces** — autenticação completa, multi-tenancy, RBAC básico.
+4. **Núcleo de Issues** — CRUD de times e issues, board por status.
+5. **Colaboração** — comentários, atividade/auditoria, busca e filtros avançados.
+6. **Planejamento** — projetos e ciclos, relatórios de progresso.
+7. **Polimento e observabilidade** — notificações, rate limiting, hardening de segurança, métricas.
+8. **Extensões futuras (pós-portfólio)** — integrações externas, mobile, tempo real via WebSocket para colaboração ao vivo.

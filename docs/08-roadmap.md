@@ -6,11 +6,11 @@ Cada sprint tem Definition of Done (DoD) própria, mas todas herdam a DoD-base a
 - Checklist de `CLAUDE.md` §18 satisfeito para cada tarefa da sprint.
 - Lint, format, type-check e suíte de testes (unit + integration + contract das features tocadas) passando em CI.
 - Documentação afetada (`docs/03-database.md`, `docs/04-api-design.md`, `docs/09-decision-log.md`) atualizada no mesmo conjunto de PRs da sprint.
-- Nenhuma regressão manual observada nos fluxos críticos já existentes (testados via Playwright a partir da Sprint 3, manualmente antes disso).
+- Nenhuma regressão manual observada nos fluxos críticos já existentes (testados via Playwright a partir da Sprint 4, manualmente antes disso).
 
 ---
 
-## Sprint 0 — Planejamento e Arquitetura (concluída neste documento)
+## Sprint 0 — Planejamento e Arquitetura (concluída)
 
 - **Objetivo**: produzir a fonte de verdade de arquitetura, produto e padrões antes de qualquer código.
 - **Entregas**: `CLAUDE.md` + `docs/00` a `docs/10`.
@@ -18,7 +18,7 @@ Cada sprint tem Definition of Done (DoD) própria, mas todas herdam a DoD-base a
 - **Critérios de aceite**: todos os documentos listados no pedido original existem e são internamente consistentes (contrato de API bate com o modelo de dados, matriz de permissões bate com o RBAC descrito na arquitetura).
 - **DoD**: aprovação explícita do usuário antes de iniciar Sprint 1.
 
-## Sprint 1 — Fundação
+## Sprint 1 — Fundação (concluída)
 
 - **Objetivo**: esqueleto executável das duas aplicações, sem lógica de negócio ainda, com toda a tubulação (CI, lint, testes, containers) funcionando.
 - **Funcionalidades**:
@@ -32,54 +32,70 @@ Cada sprint tem Definition of Done (DoD) própria, mas todas herdam a DoD-base a
 - **Critérios de aceite**: `docker compose up` sobe os quatro serviços; `GET /health` responde 200; frontend carrega uma página placeholder consumindo `/health`.
 - **DoD**: DoD-base + pipeline de CI verde no repositório.
 
-## Sprint 2 — Autenticação e Workspaces
+## Sprint 1.5 — Bootstrap do Repositório, Auditoria Arquitetural e Hardening da Fundação (concluída)
 
-- **Objetivo**: primeiro fluxo de ponta a ponta com todas as camadas de segurança do MVP presentes.
-- **Funcionalidades**: RF-AUTH-01 a 05, 07; RF-WS-01 a 05, 07.
+- **Objetivo**: transformar o repositório local em um projeto profissional publicado no GitHub, auditado contra `CLAUDE.md`/`docs/`, antes de iniciar a modelagem de domínio.
+- **Entregas**: repositório público no GitHub com metadados de projeto open source (LICENSE, CONTRIBUTING, CODE_OF_CONDUCT, SECURITY, templates de issue/PR, CODEOWNERS); estrutura do frontend corrigida para bater com `CLAUDE.md` §13; tooling de teste do frontend (Vitest + Testing Library) instalado; hardening de containers (usuário não-root, healthchecks) e do middleware de request-id.
 - **Dependências**: Sprint 1.
+- **Critérios de aceite**: nenhuma referência a IA/Claude em código ou histórico de commits; todos os commits com a identidade Git local; CI verde ponta a ponta.
+- **DoD**: DoD-base + aprovação explícita do usuário antes de iniciar Sprint 2.
+
+## Sprint 2 — Modelagem do Domínio e Banco de Dados (concluída)
+
+- **Objetivo**: projetar e implementar o domínio completo (models, repositories, migrations) que sustenta todas as sprints seguintes — sem autenticação, sem CRUDs, sem endpoints, sem interface.
+- **Entregas**: 18 tabelas via SQLAlchemy 2.0 (`User`, `Session`, `RefreshToken`, `Workspace`, `WorkspaceMember`, `Invitation`, `Team`, `TeamMember`, `WorkflowState`, `TeamIssueCounter`, `Project`, `Label`, `Issue`, `IssueLabel`, `Comment`, `ActivityLog`, `Notification`, `Attachment`) organizadas em 9 features; 12 migrations Alembic pequenas e reversíveis; um repository por agregado (`Protocol` + implementação, CLAUDE.md §6); 22 testes de integração contra Postgres real cobrindo criação, relacionamentos e constraints; ER e diagramas de `docs/03-database.md` atualizados; ADR-007 registrando os desvios do desenho original da Sprint 0.
+- **Dependências**: Sprint 1.5.
+- **Critérios de aceite**: `alembic upgrade head` → `downgrade base` → `upgrade head` sem erro; suíte de testes de integração verde; nenhuma regra de negócio, service ou rota implementada (só schema + acesso a dado).
+- **DoD**: DoD-base + aprovação explícita do usuário antes de iniciar Sprint 3.
+
+## Sprint 3 — Autenticação e Autorização
+
+- **Objetivo**: primeiro fluxo de ponta a ponta com todas as camadas de segurança do MVP presentes, construído sobre o schema já modelado na Sprint 2 (`User`, `Session`, `RefreshToken`, `Workspace`, `WorkspaceMember`, `Invitation`).
+- **Funcionalidades**: RF-AUTH-01 a 05, 07; RF-WS-01 a 05, 07; `core/security.py` (hash Argon2id, JWT RS256); `core/authorization.py` (`can()`/`require_permission()`).
+- **Dependências**: Sprint 2.
 - **Critérios de aceite**:
   - Cadastro, login, refresh, logout funcionando ponta a ponta (frontend + backend), com testes de contrato cobrindo caminho feliz e os erros de `docs/04-api-design.md` §2.
   - Criação de workspace, convite e aceite de membro, troca de papel, remoção — com RBAC aplicado (`docs/07-security.md` §8).
   - Teste de integração comprovando isolamento entre dois workspaces distintos (usuário do workspace A não acessa dado do workspace B mesmo manipulando `workspace_id` na URL).
 - **DoD**: DoD-base + teste específico de isolamento multi-tenant obrigatório no PR.
 
-## Sprint 3 — Núcleo de Issues
+## Sprint 4 — Núcleo de Issues
 
-- **Objetivo**: a funcionalidade central do produto.
+- **Objetivo**: a funcionalidade central do produto — camada de service/router sobre o schema de `Team`/`Issue`/`Label`/`WorkflowState` já modelado na Sprint 2.
 - **Funcionalidades**: RF-TEAM-01 a 03; RF-ISSUE-01 a 09.
-- **Dependências**: Sprint 2 (precisa de workspace/RBAC prontos).
+- **Dependências**: Sprint 3 (precisa de workspace/RBAC prontos).
 - **Critérios de aceite**:
   - CRUD de times com workflow configurável.
-  - CRUD de issues completo, geração de `number` sequencial por time sem corrida (teste de concorrência simulando criação paralela).
+  - CRUD de issues completo, geração de `number` sequencial por time sem corrida (teste de concorrência simulando criação paralela sobre `TeamIssueCounter`).
   - Board por status com drag-and-drop e atualização otimista no frontend (RNF-PERF-03).
   - Filtros e busca textual funcionando conforme `docs/04-api-design.md` §5.
   - Versionamento otimista (`If-Match`) testado com um cenário de conflito real (duas edições concorrentes).
 - **DoD**: DoD-base + primeiro fluxo E2E Playwright (login → criar time → criar issue → mudar status no board).
 
-## Sprint 4 — Colaboração
+## Sprint 5 — Colaboração
 
-- **Objetivo**: recursos que dependem do núcleo de issues já existir.
+- **Objetivo**: recursos que dependem do núcleo de issues já existir, sobre o schema de `Comment`/`ActivityLog` da Sprint 2.
 - **Funcionalidades**: RF-COMMENT-01 a 03; RF-ISSUE-10 (atividade).
-- **Dependências**: Sprint 3.
+- **Dependências**: Sprint 4.
 - **Critérios de aceite**: comentários com CRUD e permissões corretas; menção `@usuário` reconhecida e armazenada; log de atividade completo e visível no detalhe da issue, cobrindo ao menos criação, mudança de status, mudança de responsável.
 - **DoD**: DoD-base.
 
-## Sprint 5 — Planejamento (Projetos e Ciclos)
+## Sprint 6 — Planejamento (Projetos e Ciclos)
 
-- **Objetivo**: camada de planejamento acima da issue individual.
+- **Objetivo**: camada de planejamento acima da issue individual. `Project` já está modelado desde a Sprint 2 — esta sprint constrói a feature (service/router) e modela `Cycle` (ainda não existe) e o join `Project ↔ Team`.
 - **Funcionalidades**: RF-PROJ-01; RF-CYCLE-01, 02.
-- **Dependências**: Sprint 3 (issues precisam existir para serem agrupadas).
+- **Dependências**: Sprint 4 (issues precisam existir para serem agrupadas).
 - **Critérios de aceite**: projeto agrupando issues de múltiplos times; ciclo com cálculo de progresso (burndown simples) correto contra dados de teste conhecidos.
 - **DoD**: DoD-base.
 
-## Sprint 6 — Polimento e Observabilidade
+## Sprint 7 — Polimento e Observabilidade
 
-- **Objetivo**: fechar lacunas de produção real antes de considerar o MVP+ "apresentável".
+- **Objetivo**: fechar lacunas de produção real antes de considerar o MVP+ "apresentável". `Notification` já está modelada desde a Sprint 2.
 - **Funcionalidades**: RF-NOTIF-01, 02; RF-AUTH-06 (recuperação de senha); hardening de rate limit por rota; métricas básicas (contagem de erro 5xx por rota, latência p95 por endpoint).
-- **Dependências**: Sprints 2–5.
+- **Dependências**: Sprints 3–6.
 - **Critérios de aceite**: notificação in-app gerada e visível para menção e mudança de status; reset de senha funcional; dashboard mínimo (ainda que só via logs estruturados agregáveis) mostrando latência e taxa de erro por rota.
 - **DoD**: DoD-base + revisão de segurança completa do checklist de `docs/07-security.md`.
 
-## Sprint 7+ — Extensões futuras (pós-portfólio)
+## Sprint 8+ — Extensões futuras (pós-portfólio)
 
-Não planejadas em detalhe agora (evita over-engineering especulativo, `CLAUDE.md` §1.6); candidatas registradas para não serem esquecidas: integrações externas (GitHub, Slack), colaboração em tempo real via WebSocket, papel `GUEST` completo, anexos de arquivo, command palette avançado, app mobile.
+Não planejadas em detalhe agora (evita over-engineering especulativo, `CLAUDE.md` §1.6); candidatas registradas para não serem esquecidas: integrações externas (GitHub, Slack), colaboração em tempo real via WebSocket, papel `GUEST` completo, anexos de arquivo em UI (schema de `Attachment` já existe desde a Sprint 2, falta a feature), command palette avançado, app mobile.

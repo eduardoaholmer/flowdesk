@@ -133,3 +133,21 @@ Este ponto é a demonstração deliberada de "não escolher por popularidade": N
 **Desvantagens**: schema exige migration formal para evoluir (aceito como benefício, não custo — força pensar em compatibilidade, ver *expand/backfill/contract* em `docs/03-database.md` §10); sharding horizontal é mais trabalhoso que em bancos document-oriented nativamente distribuídos (irrelevante na escala deste projeto; se necessário no futuro, particionamento por `workspace_id` é o caminho natural, dado que já é a chave de isolamento de tenant em toda tabela).
 
 **Impacto futuro**: a coluna `workspace_id` denormalizada em praticamente toda tabela (`docs/03-database.md` §4), decidida por motivo de segurança/isolamento, é também exatamente a chave de partição que seria usada em um particionamento futuro por tenant — as duas decisões se reforçam.
+
+---
+
+## ADR-007 — Desvios da modelagem de domínio da Sprint 2 em relação ao ER original da Sprint 0
+
+**Contexto**: a Sprint 2 modelou o domínio completo (models, repositories, migrations). O pedido original da sprint listava 14 entidades sem `Team`/`WorkflowState` (que `docs/00-product-vision.md` e `docs/01-requirements.md` marcam como `[MVP]`) e incluindo `Project` (marcado como pós-MVP nesses mesmos documentos) — uma divergência resolvida com o usuário antes de implementar (ver histórico da sprint).
+
+**Decisão 1 — incluir `Team`, `TeamMember`, `WorkflowState`, `TeamIssueCounter`**: RF-TEAM-01/02/03 e RF-ISSUE-02/03/05 são `[MVP]` e dependem estruturalmente dessas entidades (uma issue sem time não tem workflow nem numeração `ENG-123`). `TeamIssueCounter` não é uma entidade nova de fato — já estava prevista em prosa em `docs/03-database.md` §8 ("tabela de contador com `SELECT ... FOR UPDATE`"), só faltava ser criada.
+
+**Decisão 2 — manter `Project` no escopo, sem `Cycle` nem o join `Project ↔ Team`**: pedido explícito do usuário. O *schema* de `Project` existe desde já; a *feature* (endpoints, regra de negócio) continua pós-MVP conforme `docs/00-product-vision.md` §5 — modelar o schema adiantado não implementa a funcionalidade, só evita uma migração de "adicionar tabela" isolada quando a feature chegar. `Cycle` e o relacionamento N:N `Project ↔ Team` ficam de fora até então.
+
+**Decisão 3 — `Session` como entidade nova entre `User` e `RefreshToken`**: o ER original da Sprint 0 tinha `RefreshToken` pendurado direto em `User`. O pedido da Sprint 2 introduziu `Session` como entidade própria. Em vez de tratá-la como redundante, ela virou o nível certo para "dispositivos/logins ativos": `Session` guarda `user_agent`/`ip_address`/`last_seen_at`/`revoked_at`; `RefreshToken` (o segredo rotativo de `docs/07-security.md` §2) passou a referenciar `session_id`. Revogar uma sessão (logout) revoga junto seu token ativo — um único ponto de controle em vez de dois. Isso também abre caminho natural para uma futura tela "seus dispositivos conectados" sem mudança de schema.
+
+**Decisão 4 — `Invitation` ganhou soft delete**: não estava no ER original (só tinha `expires_at`/`accepted_at`). Adicionado para permitir cancelar um convite pendente sem apagar o histórico de quem convidou quem, consistente com o resto do domínio.
+
+**Decisão 5 — `Attachment` como associação polimórfica simples**: nova entidade (`docs/00-product-vision.md` já listava anexos como pós-MVP). Modelada com `issue_id`/`comment_id` nullable + `CHECK (num_nonnulls(issue_id, comment_id) = 1)` em vez de uma tabela `attachable` genérica — o domínio só tem dois tipos-alvo possíveis hoje, uma abstração polimórfica mais elaborada seria especulativa (`CLAUDE.md` §1.6).
+
+**Impacto futuro**: `Cycle`, o join `Project ↔ Team` e o papel `GUEST` completo continuam como próximos candidatos naturais de expansão de schema quando suas sprints chegarem (`docs/08-roadmap.md`), sem exigir revisão do que já foi construído aqui.

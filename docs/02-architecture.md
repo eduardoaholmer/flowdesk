@@ -152,3 +152,4 @@ sequenceDiagram
 | ADR-004 | TanStack Query + Zustand em vez de Redux Toolkit único |
 | ADR-005 | JWT + Refresh Token rotativo em vez de sessão pura em servidor |
 | ADR-006 | PostgreSQL em vez de banco não-relacional |
+| ADR-007 | Desvios da modelagem de domínio da Sprint 2 em relação ao ER original (Team/WorkflowState no escopo, Session nova, Attachment polimórfico) |
