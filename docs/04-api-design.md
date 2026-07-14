@@ -47,27 +47,42 @@ Regras de negócio notáveis: `register` não realiza login automático (fluxo e
 |---|---|---|---|---|
 | Perfil próprio | `GET /users/me` | Bearer | `{ data: { user } }` | 200, 401 (`invalid_token`) |
 
-`user` aqui **não** inclui a lista de workspaces do usuário — essa composição só faz sentido a partir da Sprint 4 (Workspaces), quando `WorkspaceMember` estiver exposto via API. Até lá, workspaces continuam fora do escopo de autenticação (Sprint 3), conforme ADR-008.
+Desde a Sprint 4, `GET /users/me` inclui `workspaces: [{ id, name, slug, role }]` — um resumo de cada workspace do qual o usuário é membro e o papel que ocupa nele (ADR-008, impacto futuro; ADR-009). Não é o `workspace` completo (sem `description`/timestamps) — só o suficiente para a UI listar/alternar entre workspaces sem uma chamada extra a `GET /workspaces`.
 
 ## 3. Workspaces (`/workspaces`)
 
+Implementado na Sprint 4 (`docs/09-decision-log.md` ADR-009 tem o racional de cada desvio em relação ao esboço original abaixo).
+
 | Ação | Endpoint | Autorização | Request | Response | Códigos |
 |---|---|---|---|---|---|
-| Criar | `POST /workspaces` | Qualquer usuário autenticado | `{ name, slug }` | `{ data: { workspace } }`, criador vira `OWNER` | 201, 409 (`slug_taken`), 422 |
-| Listar minhas | `GET /workspaces` | Autenticado | — | `{ data: [workspace] }` | 200 |
-| Detalhe | `GET /workspaces/{workspace_id}` | Membro do workspace | — | `{ data: { workspace } }` | 200, 403, 404 |
-| Atualizar | `PATCH /workspaces/{workspace_id}` | `OWNER` | `{ name?, slug? }` | `{ data: { workspace } }` | 200, 403, 409 (`slug_taken`) |
-| Excluir | `DELETE /workspaces/{workspace_id}` | `OWNER` | — | 204 (soft delete) | 204, 403 |
+| Criar | `POST /workspaces` | Qualquer usuário autenticado | `{ name, slug?, description? }` | `{ data: { workspace } }`, criador vira `OWNER`. `slug` omitido é gerado a partir de `name` | 201, 409 (`slug_taken`), 422 |
+| Listar minhas | `GET /workspaces?page=&per_page=` | Autenticado | — | `{ data: [workspace], meta }` | 200 |
+| Detalhe | `GET /workspaces/{workspace_id}` | Membro do workspace | — | `{ data: { workspace } }` | 200, 404 |
+| Atualizar | `PATCH /workspaces/{workspace_id}` | `OWNER` | `{ name?, slug?, description? }` | `{ data: { workspace } }` | 200, 403, 404, 409 (`slug_taken`) |
+| Excluir | `DELETE /workspaces/{workspace_id}` | `OWNER` | — | 204 (soft delete) | 204, 403, 404 |
+
+Não-membro em `workspace_id` existente recebe **404**, nunca **403** — mesmo racional anti-enumeration do resto da API (§1: "existe, mas fora do workspace do usuário — nunca vazamos a distinção"). `403` só ocorre quando o chamador **é** membro mas não tem o papel exigido pela ação.
 
 ### Membros (`/workspaces/{workspace_id}/members`)
 
 | Ação | Endpoint | Autorização | Request | Response | Códigos |
 |---|---|---|---|---|---|
-| Listar | `GET .../members?page=&per_page=&role=` | Membro | — | `{ data: [member], meta }` | 200 |
-| Convidar | `POST .../invitations` | `OWNER`/`ADMIN` | `{ email, role }` | `{ data: { invitation } }` | 201, 403, 409 (`already_member`) |
-| Aceitar convite | `POST /invitations/{token}/accept` | Autenticado (e-mail deve bater) | — | `{ data: { workspace_member } }` | 200, 400 (`invitation_expired`), 403 |
-| Alterar papel | `PATCH .../members/{member_id}` | `OWNER`/`ADMIN` (não pode alterar `OWNER`) | `{ role }` | `{ data: { member } }` | 200, 403, 422 |
-| Remover | `DELETE .../members/{member_id}` | `OWNER`/`ADMIN` | — | 204 | 204, 403 (não pode remover `OWNER`) |
+| Listar | `GET .../members?page=&per_page=&role=` | Membro | — | `{ data: [member], meta }` | 200, 404 |
+| Sair | `DELETE .../members/me` | Membro | — | 204 | 204, 404, 409 (`sole_owner_cannot_leave`) |
+| Convidar | `POST .../invitations` | `OWNER`/`ADMIN` | `{ email, role }` (`role` ≠ `OWNER`) | `{ data: { invitation } }` — `token` em texto plano só nesta resposta (§3.2) | 201, 403, 404, 409 (`already_member`, `invitation_already_pending`) |
+| Listar convites | `GET .../invitations?page=&per_page=` | `OWNER`/`ADMIN` | — | `{ data: [invitation], meta }` (sem `token`) | 200, 403, 404 |
+| Cancelar convite | `DELETE .../invitations/{invitation_id}` | `OWNER`/`ADMIN` | — | 204 (soft delete) | 204, 403, 404 |
+| Aceitar convite | `POST /invitations/{token}/accept` | Autenticado (e-mail deve bater) | — | `{ data: { workspace_member } }` | 200, 403 (`invitation_email_mismatch`), 404 (`invitation_not_found`), 409 (`invitation_expired`, `already_member`) |
+
+`Alterar papel` (`PATCH .../members/{member_id}`) e `Remover membro` (`DELETE .../members/{member_id}`, distinto de `.../members/me`) estavam no esboço original desta seção (Sprint 0) mas **não** foram implementados na Sprint 4 — dependem de RBAC (`docs/07-security.md` §8, `core/authorization.py`), fora do escopo explícito desta sprint. Ficam para a Sprint 5, junto com o restante do RBAC detalhado.
+
+### 3.1 Aceitar convite é um endpoint global, não aninhado
+
+`POST /invitations/{token}/accept` fica fora de `/workspaces/{workspace_id}/...` deliberadamente: quem aceita ainda não é membro do workspace (não tem como o cliente afirmar um `workspace_id` de forma confiável antes de aceitar), e o token opaco já resolve o workspace correto no servidor — nenhum valor de segurança extra viria de exigir o `workspace_id` na URL também. Mesmo racional de `/auth/*` viver fora de `/users/{id}/...`.
+
+### 3.2 Convite: token em texto plano só na criação
+
+O banco guarda apenas `token_hash` (`SHA-256`, mesmo padrão de `refresh_tokens`) — o valor em texto plano só existe no momento da criação e é devolvido uma única vez em `POST .../invitations`. Substitui o envio por e-mail transacional (fora do escopo de infraestrutura desta sprint, que não inclui um provedor de e-mail): o `OWNER`/`ADMIN` copia o token e o repassa manualmente. Nenhuma listagem subsequente (`GET .../invitations`) o expõe.
 
 ## 4. Times (`/workspaces/{workspace_id}/teams`)
 
@@ -126,8 +141,10 @@ Contrato análogo ao de Times/Issues (CRUD + listagem paginada + autorização p
 
 ## 10. Erros — catálogo de `code` (não exaustivo, cresce por feature)
 
-`invalid_credentials`, `email_already_registered`, `invalid_refresh_token`, `invalid_token`, `slug_taken`, `key_taken`, `name_taken`, `already_member`, `invitation_expired`, `team_not_found`, `issue_not_found`, `version_conflict`, `invalid_status_transition`, `permission_denied`, `rate_limited`, `validation_error`.
+`invalid_credentials`, `email_already_registered`, `invalid_refresh_token`, `invalid_token`, `workspace_not_found`, `slug_taken`, `already_member`, `invitation_already_pending`, `invitation_not_found`, `invitation_expired`, `invitation_email_mismatch`, `sole_owner_cannot_leave`, `key_taken`, `name_taken`, `team_not_found`, `issue_not_found`, `version_conflict`, `invalid_status_transition`, `permission_denied`, `rate_limited`, `validation_error`.
 
 `invalid_token` (401) cobre qualquer falha de validação do access token Bearer em rota protegida — ausente, malformado, expirado, ou apontando para um usuário que não existe mais (inclusive soft-deleted). Deliberadamente um único código para todo esse espectro, mesmo racional anti-enumeration do `invalid_credentials` — ver `docs/07-security.md` §10 e ADR-008.
+
+`workspace_not_found` (404) cobre tanto workspace inexistente quanto workspace existente do qual o chamador não é membro (`docs/09-decision-log.md` ADR-009). `invitation_expired` (409, não 400 como o esboço original da Sprint 0 sugeria) cobre tanto convite expirado quanto já aceito — ambos "não pode mais ser usado"; ver ADR-009.
 
 Todo novo `code` introduzido em uma feature deve ser adicionado a este catálogo no mesmo PR (regra também em `CLAUDE.md` §17).

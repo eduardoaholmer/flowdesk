@@ -71,10 +71,16 @@ Toda linha desta tabela corresponde a uma entrada em `PERMISSION_MATRIX` no cód
 
 Defesa em profundidade, duas camadas independentes que precisam **ambas** falhar para haver vazamento cross-tenant:
 
-1. **Camada de autorização**: toda rota resolve o recurso-alvo e verifica que o usuário autenticado é membro do `workspace_id` daquele recurso antes de prosseguir (`require_permission`).
+1. **Camada de autorização**: todo método de service que opera sobre um `workspace_id` resolve a `WorkspaceMember` do chamador para aquele workspace antes de prosseguir — se não existir (workspace inexistente **ou** existente mas o chamador não é membro), levanta `WorkspaceNotFoundError` (404). Ações que exigem um papel específico (`OWNER`/`ADMIN`) fazem uma segunda checagem, `PermissionDeniedError` (403), só depois de confirmar que o chamador é membro.
 2. **Camada de dados**: todo repository recebe `workspace_id` explicitamente e o aplica no `WHERE` de toda query (`CLAUDE.md` §6, `docs/03-database.md` §4) — mesmo que a camada de autorização tivesse um bug, uma query mal-intencionada para o `workspace_id` errado simplesmente não encontraria linhas (retorna 404, nunca dado de outro tenant).
 
 Um único ponto de falha (ex.: esquecer de checar autorização em uma rota nova) não é suficiente para vazar dado entre tenants — é preciso que o desenvolvedor também esqueça de aplicar o filtro de `workspace_id` no repository, o que é estruturalmente difícil de esquecer porque o parâmetro é obrigatório na assinatura do método (não opcional com default `None`).
+
+**Implementação real (Sprint 4) difere do esboço original desta seção**: a checagem de posse/papel hoje vive em duas funções puras no service (`_require_member`/`_require_role`, `backend/src/features/workspaces/service.py`), chamadas explicitamente no início de cada método — **não** via `Depends(require_permission(...))` sobre uma `PERMISSION_MATRIX` central em `core/authorization.py`, que ainda não existe. Essa infraestrutura de RBAC (§8 acima, que já descreve o desenho-alvo) é escopo explícito da Sprint 5; até lá, `_require_role` só entende "está na lista de papéis permitidos", sem a granularidade de ação-por-ação da matriz completa. A garantia de isolamento (item 1 acima) já vale hoje — o que falta é só a generalização/centralização da checagem de papel, não a checagem de posse do tenant. Ver ADR-009 em `docs/09-decision-log.md`.
+
+### 9.1 Não-membro nunca recebe 403
+
+Uma rota `/workspaces/{workspace_id}/...` chamada por alguém que não é membro daquele workspace responde **404**, nunca 403 — mesmo quando o workspace existe. Confirmar com 403 revelaria a um atacante que um dado `workspace_id` é válido (enumeration), o mesmo racional já aplicado a `invalid_credentials` (§10) e a qualquer lookup por ID de outro tenant. `403` só aparece quando o chamador **é** membro confirmado, mas com papel insuficiente para a ação (ex.: `MEMBER` tentando `PATCH` um workspace, ação restrita a `OWNER`).
 
 ## 10. Proteção contra acesso indevido — checklist consolidado
 
@@ -154,3 +160,69 @@ stateDiagram-v2
 ```
 
 `Session` é o nível que efetivamente controla acesso (`docs/09-decision-log.md` ADR-007, Decisão 3): revogar uma `Session` revoga em cascata todo `RefreshToken` ainda ativo dela, e é o mesmo mecanismo usado tanto por `logout` (uma sessão) quanto por `logout-all` (todas as sessões do usuário) quanto pela detecção de reuso (defesa automática).
+
+## 12. Diagramas de fluxo (Sprint 4)
+
+### Convite: criação → aceite
+
+```mermaid
+sequenceDiagram
+    participant O as OWNER/ADMIN
+    participant A as API (InvitationService)
+    participant DB as PostgreSQL
+    participant I as Convidado
+
+    O->>A: POST /workspaces/{id}/invitations { email, role }
+    A->>DB: SELECT WorkspaceMember do chamador
+    alt chamador não é membro
+        A-->>O: 404 workspace_not_found
+    else papel insuficiente (não OWNER/ADMIN)
+        A-->>O: 403 permission_denied
+    else autorizado
+        A->>DB: já é membro? já existe convite pendente?
+        alt e-mail já é membro ativo
+            A-->>O: 409 already_member
+        else convite pendente já existe
+            A-->>O: 409 invitation_already_pending
+        else pode convidar
+            A->>A: gera token opaco (32 bytes), guarda só o hash (SHA-256)
+            A->>DB: INSERT Invitation (expires_at = agora + 7 dias)
+            A->>DB: INSERT WorkspaceActivityLog (invitation.sent)
+            A-->>O: 201 { invitation, token }  note: token em texto plano só aqui
+        end
+    end
+
+    O-->>I: repassa o token (fora da API — sem envio de e-mail nesta sprint)
+    I->>A: POST /invitations/{token}/accept (autenticado)
+    A->>DB: SELECT Invitation WHERE token_hash = sha256(token)
+    alt token não encontrado
+        A-->>I: 404 invitation_not_found
+    else expirado ou já aceito
+        A-->>I: 409 invitation_expired
+    else e-mail do convite ≠ e-mail do autenticado
+        A-->>I: 403 invitation_email_mismatch
+    else já é membro
+        A-->>I: 409 already_member
+    else válido
+        A->>DB: INSERT WorkspaceMember (role do convite)
+        A->>DB: UPDATE Invitation SET accepted_at
+        A->>DB: INSERT WorkspaceActivityLog (invitation.accepted)
+        A-->>I: 200 { workspace_member }
+    end
+```
+
+### Contexto Multi-Tenant — resolução de acesso por requisição
+
+Não existe "workspace ativo" guardado em sessão de servidor — cada requisição a um recurso de tenant carrega `workspace_id` explícito no path (`CLAUDE.md` §4), e o service resolve posse a cada chamada, sem cache entre requisições (`core/security.py::CurrentUser` nunca embute papel/workspace — mesmo racional do JWT em `docs/06-backend.md` §7, evita permissão "stale"). "Alternar workspace" no frontend é só trocar qual `workspace_id` compõe a próxima URL chamada; ver ADR-009 para a justificativa completa de não introduzir um endpoint/estado de "workspace ativo".
+
+```mermaid
+flowchart TD
+    Req["Requisição autenticada\nBearer + workspace_id no path"] --> Svc["Service: _require_member(workspace_id, user_id)"]
+    Svc -->|"não é membro (ou workspace não existe)"| NF["404 workspace_not_found"]
+    Svc -->|"é membro"| Role{"Ação exige papel\nespecífico?"}
+    Role -->|"não"| Repo["Repository: WHERE workspace_id = :id"]
+    Role -->|"sim"| Chk["_require_role(member, OWNER/ADMIN)"]
+    Chk -->|"papel insuficiente"| PD["403 permission_denied"]
+    Chk -->|"papel ok"| Repo
+    Repo --> DB[(PostgreSQL\nfiltrado por workspace_id)]
+```

@@ -6,7 +6,7 @@ Cada sprint tem Definition of Done (DoD) própria, mas todas herdam a DoD-base a
 - Checklist de `CLAUDE.md` §18 satisfeito para cada tarefa da sprint.
 - Lint, format, type-check e suíte de testes (unit + integration + contract das features tocadas) passando em CI.
 - Documentação afetada (`docs/03-database.md`, `docs/04-api-design.md`, `docs/09-decision-log.md`) atualizada no mesmo conjunto de PRs da sprint.
-- Nenhuma regressão manual observada nos fluxos críticos já existentes (testados via Playwright a partir da Sprint 4, manualmente antes disso).
+- Nenhuma regressão manual observada nos fluxos críticos já existentes (testados via Playwright a partir da Sprint 6 — primeiro fluxo E2E, DoD daquela sprint —, manualmente antes disso).
 
 ---
 
@@ -50,6 +50,8 @@ Cada sprint tem Definition of Done (DoD) própria, mas todas herdam a DoD-base a
 
 ## Sprint 3 — Autenticação e Autorização
 
+> **Nota (pós-execução)**: o pedido explícito do usuário restringiu esta sprint só a autenticação (`RF-AUTH-*`), sem Workspaces/RBAC — ver ADR-008 (`docs/09-decision-log.md`), Decisão 1. Os itens abaixo relativos a Workspaces/RBAC foram executados na Sprint 4 (renumerada, ver nota abaixo) em vez desta. Critérios de aceite e DoD abaixo refletem o esboço original da Sprint 0; o real executado está em ADR-008.
+
 - **Objetivo**: primeiro fluxo de ponta a ponta com todas as camadas de segurança do MVP presentes, construído sobre o schema já modelado na Sprint 2 (`User`, `Session`, `RefreshToken`, `Workspace`, `WorkspaceMember`, `Invitation`).
 - **Funcionalidades**: RF-AUTH-01 a 05, 07; RF-WS-01 a 05, 07; `core/security.py` (hash Argon2id, JWT RS256); `core/authorization.py` (`can()`/`require_permission()`).
 - **Dependências**: Sprint 2.
@@ -59,11 +61,33 @@ Cada sprint tem Definition of Done (DoD) própria, mas todas herdam a DoD-base a
   - Teste de integração comprovando isolamento entre dois workspaces distintos (usuário do workspace A não acessa dado do workspace B mesmo manipulando `workspace_id` na URL).
 - **DoD**: DoD-base + teste específico de isolamento multi-tenant obrigatório no PR.
 
-## Sprint 4 — Núcleo de Issues
+## Sprint 4 — Multi-Tenancy: Workspaces, Memberships e Convites (executada — substitui o "Núcleo de Issues" abaixo)
 
-- **Objetivo**: a funcionalidade central do produto — camada de service/router sobre o schema de `Team`/`Issue`/`Label`/`WorkflowState` já modelado na Sprint 2.
+> **Nota de renumeração**: o pedido explícito do usuário para esta sprint foi Workspaces/Memberships/Convites (RF-WS-\*, sem RBAC detalhado), não "Núcleo de Issues" como o esboço original da Sprint 0 previa para a 4ª sprint. Mesmo padrão de resolução de divergência das ADR-007/008 (pedido do usuário prevalece). O antigo conteúdo de "Sprint 4 — Núcleo de Issues" passa a **Sprint 6**; as sprints subsequentes deslizam +1 (antiga Sprint 5 → 7, antiga 6 → 8, antiga 7 → 9) — ver seções abaixo, já renumeradas. Detalhamento completo dos desvios em ADR-009 (`docs/09-decision-log.md`).
+
+- **Objetivo**: infraestrutura completa de Workspaces, Memberships e Convites — camada de service/router sobre o schema já modelado na Sprint 2 (`Workspace`, `WorkspaceMember`, `Invitation`), com isolamento multi-tenant reforçado em duas camadas (`docs/07-security.md` §9).
+- **Funcionalidades**: RF-WS-01 a 05, 07 (sem RBAC detalhado — `core/authorization.py` fica para a Sprint 5); `POST/GET/PATCH/DELETE /workspaces`; `GET .../members`, `DELETE .../members/me`; `POST/GET .../invitations`, `DELETE .../invitations/{id}`, `POST /invitations/{token}/accept`; `WorkspaceActivityLog` (auditoria); `GET /users/me` com `workspaces[]`.
+- **Dependências**: Sprint 3 (autenticação).
+- **Critérios de aceite** (todos atendidos, ver ADR-009 para desvios pontuais):
+  - Criação de workspace com owner automático, listagem paginada, detalhe, atualização e exclusão (soft delete) funcionando ponta a ponta com testes de contrato.
+  - Convite por e-mail com token opaco hasheado e expiração, aceite validando token/expiração/e-mail, cancelamento, listagem — todos cobertos por teste de contrato feliz + erro.
+  - Teste de integração/contrato comprovando isolamento entre dois workspaces distintos (não-membro recebe 404 em toda rota `/workspaces/{id}/...`, nunca dado de outro tenant).
+  - Activity log registrando criação/atualização/exclusão de workspace, convite enviado/aceito, saída de membro.
+- **DoD**: DoD-base + teste específico de isolamento multi-tenant obrigatório no PR + aprovação explícita do usuário antes de iniciar a Sprint 5.
+
+## Sprint 5 — RBAC (Sistema de Permissões)
+
+- **Objetivo**: `core/authorization.py` (`can()`/`PERMISSION_MATRIX`/`Depends(require_permission(...))`, `docs/07-security.md` §8) sobre a base de Workspaces/Memberships da Sprint 4, substituindo as checagens mínimas inline (`_require_member`/`_require_role`, ADR-009 Decisão 4) sem alterar a checagem de posse subjacente.
+- **Funcionalidades**: matriz de permissão completa por papel/ação (`docs/07-security.md` §8); `PATCH .../members/{member_id}` (alterar papel) e `DELETE .../members/{member_id}` (remover outro membro), adiados na Sprint 4 (ADR-009 Decisão 5).
+- **Dependências**: Sprint 4.
+- **Critérios de aceite**: toda rota que precisa de autorização declarada via `Depends(require_permission(...))`, nunca `if` solto no service; matriz de permissões testada linha a linha contra `docs/07-security.md` §8.
+- **DoD**: DoD-base.
+
+## Sprint 6 — Núcleo de Issues
+
+- **Objetivo**: a funcionalidade central do produto — camada de service/router sobre o schema de `Team`/`Issue`/`Label`/`WorkflowState` já modelado na Sprint 2, agora com RBAC completo (Sprint 5) disponível.
 - **Funcionalidades**: RF-TEAM-01 a 03; RF-ISSUE-01 a 09.
-- **Dependências**: Sprint 3 (precisa de workspace/RBAC prontos).
+- **Dependências**: Sprint 5 (precisa de RBAC pronto).
 - **Critérios de aceite**:
   - CRUD de times com workflow configurável.
   - CRUD de issues completo, geração de `number` sequencial por time sem corrida (teste de concorrência simulando criação paralela sobre `TeamIssueCounter`).
@@ -72,30 +96,30 @@ Cada sprint tem Definition of Done (DoD) própria, mas todas herdam a DoD-base a
   - Versionamento otimista (`If-Match`) testado com um cenário de conflito real (duas edições concorrentes).
 - **DoD**: DoD-base + primeiro fluxo E2E Playwright (login → criar time → criar issue → mudar status no board).
 
-## Sprint 5 — Colaboração
+## Sprint 7 — Colaboração
 
 - **Objetivo**: recursos que dependem do núcleo de issues já existir, sobre o schema de `Comment`/`ActivityLog` da Sprint 2.
 - **Funcionalidades**: RF-COMMENT-01 a 03; RF-ISSUE-10 (atividade).
-- **Dependências**: Sprint 4.
+- **Dependências**: Sprint 6.
 - **Critérios de aceite**: comentários com CRUD e permissões corretas; menção `@usuário` reconhecida e armazenada; log de atividade completo e visível no detalhe da issue, cobrindo ao menos criação, mudança de status, mudança de responsável.
 - **DoD**: DoD-base.
 
-## Sprint 6 — Planejamento (Projetos e Ciclos)
+## Sprint 8 — Planejamento (Projetos e Ciclos)
 
 - **Objetivo**: camada de planejamento acima da issue individual. `Project` já está modelado desde a Sprint 2 — esta sprint constrói a feature (service/router) e modela `Cycle` (ainda não existe) e o join `Project ↔ Team`.
 - **Funcionalidades**: RF-PROJ-01; RF-CYCLE-01, 02.
-- **Dependências**: Sprint 4 (issues precisam existir para serem agrupadas).
+- **Dependências**: Sprint 6 (issues precisam existir para serem agrupadas).
 - **Critérios de aceite**: projeto agrupando issues de múltiplos times; ciclo com cálculo de progresso (burndown simples) correto contra dados de teste conhecidos.
 - **DoD**: DoD-base.
 
-## Sprint 7 — Polimento e Observabilidade
+## Sprint 9 — Polimento e Observabilidade
 
 - **Objetivo**: fechar lacunas de produção real antes de considerar o MVP+ "apresentável". `Notification` já está modelada desde a Sprint 2.
 - **Funcionalidades**: RF-NOTIF-01, 02; RF-AUTH-06 (recuperação de senha); hardening de rate limit por rota; métricas básicas (contagem de erro 5xx por rota, latência p95 por endpoint).
-- **Dependências**: Sprints 3–6.
+- **Dependências**: Sprints 3–8.
 - **Critérios de aceite**: notificação in-app gerada e visível para menção e mudança de status; reset de senha funcional; dashboard mínimo (ainda que só via logs estruturados agregáveis) mostrando latência e taxa de erro por rota.
 - **DoD**: DoD-base + revisão de segurança completa do checklist de `docs/07-security.md`.
 
-## Sprint 8+ — Extensões futuras (pós-portfólio)
+## Sprint 10+ — Extensões futuras (pós-portfólio)
 
 Não planejadas em detalhe agora (evita over-engineering especulativo, `CLAUDE.md` §1.6); candidatas registradas para não serem esquecidas: integrações externas (GitHub, Slack), colaboração em tempo real via WebSocket, papel `GUEST` completo, anexos de arquivo em UI (schema de `Attachment` já existe desde a Sprint 2, falta a feature), command palette avançado, app mobile.

@@ -25,7 +25,41 @@ flowchart LR
 Características gerais:
 - **API-first**: o contrato REST (`docs/04-api-design.md`) é a fonte de verdade; o frontend é um dos consumidores possíveis, não um parceiro acoplado ao backend.
 - **Stateless na camada de aplicação**: a API não guarda estado de sessão em memória de processo — estado de autenticação vive no token (JWT) e no banco (refresh token), permitindo múltiplas instâncias da API atrás de um load balancer sem sticky sessions.
-- **Multi-tenant por Workspace**: todo dado de domínio (times, issues, comentários) pertence a um workspace; um usuário pode pertencer a vários workspaces. Isolamento é reforçado em duas camadas independentes — autorização (RBAC) e filtro obrigatório de `workspace_id` no repository — ver `docs/07-security.md`.
+- **Multi-tenant por Workspace**: todo dado de domínio (times, issues, comentários) pertence a um workspace; um usuário pode pertencer a vários workspaces. Isolamento é reforçado em duas camadas independentes — autorização (checagem de posse/papel no service) e filtro obrigatório de `workspace_id` no repository — ver `docs/07-security.md` §9.
+
+Implementado na Sprint 4 (`docs/09-decision-log.md` ADR-009). `User` e `Workspace` não têm relação direta — sempre passam por `WorkspaceMember`, a entidade de junção que carrega o papel:
+
+```mermaid
+erDiagram
+    USER ||--o{ WORKSPACE_MEMBER : "participa como"
+    WORKSPACE ||--o{ WORKSPACE_MEMBER : possui
+    WORKSPACE ||--o{ INVITATION : possui
+    USER ||--o{ INVITATION : convida
+
+    USER {
+        uuid id PK
+    }
+    WORKSPACE {
+        uuid id PK
+        string slug UK
+        uuid owner_id FK
+    }
+    WORKSPACE_MEMBER {
+        uuid id PK
+        uuid workspace_id FK
+        uuid user_id FK
+        string role "OWNER/ADMIN/MEMBER/GUEST"
+    }
+    INVITATION {
+        uuid id PK
+        uuid workspace_id FK
+        string email
+        string token_hash UK
+        timestamptz expires_at
+    }
+```
+
+Não existe uma tabela/estado de "workspace ativo" — todo endpoint de recurso de tenant recebe `workspace_id` explícito no path (`CLAUDE.md` §4), e a posse é resolvida a cada requisição contra `WorkspaceMember`, nunca cacheada em sessão de servidor nem embutida no JWT (`docs/07-security.md` §12 detalha o fluxo completo, com diagramas de convite e de resolução de acesso por requisição).
 
 ## 2. Arquitetura do backend
 

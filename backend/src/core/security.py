@@ -88,5 +88,17 @@ def hash_refresh_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
+def generate_invitation_token() -> str:
+    """Mesmo formato do refresh token (32 bytes urlsafe) — mesmo racional de
+    entropia, só que para o fluxo de convite de workspace, nunca reaproveitado
+    entre os dois domínios para não acoplar semânticas de expiração distintas.
+    """
+    return secrets.token_urlsafe(32)
+
+
+def hash_invitation_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
 def generate_csrf_token() -> str:
     return secrets.token_urlsafe(32)

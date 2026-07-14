@@ -57,11 +57,16 @@ Implementação (Sprint 2): `backend/src/db/base.py::domain_enum()` — um `sqla
 
 ## 6. Entidades e relacionamentos
 
-Modelagem completa da Sprint 2 (18 tabelas). Duas mudanças em relação ao desenho original da Sprint 0, ambas justificadas em ADR próprio (`docs/09-decision-log.md`):
+Modelagem completa da Sprint 2 (18 tabelas), com uma tabela adicional (`WorkspaceActivityLog`, 19ª) na Sprint 4 — ver §6.1. Duas mudanças da Sprint 2 em relação ao desenho original da Sprint 0, ambas justificadas em ADR próprio (`docs/09-decision-log.md`):
 
 - **`Session`** é nova, entre `User` e `RefreshToken` — representa um login/dispositivo; `RefreshToken` agora pertence a uma `Session` (não a um `User` direto), e revogar a sessão revoga junto seu token ativo.
 - **`Team`, `TeamMember`, `WorkflowState`, `TeamIssueCounter`** (a última é só a implementação da "tabela de contador" já prevista em §8) e **`Project`** entraram no escopo desta sprint — `Cycle` e o join `Project ↔ Team` continuam fora, ainda pós-MVP (`docs/00-product-vision.md` §5).
 - **`Attachment`** é nova — associação polimórfica simples com `Issue` **ou** `Comment` via duas FKs nullable + `CHECK`.
+
+### 6.1 Adições da Sprint 4 (Multi-Tenancy)
+
+- **`Workspace.description`** (`string`, nullable) — coluna aditiva (`ALTER TABLE ... ADD COLUMN`, migration `56d54b9ad393`), não fazia parte do desenho original da Sprint 2.
+- **`WorkspaceActivityLog`** (`workspace_activity_logs`, migration `c2792667d7f6`) — auditoria de eventos de nível de workspace (criação, atualização, exclusão, convite enviado/aceito, saída de membro). Tabela nova, deliberadamente **não** reaproveitando `ActivityLog`/`activity_logs` (que é o histórico de mudança de campo de uma `Issue`, com `issue_id` obrigatório) — ver ADR-009 em `docs/09-decision-log.md` para o racional completo. Guarda `metadata` como `JSONB` (payload livre por tipo de evento) em vez das colunas fixas `field`/`old_value`/`new_value` de `ActivityLog`, já que os eventos de workspace não têm uma forma de diff de campo único em comum.
 
 ```mermaid
 erDiagram
@@ -99,6 +104,9 @@ erDiagram
     COMMENT ||--o{ ATTACHMENT : recebe
     USER ||--o{ ATTACHMENT : envia
 
+    WORKSPACE ||--o{ WORKSPACE_ACTIVITY_LOG : gera
+    USER ||--o{ WORKSPACE_ACTIVITY_LOG : "é autor de"
+
     USER {
         uuid id PK
         string name
@@ -132,6 +140,7 @@ erDiagram
         uuid id PK
         string name
         string slug UK
+        string description
         uuid owner_id FK
         timestamptz deleted_at
     }
@@ -249,6 +258,15 @@ erDiagram
         timestamptz created_at
     }
 
+    WORKSPACE_ACTIVITY_LOG {
+        uuid id PK
+        uuid workspace_id FK
+        uuid actor_id FK
+        string action
+        jsonb metadata
+        timestamptz created_at
+    }
+
     NOTIFICATION {
         uuid id PK
         uuid user_id FK
@@ -312,7 +330,7 @@ Ilustra por que `Team`, `WorkflowState` e `TeamIssueCounter` precisam existir *a
 ## 8. Constraints principais
 
 - `users.email`: único via índice funcional `lower(email)` — case-insensitive sem depender do schema HTTP (que ainda não existe) para normalizar entrada.
-- `workspaces.slug`: `UNIQUE WHERE deleted_at IS NULL`, formato validado por regex no schema (`^[a-z0-9-]+$`) quando o schema HTTP existir.
+- `workspaces.slug`: `UNIQUE WHERE deleted_at IS NULL`, formato validado no schema HTTP (`^[a-z0-9]+(?:-[a-z0-9]+)*$`, 3–50 caracteres — Sprint 4, `backend/src/features/workspaces/schemas.py`) — mais estrito que `[a-z0-9-]+`, rejeita hífen duplicado/nas pontas.
 - `workspace_members`: `UNIQUE (workspace_id, user_id) WHERE deleted_at IS NULL` (constraint parcial — permite readicionar um membro removido sem violar unicidade contra o registro soft-deleted antigo).
 - `invitations`: `UNIQUE (workspace_id, email) WHERE accepted_at IS NULL AND deleted_at IS NULL` — no máximo um convite pendente por e-mail por workspace.
 - `team_members`: `UNIQUE (team_id, user_id) WHERE deleted_at IS NULL`.
@@ -341,6 +359,7 @@ Ilustra por que `Team`, `WorkflowState` e `TeamIssueCounter` precisam existir *a
 | `activity_logs` | `(issue_id, created_at)` | timeline de atividade por issue |
 | `notifications` | `(user_id, read_at, created_at DESC)` | lista de notificações não lidas primeiro |
 | `attachments` | `(issue_id)`, `(comment_id)` | listar anexos do pai |
+| `workspace_activity_logs` | `(workspace_id, created_at)` | timeline de auditoria por workspace (Sprint 4) |
 
 Todo índice composto tem `deleted_at` como parte da chave (não como filtro pós-scan) porque o soft delete filter está presente em praticamente 100% das queries de leitura — colocá-lo no índice evita scan de linhas mortas.
 
@@ -367,3 +386,8 @@ As 12 migrations da Sprint 2 (`backend/src/db/migrations/versions/`), em ordem d
 12. `create_attachments`
 
 Validadas com `alembic upgrade head` → `alembic downgrade base` → `alembic upgrade head` sem erro contra Postgres real. Uma ressalva conhecida: `alembic check` reporta uma divergência cosmética no índice GIN de `issues` (`ix_issues_title_description_fts`) porque o Postgres normaliza a expressão `to_tsvector` internamente (adiciona casts explícitos) de forma textualmente diferente do que foi escrito no model — o índice funciona corretamente, é uma limitação conhecida do autogenerate do Alembic com índices de expressão, não um bug de schema.
+
+Mais 2 migrations da Sprint 4, aditivas e independentes uma da outra (mesma FK-base já existente):
+
+13. `add_description_to_workspaces` — `ALTER TABLE workspaces ADD COLUMN description` nullable, sem passo de backfill (coluna nova, sem dado legado a migrar).
+14. `create_workspace_activity_logs` — nova tabela (§6.1).

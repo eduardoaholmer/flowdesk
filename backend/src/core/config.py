@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     jwt_public_key: str
     access_token_expire_minutes: int = 15
     refresh_token_expire_days: int = 30
+    invitation_expire_days: int = 7
 
     @property
     def cors_origins(self) -> list[str]:

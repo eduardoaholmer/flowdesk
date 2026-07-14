@@ -14,6 +14,8 @@ from src.core.logging import configure_logging, get_logger
 from src.core.middleware import RateLimitMiddleware, RequestIDMiddleware
 from src.features.auth.router import router as auth_router
 from src.features.users.router import router as users_router
+from src.features.workspaces.router import invitations_router
+from src.features.workspaces.router import router as workspaces_router
 
 settings = get_settings()
 configure_logging(log_level=settings.log_level, json_output=settings.is_production)
@@ -55,6 +57,8 @@ app.add_exception_handler(Exception, unhandled_exception_handler)
 api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(auth_router)
 api_router.include_router(users_router)
+api_router.include_router(workspaces_router)
+api_router.include_router(invitations_router)
 app.include_router(api_router)
 
 

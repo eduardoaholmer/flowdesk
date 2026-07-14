@@ -2,7 +2,8 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, text
+from sqlalchemy import DateTime, ForeignKey, Index, func, text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.db.base import Base, SoftDeleteMixin, TimestampMixin, UUIDPrimaryKeyMixin, domain_enum
@@ -29,6 +30,7 @@ class Workspace(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
 
     name: Mapped[str] = mapped_column(nullable=False)
     slug: Mapped[str] = mapped_column(nullable=False)
+    description: Mapped[str | None] = mapped_column(default=None)
     owner_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
     )
@@ -103,3 +105,31 @@ Index(
     unique=True,
     postgresql_where=text("accepted_at IS NULL AND deleted_at IS NULL"),
 )
+
+
+class WorkspaceActivityLog(UUIDPrimaryKeyMixin, Base):
+    """Auditoria de eventos de nível de workspace (criação, atualização, exclusão,
+    convite enviado/aceito, saída de membro) — append-only, sem `updated_at`, sem
+    soft delete, mesmo racional de `features/issues/models.py::ActivityLog`.
+
+    Tabela própria em vez de reaproveitar `activity_logs` (que é o histórico de
+    mudança de campo de uma `Issue`, com `issue_id` obrigatório): os dois logs têm
+    formas de dado diferentes (diff de campo vs. evento com payload livre) e
+    generalizar a tabela de issue exigiria torná-la polimórfica só para caber um
+    caso de uso que não é dela — ver ADR-009 em docs/09-decision-log.md.
+    """
+
+    __tablename__ = "workspace_activity_logs"
+    __table_args__ = (
+        Index("ix_workspace_activity_logs_workspace_id_created_at", "workspace_id", "created_at"),
+    )
+
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="RESTRICT"), nullable=False
+    )
+    actor_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    action: Mapped[str] = mapped_column(nullable=False)
+    metadata_: Mapped[dict[str, object] | None] = mapped_column("metadata", JSONB, default=None)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
