@@ -64,6 +64,8 @@ ROLE_PERMISSIONS: dict[WorkspaceRole, frozenset[Permission]] = {
             Permission.ISSUE_CHANGE_STATUS,
             Permission.COMMENT_CREATE,
             Permission.LABEL_CREATE,
+            Permission.LABEL_READ,
+            Permission.ATTACHMENT_CREATE,
         }
     ),
     WorkspaceRole.GUEST: frozenset(
@@ -72,6 +74,8 @@ ROLE_PERMISSIONS: dict[WorkspaceRole, frozenset[Permission]] = {
             Permission.PROJECT_READ,
             Permission.ISSUE_READ,
             Permission.COMMENT_CREATE,
+            Permission.LABEL_READ,
+            Permission.ATTACHMENT_CREATE,
         }
     ),
 }
@@ -86,6 +90,7 @@ OWNERSHIP_OVERRIDE_PERMISSIONS: frozenset[Permission] = frozenset(
         Permission.COMMENT_UPDATE,
         Permission.COMMENT_DELETE,
         Permission.ISSUE_DELETE,
+        Permission.ATTACHMENT_DELETE,
     }
 )
 

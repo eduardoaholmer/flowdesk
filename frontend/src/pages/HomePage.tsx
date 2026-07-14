@@ -1,6 +1,7 @@
 import { Navigate } from "react-router-dom";
 
 import { CreateFirstWorkspaceForm } from "@/features/workspaces/components/CreateFirstWorkspaceForm";
+import { EmptyLayout } from "@/shared/components/layout/EmptyLayout";
 import { useCurrentUser } from "@/shared/hooks/useCurrentUser";
 import { Skeleton } from "@/shared/components/ui/skeleton";
 
@@ -22,7 +23,7 @@ export function HomePage() {
   }
 
   return (
-    <div className="mx-auto flex max-w-sm flex-col gap-4 pt-12">
+    <EmptyLayout>
       <div>
         <h1 className="text-lg font-semibold">Crie seu primeiro workspace</h1>
         <p className="text-sm text-muted-foreground">
@@ -30,6 +31,6 @@ export function HomePage() {
         </p>
       </div>
       <CreateFirstWorkspaceForm />
-    </div>
+    </EmptyLayout>
   );
 }

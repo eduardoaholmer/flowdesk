@@ -42,6 +42,7 @@ class Attachment(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
     content_type: Mapped[str] = mapped_column(nullable=False)
     file_size: Mapped[int] = mapped_column(BigInteger, nullable=False)
     storage_key: Mapped[str] = mapped_column(nullable=False)
+    storage_provider: Mapped[str] = mapped_column(nullable=False, default="local")
 
     issue: Mapped[Issue | None] = relationship()
     comment: Mapped[Comment | None] = relationship(back_populates="attachments")

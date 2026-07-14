@@ -35,6 +35,34 @@ class Settings(BaseSettings):
     refresh_token_expire_days: int = 30
     invitation_expire_days: int = 7
 
+    # Armazenamento local de anexos (Sprint 8) — `core/storage.py::StorageProvider`
+    # é o ponto de extensão para trocar por S3/equivalente sem mudar o contrato
+    # de `AttachmentService`. Path relativo resolvido a partir do cwd do processo
+    # (mesmo racional de `database_url` não ser hardcoded).
+    upload_dir: str = "var/uploads"
+    max_upload_size_bytes: int = 10 * 1024 * 1024
+    # Lista branca por tipo de conteúdo (não extensão de arquivo, que é
+    # facilmente forjável) — mesmo formato de `cors_origins_raw`, string
+    # "a, b, c" em vez de lista JSON (pydantic-settings não decodifica JSON de
+    # variável de ambiente/.env de forma confiável para tipos complexos).
+    allowed_upload_content_types_raw: str = Field(
+        default=(
+            "image/png,image/jpeg,image/gif,image/webp,image/svg+xml,"
+            "application/pdf,text/plain,text/csv,"
+            "application/zip,application/msword,"
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document,"
+            "application/vnd.ms-excel,"
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        ),
+        alias="ALLOWED_UPLOAD_CONTENT_TYPES",
+    )
+
+    @property
+    def allowed_upload_content_types(self) -> frozenset[str]:
+        return frozenset(
+            t.strip() for t in self.allowed_upload_content_types_raw.split(",") if t.strip()
+        )
+
     @property
     def cors_origins(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins_raw.split(",") if origin.strip()]

@@ -42,5 +42,9 @@ class Permission(enum.StrEnum):
     COMMENT_DELETE = "comment.delete"
 
     LABEL_CREATE = "label.create"
+    LABEL_READ = "label.read"
     LABEL_UPDATE = "label.update"
     LABEL_DELETE = "label.delete"
+
+    ATTACHMENT_CREATE = "attachment.create"
+    ATTACHMENT_DELETE = "attachment.delete"

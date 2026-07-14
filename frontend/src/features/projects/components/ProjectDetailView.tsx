@@ -2,6 +2,7 @@ import { useNavigate } from "react-router-dom";
 
 import { ErrorState } from "@/shared/components/ErrorState";
 import { Skeleton } from "@/shared/components/ui/skeleton";
+import { formatDate } from "@/shared/lib/date";
 
 import { useProject } from "../hooks";
 import { ProjectRowActions } from "./ProjectRowActions";
@@ -71,16 +72,16 @@ export function ProjectDetailView({
       <dl className="grid grid-cols-2 gap-4 text-sm sm:grid-cols-3">
         <div>
           <dt className="text-muted-foreground">Criado em</dt>
-          <dd>{new Date(project.created_at).toLocaleDateString("pt-BR")}</dd>
+          <dd>{formatDate(project.created_at)}</dd>
         </div>
         <div>
           <dt className="text-muted-foreground">Atualizado em</dt>
-          <dd>{new Date(project.updated_at).toLocaleDateString("pt-BR")}</dd>
+          <dd>{formatDate(project.updated_at)}</dd>
         </div>
         {project.target_date && (
           <div>
             <dt className="text-muted-foreground">Data alvo</dt>
-            <dd>{new Date(project.target_date).toLocaleDateString("pt-BR")}</dd>
+            <dd>{formatDate(project.target_date)}</dd>
           </div>
         )}
       </dl>

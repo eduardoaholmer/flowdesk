@@ -70,11 +70,12 @@ Permissões são strings estáveis `"<domínio>.<ação>"` (`core/permissions.py
 | Workspace | `workspace.view`, `workspace.update`, `workspace.delete`, `workspace.invite` |
 | Membros | `member.remove`, `member.update_role` |
 | Projetos | `project.create`, `project.read`, `project.update`, `project.delete` |
-| Issues *(feature na Sprint 6+)* | `issue.create`, `issue.read`, `issue.update`, `issue.delete`, `issue.assign`, `issue.change_status` |
-| Comentários *(feature na Sprint 6+)* | `comment.create`, `comment.update`, `comment.delete` |
-| Labels *(feature na Sprint 6+)* | `label.create`, `label.update`, `label.delete` |
+| Issues *(feature na Sprint 7)* | `issue.create`, `issue.read`, `issue.update`, `issue.delete`, `issue.assign`, `issue.change_status` |
+| Comentários *(feature na Sprint 8)* | `comment.create`, `comment.update`, `comment.delete` |
+| Labels *(feature na Sprint 8)* | `label.create`, `label.read`, `label.update`, `label.delete` |
+| Anexos *(feature na Sprint 8)* | `attachment.create`, `attachment.delete` |
 
-A feature de Projetos foi implementada na Sprint 6 (`docs/08-roadmap.md`) sem nenhuma mudança de desenho de RBAC: `core/permissions.py` e `core/authorization.py::ROLE_PERMISSIONS` já traziam as quatro permissões acima, corretamente posicionadas na matriz, desde que foram modeladas preventivamente na Sprint 5 (ADR-010). A feature só passou a exercitá-las via `Depends(require_permission(...))`.
+A feature de Projetos (Sprint 6), a de Issues (Sprint 7) e as de Comentários/Labels/Anexos (Sprint 8, `docs/08-roadmap.md`) foram implementadas sem nenhuma mudança de desenho de RBAC: `core/permissions.py` e `core/authorization.py::ROLE_PERMISSIONS` já traziam todas as permissões acima, corretamente posicionadas na matriz, desde que foram modeladas preventivamente na Sprint 5 (ADR-010). Cada feature só passou a exercitá-las via `Depends(require_permission(...))` — Issues foi a primeira a exercitar de fato o `OWNERSHIP_OVERRIDE_PERMISSIONS` (§8.5) em produção, para `issue.delete`; Comentários e Anexos (Sprint 8) seguem o mesmo padrão para `comment.update`/`comment.delete`/`attachment.delete`.
 
 ### 8.3 Matriz de permissões por papel
 
@@ -92,13 +93,16 @@ A fonte de verdade é `ROLE_PERMISSIONS`/`OWNERSHIP_OVERRIDE_PERMISSIONS` em `co
 | `project.read` | ✅ | ✅ | ✅ | ✅ | |
 | `issue.create` | ✅ | ✅ | ✅ | ❌ | |
 | `issue.read` | ✅ | ✅ | ✅ | ✅ | |
-| `issue.update` | ✅ | ✅ | ✅ | ❌ | MEMBER edita qualquer issue do time, não só a própria. |
+| `issue.update` | ✅ | ✅ | ✅ | ❌ | MEMBER edita qualquer issue do workspace, não só a própria (Issue não é escopada por time desde a Sprint 7 — ADR-012). |
 | `issue.delete` | ✅ | ✅ | ✅ (só a própria) | ❌ | MEMBER só via **ownership override** (§8.5) — não está no conjunto base do papel. |
 | `issue.assign` / `issue.change_status` | ✅ | ✅ | ✅ | ❌ | |
 | `comment.create` | ✅ | ✅ | ✅ | ✅ | GUEST é o único caso "somente leitura + comentário" — pensado para stakeholders externos (`docs/00-product-vision.md` §5). |
 | `comment.update` / `comment.delete` | ✅ | ✅ | ✅ (só o próprio) | ✅ (só o próprio) | MEMBER/GUEST só via ownership override. |
 | `label.create` | ✅ | ✅ | ✅ | ❌ | |
-| `label.update` / `label.delete` | ✅ | ✅ | ❌ | ❌ | |
+| `label.read` | ✅ | ✅ | ✅ | ✅ | |
+| `label.update` / `label.delete` | ✅ | ✅ | ❌ | ❌ | Sem ownership override — quem cria uma label não ganha direito extra de editá-la/excluí-la (ADR-013). |
+| `attachment.create` | ✅ | ✅ | ✅ | ✅ | Mesmo papel de `comment.create` — qualquer membro (incl. GUEST) pode anexar arquivo a uma issue que já pode ler. |
+| `attachment.delete` | ✅ | ✅ | ✅ (só o próprio) | ✅ (só o próprio) | MEMBER/GUEST só via **ownership override** (§8.5) — quem enviou o anexo pode removê-lo. |
 
 ### 8.4 Regra contextual: gerenciamento de membro
 
@@ -106,7 +110,7 @@ A fonte de verdade é `ROLE_PERMISSIONS`/`OWNERSHIP_OVERRIDE_PERMISSIONS` em `co
 
 ### 8.5 Ownership override
 
-Além da matriz por papel, `OWNERSHIP_OVERRIDE_PERMISSIONS` (`comment.update`, `comment.delete`, `issue.delete`) concede a permissão a **qualquer** papel quando o chamador é o dono do recurso (`resource_owner_id == member.user_id`), independente do que a matriz base do papel diz. Isso modela "excluir issue/comentário própria" sem uma segunda matriz por recurso: o papel decide o caso geral, a posse decide a exceção. `PermissionService.can(member=..., permission=..., resource_owner_id=...)` é o único lugar que resolve essa combinação.
+Além da matriz por papel, `OWNERSHIP_OVERRIDE_PERMISSIONS` (`comment.update`, `comment.delete`, `issue.delete`, `attachment.delete`) concede a permissão a **qualquer** papel quando o chamador é o dono do recurso (`resource_owner_id == member.user_id`), independente do que a matriz base do papel diz. Isso modela "excluir issue/comentário/anexo próprio" sem uma segunda matriz por recurso: o papel decide o caso geral, a posse decide a exceção. `PermissionService.can(member=..., permission=..., resource_owner_id=...)` é o único lugar que resolve essa combinação. `label.update`/`label.delete` deliberadamente **não** entram nesse conjunto (§8.3) — Label é tratado como recurso compartilhado do workspace, não pessoal de quem a criou (ADR-013).
 
 ### 8.6 Auditoria de acesso negado
 
@@ -135,6 +139,7 @@ Uma rota `/workspaces/{workspace_id}/...` chamada por alguém que não é membro
 - Mensagens de erro de autenticação são deliberadamente genéricas (`invalid_credentials` tanto para e-mail inexistente quanto senha errada) — evita enumeration de e-mails cadastrados. Isso por si só não basta: sem cuidado extra, a resposta para "e-mail inexistente" seria muito mais rápida que "senha errada" (que roda Argon2id), vazando a mesma informação por tempo de resposta. Mitigação: quando o e-mail não existe, o login ainda roda uma verificação Argon2id contra um hash dummy fixo antes de retornar o erro, igualando o tempo dos dois caminhos (ADR-008).
 - Toda ação destrutiva de alto impacto (excluir workspace, remover membro `OWNER`... este último é bloqueado por regra, não apenas por confirmação de UI) tem checagem server-side independente da confirmação de UI (RNF-UX-02 é UX, não segurança — a garantia real é sempre no backend).
 - Segredos (chave privada JWT, credenciais de banco/Redis) nunca em código-fonte ou committed — apenas em variáveis de ambiente/secret manager do ambiente de deploy (`docs/06-backend.md` §10).
+- Upload de anexo (Sprint 8) valida `Content-Type` contra uma lista branca (`Settings.allowed_upload_content_types`) — nunca a extensão do arquivo, trivialmente forjável — e um teto de tamanho (`Settings.max_upload_size_bytes`, 10 MB por padrão), ambos antes de persistir qualquer byte em disco. `storage_key` é um nome gerado (prefixado por UUID), nunca o nome original do arquivo, evitando colisão e path traversal via nome de arquivo malicioso (`core/storage.py::LocalStorageProvider`).
 
 ## 11. Diagramas de fluxo (Sprint 3)
 

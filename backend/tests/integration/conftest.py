@@ -124,20 +124,15 @@ async def label(label_repo: LabelRepository, workspace: Workspace) -> Label:
 @pytest.fixture
 async def issue(
     issue_repo: IssueRepository,
-    team_repo: TeamRepository,
-    team: Team,
-    workflow_state: WorkflowState,
     workspace: Workspace,
     user: User,
 ) -> Issue:
-    number = await team_repo.next_issue_number(team.id)
+    number = await issue_repo.next_number(workspace.id)
     return await issue_repo.create(
         Issue(
             workspace_id=workspace.id,
-            team_id=team.id,
             number=number,
             title="Corrigir bug de login",
-            status_id=workflow_state.id,
             priority=IssuePriority.MEDIUM,
             creator_id=user.id,
         )

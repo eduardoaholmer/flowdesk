@@ -4,7 +4,7 @@ cd frontend && npx lint-staged
 cd ..
 
 if [ -x backend/.venv/Scripts/pre-commit ] || [ -x backend/.venv/bin/pre-commit ]; then
-  source backend/.venv/Scripts/activate 2>/dev/null || source backend/.venv/bin/activate
+  . backend/.venv/Scripts/activate 2>/dev/null || . backend/.venv/bin/activate
   pre-commit run
 else
   echo "pre-commit não encontrado em backend/.venv — pulando hooks de backend (ver README)."

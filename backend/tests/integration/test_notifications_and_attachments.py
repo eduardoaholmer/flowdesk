@@ -1,5 +1,6 @@
 import pytest
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 from src.features.attachments.models import Attachment
 from src.features.attachments.repository import AttachmentRepository
 from src.features.auth.models import User
@@ -60,6 +61,49 @@ async def test_attachment_requires_exactly_one_parent(
                 storage_key="attachments/orphan.png",
             )
         )
+
+
+async def test_attachment_storage_provider_defaults_to_local(
+    attachment_repo: AttachmentRepository, workspace: Workspace, user: User, issue: Issue
+) -> None:
+    attachment = await attachment_repo.create(
+        Attachment(
+            workspace_id=workspace.id,
+            issue_id=issue.id,
+            uploader_id=user.id,
+            file_name="print.png",
+            content_type="image/png",
+            file_size=1024,
+            storage_key="attachments/print.png",
+        )
+    )
+
+    assert attachment.storage_provider == "local"
+
+
+async def test_attachment_soft_delete_excludes_from_get(
+    db_session: AsyncSession,
+    attachment_repo: AttachmentRepository,
+    workspace: Workspace,
+    user: User,
+    issue: Issue,
+) -> None:
+    attachment = await attachment_repo.create(
+        Attachment(
+            workspace_id=workspace.id,
+            issue_id=issue.id,
+            uploader_id=user.id,
+            file_name="print.png",
+            content_type="image/png",
+            file_size=1024,
+            storage_key="attachments/print.png",
+        )
+    )
+
+    await attachment_repo.soft_delete(attachment.id)
+    await db_session.flush()
+
+    assert await attachment_repo.get_by_id(workspace.id, attachment.id) is None
 
 
 async def test_attachment_rejects_both_parents_set(

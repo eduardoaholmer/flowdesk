@@ -3,37 +3,39 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from src.features.issues.models import Issue, IssueLabel
+from src.features.issues.models import Issue, IssueLabel, IssueStatus
 from src.features.issues.repository import IssueRepository
 from src.features.labels.models import Label
-from src.features.teams.models import Team, WorkflowState
-from src.features.teams.repository import TeamRepository
 from src.features.workspaces.models import Workspace
 
 
-async def test_issue_full_chain_relationships_load(
-    db_session: AsyncSession, issue: Issue, team: Team, workflow_state: WorkflowState
+async def test_issue_defaults_and_identifier(
+    db_session: AsyncSession, issue: Issue, workspace: Workspace
 ) -> None:
-    stmt = (
-        select(Issue)
-        .options(selectinload(Issue.team), selectinload(Issue.status))
-        .where(Issue.id == issue.id)
-    )
+    stmt = select(Issue).where(Issue.id == issue.id)
     loaded = await db_session.scalar(stmt)
 
     assert loaded is not None
-    assert loaded.team.id == team.id
-    assert loaded.status.id == workflow_state.id
+    assert loaded.workspace_id == workspace.id
     assert loaded.project_id is None
+    assert loaded.status == IssueStatus.BACKLOG
     assert loaded.version == 1
     assert loaded.number == 1
+    assert loaded.identifier == "FD-1"
 
 
-async def test_issue_number_unique_per_team(
+async def test_next_number_is_sequential_and_scoped_per_workspace(
+    issue_repo: IssueRepository, workspace: Workspace
+) -> None:
+    first = await issue_repo.next_number(workspace.id)
+    second = await issue_repo.next_number(workspace.id)
+
+    assert first == 1
+    assert second == 2
+
+
+async def test_issue_number_unique_per_workspace(
     issue_repo: IssueRepository,
-    team: Team,
-    team_repo: TeamRepository,
-    workflow_state: WorkflowState,
     workspace: Workspace,
     issue: Issue,
 ) -> None:
@@ -41,10 +43,8 @@ async def test_issue_number_unique_per_team(
         await issue_repo.create(
             Issue(
                 workspace_id=workspace.id,
-                team_id=team.id,
                 number=issue.number,
                 title="Outra issue com o mesmo número",
-                status_id=workflow_state.id,
                 creator_id=issue.creator_id,
             )
         )

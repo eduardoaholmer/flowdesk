@@ -1,6 +1,7 @@
 import { Navigate } from "react-router-dom";
 
 import { LoginForm } from "@/features/auth/components/LoginForm";
+import { AuthLayout } from "@/shared/components/layout/AuthLayout";
 import { useAuthStore } from "@/shared/stores/authStore";
 
 export function LoginPage() {
@@ -11,12 +12,12 @@ export function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center p-4">
+    <AuthLayout>
       <div className="w-full max-w-sm rounded-xl border p-6">
         <h1 className="mb-1 text-lg font-semibold">FlowDesk</h1>
         <p className="mb-6 text-sm text-muted-foreground">Entre para gerenciar seus projetos.</p>
         <LoginForm />
       </div>
-    </div>
+    </AuthLayout>
   );
 }

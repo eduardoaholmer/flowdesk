@@ -132,6 +132,8 @@ Separação de responsabilidade de estado (decisão central do frontend, ver ADR
 
 ## 5. Fluxo de uma requisição (exemplo: mudar status de uma issue)
 
+> Diagrama atualizado na Sprint 7 para refletir a implementação real (`docs/09-decision-log.md` ADR-012): sem `Team`/`WorkflowState` (nunca implementados como feature), sem board com drag-and-drop (não implementado nesta sprint — ver `docs/08-roadmap.md`), sem transição de status inválida a validar (`status` é enum fixo, qualquer valor aceita `PATCH`).
+
 ```mermaid
 sequenceDiagram
     participant U as Usuário
@@ -142,23 +144,27 @@ sequenceDiagram
     participant Repo as IssueRepository
     participant DB as PostgreSQL
 
-    U->>FE: Arrasta issue para "In Progress"
-    FE->>FE: Atualiza cache do TanStack Query (otimista)
-    FE->>MW: PATCH /workspaces/{id}/issues/{issue_id} {status}
+    U->>FE: Muda o status no formulário de edição
+    FE->>MW: PATCH /workspaces/{id}/issues/{issue_id} {status} + If-Match?
     MW->>MW: valida JWT, extrai usuário, gera request_id
     MW->>R: requisição autenticada
     R->>R: valida payload (schema Pydantic)
-    R->>S: service.update_status(workspace_id, user, issue_id, status)
-    S->>S: verifica permissão (can) e transição válida no workflow do time
+    R->>S: service.update(workspace_id, user, issue_id, payload, expected_version)
     S->>Repo: get_by_id(workspace_id, issue_id)
     Repo->>DB: SELECT ... WHERE workspace_id = ... AND id = ... AND deleted_at IS NULL
     DB-->>Repo: issue
     Repo-->>S: issue
-    S->>Repo: update_status(issue, novo_status)
-    Repo->>DB: UPDATE ...
-    S-->>R: issue atualizada
-    R-->>FE: 200 { data: { ...issue } }
-    FE->>FE: reconcilia cache (sucesso) ou reverte otimismo (erro)
+    alt If-Match informado e diverge de issue.version
+        S-->>R: 409 version_conflict
+    else
+        S->>Repo: record_activity(field="status", old, new)
+        S->>S: issue.status = novo_status; issue.version += 1
+        S->>Repo: update(issue) — flush via dirty-tracking
+        Repo->>DB: UPDATE ...
+        S-->>R: issue atualizada
+        R-->>FE: 200 { data: { ...issue } }
+        FE->>FE: invalida cache do TanStack Query (issues + detalhe)
+    end
 ```
 
 ## 6. Dependências entre camadas (regra de importação)
@@ -171,7 +177,7 @@ sequenceDiagram
 ## 7. Princípios SOLID aplicados
 
 - **Single Responsibility**: cada arquivo de feature tem um motivo para mudar — `router.py` muda por causa de contrato HTTP, `service.py` por causa de regra de negócio, `repository.py` por causa de estratégia de consulta/persistência. Misturar essas responsabilidades no mesmo arquivo é o anti-padrão mais comum que este projeto evita ativamente.
-- **Open/Closed**: o workflow de status por time (RF-TEAM-02) é modelado como dado configurável, não como `enum` fixo no código — adicionar um novo estado de workflow não exige alterar `IssueService`, apenas dados. Isso é um ponto de extensão real do domínio, não especulação (ver `CLAUDE.md` §1.6).
+- **Open/Closed**: `Issue.status` é um `enum` fixo (`domain_enum()`, VARCHAR sem `CHECK` nativo — `docs/03-database.md` §5) em vez de workflow por time configurável (esboço original da Sprint 0, não implementado — ver ADR-012 em `docs/09-decision-log.md`): adicionar um valor de status novo é uma migration aditiva simples, sem alterar `IssueService`. Um workflow configurável por time/workspace fica como evolução natural quando Kanban/board for pedido (`docs/08-roadmap.md`), sem exigir redesenho do schema atual.
 - **Liskov Substitution**: repositories implementam uma interface (`Protocol`) mínima; um repository fake usado em teste unitário de service é substituível pelo repository real sem que o service saiba a diferença.
 - **Interface Segregation**: a interface de um repository expõe apenas os métodos que aquele agregado precisa (`IssueRepository` não herda de uma interface genérica `CrudRepository<T>` com métodos que a maioria das features não usa).
 - **Dependency Inversion**: services dependem de abstrações de repository (Protocol), não de implementações concretas de SQLAlchemy — a inversão é o que torna testes unitários de service possíveis sem banco.
@@ -190,3 +196,7 @@ sequenceDiagram
 | ADR-008 | Sprint 3 (Identidade e Autenticação): escopo e desvios de implementação |
 | ADR-009 | Sprint 4 (Multi-Tenancy: Workspaces, Memberships e Convites): escopo e desvios de implementação |
 | ADR-010 | Sprint 5 (RBAC): `core/authorization.py` centraliza permissão, exceção deliberada de `core/` depender de `features/workspaces/` |
+| ADR-011 | Sprint 6 (Núcleo de Projetos): escopo e desvios de implementação |
+| ADR-012 | Sprint 7 (Núcleo de Issues): desacoplamento de `Team`/`WorkflowState`, redesenho do schema de `Issue` |
+| ADR-013 | Sprint 8 (Comentários, Labels, Anexos): menções sem notificação, Label como recurso compartilhado, ponto de extensão de storage |
+| ADR-014 | Sprint 8.5 (Frontend Foundation): tokens como camada de referência, primeiro store de UI cliente-only, `teams/` deliberadamente não criado (ADR-012) |

@@ -105,7 +105,14 @@ Cada sprint tem Definition of Done (DoD) própria, mas todas herdam a DoD-base a
   - Versionamento otimista (`If-Match`) testado com um cenário de conflito real (duas edições concorrentes).
 - **DoD**: DoD-base + primeiro fluxo E2E Playwright (login → criar time → criar issue → mudar status no board).
 
-## Sprint 7 — Colaboração
+## Sprint 7 — Núcleo de Issues (executada — substitui "Colaboração" abaixo)
+
+> **Nota (pós-execução)**: o pedido explícito do usuário para esta sprint foi finalmente o Núcleo de Issues (RF-ISSUE-\*), adiado desde a Sprint 4 (ADR-009) e a Sprint 6 (ADR-011) — mesmo padrão de resolução de divergência já usado nas ADRs anteriores. Diferente do esboço original da Sprint 4 (abaixo), o pedido desta sprint **não incluiu** `Team`/`WorkflowState`/board configurável — `Issue` foi implementada desacoplada, com identificador `FD-{number}` por workspace e status como enum fixo. Isso exigiu uma migration que altera a tabela `issues` já criada na Sprint 2 (`team_id`/`status_id` removidos). Detalhamento completo em ADR-012 (`docs/09-decision-log.md`).
+
+- **Entregue**: `features/issues/` completo (router/service/repository/schemas/exceptions/dependencies) — CRUD de issue, identificador automático (`FD-1`, `FD-2`, ...) via `WorkspaceIssueCounter`, busca por título/descrição (full-text, GIN) e por identificador, filtros (projeto/status/prioridade/responsável/criador), ordenação (criação/atualização/prioridade/vencimento/identificador), paginação offset-based, concorrência otimista (`If-Match`/`version`), exclusão com posse-como-exceção (criador ou `ADMIN`+), `ActivityLog` cobrindo criação/edição por campo/mudança de status/mudança de responsável/exclusão. Frontend completo (`features/issues/`): listagem com toolbar/filtros/busca/ordenação/paginação, modais de criação/edição, página de detalhe com timeline de atividade, empty/loading/error states, rota registrada em `src/app/router.tsx` e link na `Sidebar`. Uma migration (`c573b41b553c`). Testes unitários (service + fake repository), de integração (repository + Postgres real) e de contrato (API completa via `httpx`) cobrindo CRUD, RBAC, isolamento multi-tenant, paginação, filtros, busca e ordenação.
+- **DoD**: DoD-base satisfeita para a entrega de Issues (lint/type-check/testes verdes nos dois apps; `docs/03-database.md`, `docs/04-api-design.md`, `docs/02-architecture.md`, `docs/06-backend.md`, `docs/05-frontend.md` e `docs/09-decision-log.md` atualizados no mesmo conjunto de mudanças). Fluxo E2E Playwright (critério original desta posição do roadmap) segue pendente — verificação manual ponta a ponta (criar workspace → criar issue → editar status → ver atividade → excluir) feita via browser nesta sprint.
+
+**Conteúdo original desta posição do roadmap (não executado nesta sprint — ver nota acima):**
 
 - **Objetivo**: recursos que dependem do núcleo de issues já existir, sobre o schema de `Comment`/`ActivityLog` da Sprint 2.
 - **Funcionalidades**: RF-COMMENT-01 a 03; RF-ISSUE-10 (atividade).
@@ -113,14 +120,28 @@ Cada sprint tem Definition of Done (DoD) própria, mas todas herdam a DoD-base a
 - **Critérios de aceite**: comentários com CRUD e permissões corretas; menção `@usuário` reconhecida e armazenada; log de atividade completo e visível no detalhe da issue, cobrindo ao menos criação, mudança de status, mudança de responsável.
 - **DoD**: DoD-base.
 
-## Sprint 8 — Planejamento (Ciclos)
+## Sprint 8 — Comentários, Labels e Anexos (executada — substitui "Planejamento (Ciclos)" abaixo)
 
-> **Nota (pós-execução da Sprint 6)**: RF-PROJ-01 (feature de Projetos) já foi entregue na Sprint 6, adiantada em relação a este planejamento original — ver nota na Sprint 6 e ADR-011. Esta sprint mantém em aberto só o que Projetos-a-feature não cobriu: `Cycle` (ainda não modelado) e o join `Project ↔ Team`.
+> **Nota (pós-execução)**: o pedido explícito do usuário ao final da Sprint 7 apontou esta sprint para Comentários, Labels e Anexos (`Comment`/`Label`/`Attachment`, todos já modelados desde a Sprint 2), não para Ciclos como esta posição do roadmap previa originalmente — mesmo padrão de divergência já registrado nas sprints anteriores. Detalhamento completo em ADR-013 (`docs/09-decision-log.md`).
+
+- **Entregue**: `features/comments/` completo (CRUD de comentário em uma issue, detecção/armazenamento de menção `@local-part-do-e-mail` via `CommentMention`, edição/exclusão com posse-como-exceção, paginação offset-based); `features/labels/` completo (CRUD de label do workspace com `description`, aplicar/remover label em uma issue, `LabelActivityLog` para auditoria do ciclo de vida do próprio label, edição/exclusão restrita a `ADMIN`+ sem posse-como-exceção); `features/attachments/` completo (upload/listagem/download/exclusão de anexo em uma issue, `StorageProvider` como ponto de extensão com `LocalStorageProvider` — disco local — como única implementação, validação por lista branca de `Content-Type` + teto de 10 MB, exclusão com posse-como-exceção). Quatro migrations aditivas (`f42ae23f3ec0`, `a7c1d9f0b2e4`, `f5044a958f94`, `3113f34f2a20`). Frontend completo: `IssueDetailView` ganhou as seções Labels (`IssueLabelPicker`), Anexos (`AttachmentList`, upload + download client-side autenticado + exclusão) e Comentários (`CommentList`/`CommentComposer`/`CommentItem`); `LabelsPage` nova, rota própria (`/w/:workspaceSlug/labels`) e link na `Sidebar`. Testes unitários (service + fake repository), de integração (repository + Postgres real) e de contrato (API completa via `httpx`) para as três features.
+- **DoD**: DoD-base satisfeita (lint/type-check/testes verdes nos dois apps; `docs/03-database.md`, `docs/04-api-design.md`, `docs/05-frontend.md`, `docs/06-backend.md`, `docs/07-security.md` e `docs/09-decision-log.md` atualizados no mesmo conjunto de mudanças). Verificação manual ponta a ponta (comentar em uma issue com menção, aplicar/remover label, enviar/baixar/excluir anexo) feita via browser nesta sprint.
+
+**Conteúdo original desta posição do roadmap (não executado nesta sprint — ver nota acima):**
+
 - **Objetivo**: camada de planejamento acima da issue individual — modelar `Cycle` (ainda não existe) e o join `Project ↔ Team`, e agrupar issues em ciclos com cálculo de progresso.
 - **Funcionalidades**: RF-CYCLE-01, 02.
 - **Dependências**: Sprint 6 (issues precisam existir para serem agrupadas; a feature de Projetos já está pronta desde a Sprint 6).
 - **Critérios de aceite**: projeto agrupando issues de múltiplos times (via o novo join `Project ↔ Team`); ciclo com cálculo de progresso (burndown simples) correto contra dados de teste conhecidos.
 - **DoD**: DoD-base.
+
+## Sprint 8.5 — Frontend Foundation & Design System Preparation (concluída)
+
+- **Objetivo**: preparar a fundação do frontend (design system, layouts, providers, hooks, utils, skeletons, empty states, arquitetura de tema) para que a Sprint de identidade visual e telas finais não precise de refatoração estrutural. Sem tela final, sem regra de negócio nova, sem cor nova — mesmo padrão de inserção "X.5" da Sprint 1.5 (hardening antes de avançar o roadmap).
+- **Entregue**: 21 componentes shadcn/ui novos instalados via CLI (`form`→substituído por `field`, `sheet`, `alert`, `tabs`, `popover`, `hover-card`, `scroll-area`, `checkbox`, `radio-group`, `switch`, `command`, `context-menu`, `breadcrumb`, `empty`, `spinner`, `kbd`, entre outros trazidos como dependência); `shared/theme/tokens.ts` (referência tipada aos design tokens, motion como única categoria genuinamente nova); `AuthLayout`/`EmptyLayout` (`LoginPage`/`HomePage` migradas, mesma marcação visual); `Sidebar`/`Topbar` reescritos (colapsar, menu mobile via `Sheet`, grupos de navegação, footer com usuário, seletor de workspace com dado real de `useCurrentUser`, breadcrumb estrutural, busca e notificações sem integração — pontos de extensão explícitos); `shared/stores/uiStore.ts` (primeiro store de UI cliente-only); `shared/components/ErrorBoundary.tsx`; `shared/components/EmptyState.tsx` e `shared/components/skeletons/` (`PageSkeleton`, `CardSkeleton`, `TableSkeleton`, `ListSkeleton`, `KanbanSkeleton`) generalizando duplicação real encontrada em `IssuesEmptyState`/`ProjectsEmptyState`/`IssuesListSkeleton`/`ProjectsListSkeleton`; hooks `useBreakpoint`, `useMediaQuery`, `useDisclosure`, `useLocalStorage`, `usePrevious`; utils `date.ts`, `string.ts`, `number.ts`, `validation.ts` (substituindo duplicação real de formatação de data/iniciais em 5 componentes de feature). `features/teams/` deliberadamente **não criado** (Team foi removido do domínio pela ADR-012 — recriar a pasta reintroduziria um conceito descartado); `features/dashboard/` e `features/settings/` criados como placeholders documentados.
+- **Dependências**: Sprint 8.
+- **Critérios de aceite**: nenhuma funcionalidade existente quebrada (auth, workspaces, issues, projects, labels, comments, attachments seguem funcionando); lint, type-check, testes e build verdes.
+- **DoD**: DoD-base + `docs/05-frontend.md`, `docs/02-architecture.md` e `docs/09-decision-log.md` (ADR-014) atualizados no mesmo conjunto de mudanças; verificação manual ponta a ponta via browser (login, onboarding, navegação com sidebar colapsada/mobile, logout, tema).
 
 ## Sprint 9 — Polimento e Observabilidade
 

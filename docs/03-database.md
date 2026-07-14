@@ -57,7 +57,7 @@ Implementação (Sprint 2): `backend/src/db/base.py::domain_enum()` — um `sqla
 
 ## 6. Entidades e relacionamentos
 
-Modelagem completa da Sprint 2 (18 tabelas), com uma tabela adicional (`WorkspaceActivityLog`, 19ª) na Sprint 4 — ver §6.1 — e uma 20ª (`ProjectActivityLog`) na Sprint 6 — ver §6.2. Duas mudanças da Sprint 2 em relação ao desenho original da Sprint 0, ambas justificadas em ADR próprio (`docs/09-decision-log.md`):
+Modelagem completa da Sprint 2 (18 tabelas), com uma tabela adicional (`WorkspaceActivityLog`, 19ª) na Sprint 4 — ver §6.1 —, uma 20ª (`ProjectActivityLog`) na Sprint 6 — ver §6.2 —, uma 21ª (`WorkspaceIssueCounter`) na Sprint 7 — ver §6.3 — e mais duas na Sprint 8 (`CommentMention`, `LabelActivityLog`, 22ª e 23ª) — ver §6.4. Duas mudanças da Sprint 2 em relação ao desenho original da Sprint 0, ambas justificadas em ADR próprio (`docs/09-decision-log.md`):
 
 - **`Session`** é nova, entre `User` e `RefreshToken` — representa um login/dispositivo; `RefreshToken` agora pertence a uma `Session` (não a um `User` direto), e revogar a sessão revoga junto seu token ativo.
 - **`Team`, `TeamMember`, `WorkflowState`, `TeamIssueCounter`** (a última é só a implementação da "tabela de contador" já prevista em §8) e **`Project`** entraram no escopo desta sprint — `Cycle` e o join `Project ↔ Team` continuam fora, ainda pós-MVP (`docs/00-product-vision.md` §5).
@@ -72,6 +72,26 @@ Modelagem completa da Sprint 2 (18 tabelas), com uma tabela adicional (`Workspac
 
 - **`Project`** ganhou `slug`, `icon`, `color` e `created_by` (migration `fc0a10c66145`) — `slug`/`created_by` adicionados diretamente `NOT NULL` (sem o padrão *expand → backfill → contract* de §10) porque a tabela nunca teve linha em produção: a feature existia só como schema desde a Sprint 2, sem router. `slug` é auto-derivado de `name` (mesma transliteração `unicodedata`, `core/slug.py`) com retry por sufixo aleatório em colisão. `status` foi redefinido de `PLANNED/IN_PROGRESS/COMPLETED/CANCELED` (placeholder especulativo da Sprint 2) para `ACTIVE/ARCHIVED` — mudança só em `models.py`, sem DDL, já que a coluna nunca teve `CHECK constraint` (§5). `target_date`/`lead_id` (Sprint 2) seguem sem uso por nenhuma regra de negócio desta sprint, reservados para Cycles/Dashboard. Ver ADR-011 em `docs/09-decision-log.md`.
 - **`ProjectActivityLog`** (`project_activity_logs`, migration `0aa72aead06a`) — auditoria de eventos de projeto (`project.created`, `project.updated` com diff por campo, `project.archived`, `project.restored`, `project.deleted`). Mesmo formato de `WorkspaceActivityLog` (`metadata JSONB`, append-only, sem `updated_at`/soft delete). Tabela própria em vez de reaproveitar `activity_logs`/`workspace_activity_logs`, pelo mesmo racional já aplicado à criação de `WorkspaceActivityLog` (ADR-009, Decisão 1) — ver ADR-011.
+
+### 6.3 Adições/alterações da Sprint 7 (Núcleo de Issues)
+
+O pedido explícito do usuário para esta sprint desacoplou `Issue` de `Team`/`WorkflowState` (nunca implementados como feature — só schema dormant desde a Sprint 2) — ver ADR-012 em `docs/09-decision-log.md` para o racional completo de cada decisão abaixo. Migration `c573b41b553c`, destrutiva sobre a tabela `issues` criada na Sprint 2 (aceitável pois a tabela nunca teve linha em produção — mesma justificativa da Sprint 6/ADR-011 para `Project.status`).
+
+- **`issues.team_id` e `issues.status_id` removidos.** `Issue` passa a ser escopada só a `workspace_id` (obrigatório) + `project_id` (opcional, inalterado). `status_id` (FK para `workflow_states`) é substituído por `status: IssueStatus` — enum fixo (`BACKLOG`/`TODO`/`IN_PROGRESS`/`IN_REVIEW`/`DONE`/`CANCELED`), mesmo padrão `domain_enum()` de `priority` (VARCHAR sem `CHECK` nativo — adicionar um valor novo é migration aditiva simples).
+- **`issues.number` agora único por `(workspace_id, number)`**, não mais `(team_id, number)` — mesma regra de nunca-reciclagem mesmo após soft delete (§8). `identifier` (`FD-{number}`) é uma `@property` do model, não uma coluna — `CLAUDE.md` §3 permite comportamento trivial derivado de dado em um model.
+- **`issues.estimate`** (`INTEGER`, nullable — pontos de esforço) e **`issues.due_date`** (`DATE`, nullable) são colunas novas pedidas pelo enunciado da sprint, ausentes do desenho original da Sprint 2.
+- **`WorkspaceIssueCounter`** (`workspace_issue_counters`, nova tabela) — substitui `TeamIssueCounter` como gerador do número sequencial, agora por workspace. Ao contrário de `TeamIssueCounter` (linha pré-criada por `TeamRepository.create()`), a linha é criada sob demanda via `INSERT ... ON CONFLICT (workspace_id) DO UPDATE ... RETURNING` na primeira issue do workspace — não há gancho de "workspace criado" que esta sprint tenha adicionado a `WorkspaceService`.
+- **`Team`/`TeamMember`/`WorkflowState`/`TeamIssueCounter` permanecem no schema**, sem nenhum consumidor até uma sprint futura de Kanban/board por time os retomar (ver Impacto futuro do ADR-012) — não removidos, sem custo de manutenção real em ficar ociosos.
+
+### 6.4 Adições da Sprint 8 (Comentários, Labels, Anexos)
+
+O pedido explícito do usuário ao final da Sprint 7 apontou esta sprint para Comentários, Labels e Anexos (`Comment`/`Label`/`Attachment`, todos já modelados desde a Sprint 2) — ver ADR-013 em `docs/09-decision-log.md` para o racional completo. Diferente da Sprint 7, nenhuma tabela existente foi alterada de forma destrutiva: todas as mudanças são aditivas.
+
+- **`CommentMention`** (`comment_mentions`, migration `3113f34f2a20`) — associação pura N:N entre `Comment` e o `User` mencionado (`@local-part-do-email` no corpo), mesmo padrão de classe explícita (não `Table` solta) de `IssueLabel`, para deixar espaço a metadado futuro (ex.: `notified_at`) sem exigir converter uma `Table` em entidade depois.
+- **`labels.description`** (`string`, nullable, migration `a7c1d9f0b2e4`) — coluna aditiva, ausente do desenho original da Sprint 2.
+- **`LabelActivityLog`** (`label_activity_logs`, migration `f5044a958f94`) — auditoria do ciclo de vida do próprio `Label` (criação/atualização/exclusão), mesmo formato de `WorkspaceActivityLog`/`ProjectActivityLog` (`metadata JSONB`, append-only). Tabela própria em vez de reaproveitar `ActivityLog` (`issue_id` obrigatório) pelo mesmo racional já aplicado a `WorkspaceActivityLog` (ADR-009) — eventos de ciclo de vida de um Label não pertencem a nenhuma Issue; só quando um Label é *aplicado/removido de uma Issue* é que o evento (`label.added`/`label.removed`) vai para a `ActivityLog` da Issue.
+- **`attachments.storage_provider`** (`string`, `NOT NULL`, migration `f42ae23f3ec0`) — adicionada `NOT NULL` direto com `server_default` temporário (sem *expand → backfill → contract*, §10), mesma justificativa de `projects.slug`/`created_by` na Sprint 6 (ADR-011): `attachments` nunca teve linha em produção, a feature existia só como schema+repository desde a Sprint 2, sem service/router até esta sprint. Identifica qual `StorageProvider` (`core/storage.py`) persistiu o arquivo — `"local"` nesta sprint (disco local sob `var/uploads/`), abrindo caminho para um provider `"s3"` coexistir com dados antigos no futuro sem migração retroativa.
+- **`Comment`/`Label`/`Attachment` em si não são novas tabelas** — existiam desde a `create_comments`/`create_labels`/`create_attachments` da Sprint 2 (§10), só sem service/router/schemas até esta sprint (mesmo padrão "schema dormant" já visto em `Team`/`WorkflowState`, ADR-012).
 
 ```mermaid
 erDiagram
@@ -88,16 +108,18 @@ erDiagram
     USER ||--o{ TEAM_MEMBER : "participa como"
     TEAM ||--o{ WORKFLOW_STATE : define
     TEAM ||--|| TEAM_ISSUE_COUNTER : conta
-    TEAM ||--o{ ISSUE : possui
 
+    WORKSPACE ||--|| WORKSPACE_ISSUE_COUNTER : conta
+    WORKSPACE ||--o{ ISSUE : possui
     PROJECT ||--o{ ISSUE : agrupa
 
-    WORKFLOW_STATE ||--o{ ISSUE : "define status de"
     USER ||--o{ ISSUE : "é responsável por"
     USER ||--o{ ISSUE : "criou"
 
     ISSUE ||--o{ COMMENT : recebe
     USER ||--o{ COMMENT : escreve
+    COMMENT ||--o{ COMMENT_MENTION : menciona
+    USER ||--o{ COMMENT_MENTION : "é mencionado em"
 
     ISSUE ||--o{ ISSUE_LABEL : marcada_com
     LABEL ||--o{ ISSUE_LABEL : aplicada_em
@@ -114,6 +136,9 @@ erDiagram
 
     PROJECT ||--o{ PROJECT_ACTIVITY_LOG : gera
     USER ||--o{ PROJECT_ACTIVITY_LOG : "é autor de"
+
+    LABEL ||--o{ LABEL_ACTIVITY_LOG : gera
+    USER ||--o{ LABEL_ACTIVITY_LOG : "é autor de"
 
     USER {
         uuid id PK
@@ -204,6 +229,11 @@ erDiagram
         int next_number
     }
 
+    WORKSPACE_ISSUE_COUNTER {
+        uuid workspace_id PK_FK
+        int next_number
+    }
+
     PROJECT {
         uuid id PK
         uuid workspace_id FK
@@ -222,15 +252,16 @@ erDiagram
     ISSUE {
         uuid id PK
         uuid workspace_id FK
-        uuid team_id FK
-        uuid project_id FK
-        int number
+        uuid project_id FK "nullable"
+        int number "único por workspace; identifier = FD-{number}"
         string title
         text description
-        uuid status_id FK
+        string status
         string priority
         uuid assignee_id FK
         uuid creator_id FK
+        int estimate
+        date due_date
         int version
         timestamptz deleted_at
     }
@@ -240,7 +271,18 @@ erDiagram
         uuid workspace_id FK
         string name
         string color
+        string description "nullable, Sprint 8"
         timestamptz deleted_at
+    }
+
+    LABEL_ACTIVITY_LOG {
+        uuid id PK
+        uuid workspace_id FK
+        uuid label_id FK
+        uuid actor_id FK
+        string action
+        jsonb metadata
+        timestamptz created_at
     }
 
     ISSUE_LABEL {
@@ -256,6 +298,12 @@ erDiagram
         uuid author_id FK
         text body
         timestamptz deleted_at
+    }
+
+    COMMENT_MENTION {
+        uuid comment_id PK_FK
+        uuid mentioned_user_id PK_FK
+        timestamptz created_at
     }
 
     ACTIVITY_LOG {
@@ -309,6 +357,7 @@ erDiagram
         string content_type
         bigint file_size
         string storage_key
+        string storage_provider "Sprint 8, default local"
         timestamptz deleted_at
     }
 ```
@@ -317,17 +366,15 @@ erDiagram
 
 ```mermaid
 flowchart LR
-    A[Workspace] -->|dono de| B[Team]
-    B -->|SELECT ... FOR UPDATE| C[TeamIssueCounter]
+    A[Workspace] -->|INSERT ... ON CONFLICT DO UPDATE| C[WorkspaceIssueCounter]
     C -->|number sequencial| D[Issue]
-    B -->|status inicial = is_default| E[WorkflowState]
-    E --> D
+    A -->|status inicial = BACKLOG default| D
     F[Project opcional] -.-> D
-    D -->|dispara| G[ActivityLog: created]
-    D -->|N:N| H[Label via IssueLabel]
+    D -->|dispara| G["ActivityLog: issue.created"]
+    D -->|N:N, Sprint 8| H[Label via IssueLabel]
 ```
 
-Ilustra por que `Team`, `WorkflowState` e `TeamIssueCounter` precisam existir *antes* de qualquer `Issue` — não são só FKs soltas, são pré-condições estruturais de criação (sem workflow padrão, não há `status_id` inicial; sem contador, não há `number`).
+Desde a Sprint 7 (ADR-012 em `docs/09-decision-log.md`), `Issue` não depende mais de `Team`/`WorkflowState` — `status` é um enum fixo com default `BACKLOG`, e o número sequencial vem de `WorkspaceIssueCounter`, criado sob demanda na primeira issue do workspace (sem pré-condição de setup, ao contrário do antigo fluxo via `TeamIssueCounter`/`WorkflowState.is_default`).
 
 ## 7. Cardinalidades (explícitas)
 
@@ -336,17 +383,20 @@ Ilustra por que `Team`, `WorkflowState` e `TeamIssueCounter` precisam existir *a
 | User ↔ Workspace | N:N via `workspace_members` | um usuário em múltiplos workspaces |
 | User → Session | 1:N | uma sessão por dispositivo/login |
 | Session → RefreshToken | 1:N | histórico de rotação; só um token ativo por vez |
-| Workspace → Team | 1:N | time pertence a exatamente um workspace |
+| Workspace → Team | 1:N | time pertence a exatamente um workspace (sem uso por nenhuma regra de negócio desde a Sprint 7 — ver ADR-012) |
 | Team ↔ User | N:N via `team_members` | membro de time deve já ser `workspace_member` (validado em service, não em FK) |
-| Team → WorkflowState | 1:N | workflow é por time, não global |
-| Team → TeamIssueCounter | 1:1 | contador dedicado, não compartilha lock de linha com `teams` |
-| Team → Issue | 1:N | issue pertence a exatamente um time |
-| Project → Issue | 1:N, opcional | `issue.project_id` nullable; sem join com Team ainda |
+| Team → WorkflowState | 1:N | workflow é por time, não global (ocioso desde a Sprint 7) |
+| Team → TeamIssueCounter | 1:1 | contador dedicado, não compartilha lock de linha com `teams` (ocioso desde a Sprint 7) |
+| Workspace → Issue | 1:N | issue pertence a exatamente um workspace (Sprint 7, substitui Team → Issue) |
+| Workspace → WorkspaceIssueCounter | 1:1 | contador de `number` por workspace (Sprint 7) |
+| Project → Issue | 1:N, opcional | `issue.project_id` nullable |
 | Issue → Comment | 1:N | |
-| Issue ↔ Label | N:N via `issue_labels` (`IssueLabel`) | label pertence ao workspace, reusável entre times |
+| Comment ↔ User | N:N via `comment_mentions` (`CommentMention`, Sprint 8) | menção detectada por `@local-part-do-email` no `body` |
+| Issue ↔ Label | N:N via `issue_labels` (`IssueLabel`) | label pertence ao workspace |
+| Label → LabelActivityLog | 1:N | append-only, ciclo de vida do Label (Sprint 8) |
 | Issue → ActivityLog | 1:N | append-only |
 | Issue → Attachment | 1:N, opcional | polimórfico com Comment (nunca os dois) |
-| Comment → Attachment | 1:N, opcional | idem |
+| Comment → Attachment | 1:N, opcional | idem — sem consumidor nesta sprint (só Issue, ADR-013) |
 | User → RefreshToken | indireto via Session | ver acima |
 
 ## 8. Constraints principais
@@ -360,9 +410,10 @@ Ilustra por que `Team`, `WorkflowState` e `TeamIssueCounter` precisam existir *a
 - `workflow_states`: `UNIQUE (team_id, name)` e `UNIQUE (team_id, position)`, ambos parciais; mais `UNIQUE (team_id) WHERE is_default AND deleted_at IS NULL` — no máximo um estado default por time.
 - `projects.slug`: `UNIQUE (workspace_id, slug) WHERE deleted_at IS NULL` (índice `uq_projects_workspace_id_slug_active`, Sprint 6, migration `fc0a10c66145`) — mesmo padrão parcial de `workspaces.slug`, slug fica livre de novo após soft delete.
 - `projects.name`: `UNIQUE (workspace_id, lower(name)) WHERE deleted_at IS NULL` (índice `uq_projects_workspace_id_name_active`, Sprint 6) — unicidade case-insensitive por workspace, checada também no service antes do insert/update (defesa em profundidade, mesmo racional de `docs/03-database.md` §4).
-- `issues`: `UNIQUE (team_id, number)` **sem** filtro parcial — ao contrário de slug/key/name, o número não pode ser reciclado após soft delete (evita `ENG-123` apontar para duas issues diferentes ao longo do tempo). Gerado via `TeamIssueCounter` com `SELECT ... FOR UPDATE` no repository, evitando gap/corrida sem depender de `SERIAL` global.
+- `issues`: `UNIQUE (workspace_id, number)` **sem** filtro parcial (Sprint 7 — antes `(team_id, number)`, ver ADR-012) — ao contrário de slug/key/name, o número não pode ser reciclado após soft delete (evita `FD-123` apontar para duas issues diferentes ao longo do tempo). Gerado via `WorkspaceIssueCounter` com `INSERT ... ON CONFLICT DO UPDATE ... RETURNING` no repository, atômico sem exigir uma linha pré-criada nem depender de `SERIAL` global.
 - `labels.name`: `UNIQUE (workspace_id, name) WHERE deleted_at IS NULL`.
 - `attachments`: `CHECK (num_nonnulls(issue_id, comment_id) = 1)` — exatamente um dos dois nunca os dois, nunca nenhum.
+- `comment_mentions`: `PRIMARY KEY (comment_id, mentioned_user_id)` (Sprint 8) — um usuário mencionado no máximo uma vez por comentário; `ON DELETE CASCADE` em ambas as FKs, por não ter ciclo de vida próprio (mesmo racional de `issue_labels`).
 - Todas as FKs usam `ON DELETE RESTRICT` por padrão (exclusão física nunca deveria acontecer via cascade automático dado o soft delete; a única exceção é `issue_labels`, `ON DELETE CASCADE`, por não ter ciclo de vida próprio — os relacionamentos ORM correspondentes usam `passive_deletes=True` para não competir com a constraint do banco).
 
 ## 9. Índices
@@ -375,16 +426,19 @@ Ilustra por que `Team`, `WorkflowState` e `TeamIssueCounter` precisam existir *a
 | `workspace_members` | `(user_id)` | "listar meus workspaces" |
 | `workspace_members` | `(workspace_id, deleted_at)` | "listar membros ativos do workspace" |
 | `projects` | `(workspace_id, deleted_at)` | listagem de projetos do workspace |
-| `issues` | `(team_id, status_id, deleted_at)` | board por status (RF-ISSUE-07), a query mais frequente do sistema |
+| `issues` | `(workspace_id, status, deleted_at)` | board/filtro por status (Sprint 7 — antes `(team_id, status_id, deleted_at)`) |
 | `issues` | `(workspace_id, deleted_at, updated_at DESC)` | listagem geral/paginação do workspace |
 | `issues` | `(assignee_id, deleted_at)` | "minhas issues" |
-| `issues` | GIN em `to_tsvector('simple', title || ' ' || coalesce(description, ''))` | busca textual (RF-ISSUE-09) |
+| `issues` | `(creator_id, deleted_at)` | filtro por criador (Sprint 7) |
+| `issues` | `(project_id, deleted_at)` | filtro por projeto (Sprint 7) |
+| `issues` | GIN em `to_tsvector('simple', title || ' ' || coalesce(description, ''))` | busca textual por título/descrição; busca por identificador (`FD-123`) resolvida à parte, comparando `number` diretamente |
 | `comments` | `(issue_id, deleted_at, created_at)` | thread ordenada por issue |
 | `activity_logs` | `(issue_id, created_at)` | timeline de atividade por issue |
 | `notifications` | `(user_id, read_at, created_at DESC)` | lista de notificações não lidas primeiro |
 | `attachments` | `(issue_id)`, `(comment_id)` | listar anexos do pai |
 | `workspace_activity_logs` | `(workspace_id, created_at)` | timeline de auditoria por workspace (Sprint 4) |
 | `project_activity_logs` | `(project_id, created_at)` | timeline de auditoria por projeto (Sprint 6) |
+| `label_activity_logs` | `(label_id, created_at)` | timeline de auditoria por label (Sprint 8) |
 
 Todo índice composto tem `deleted_at` como parte da chave (não como filtro pós-scan) porque o soft delete filter está presente em praticamente 100% das queries de leitura — colocá-lo no índice evita scan de linhas mortas.
 
@@ -423,3 +477,18 @@ Mais 2 migrations da Sprint 6, encadeadas sobre a 14 (`c2792667d7f6`):
 16. `0aa72aead06a` — `create_project_activity_logs`: nova tabela + índice `(project_id, created_at)` (§6.2).
 
 Ambas validadas por aplicação manual da DDL equivalente contra um container Postgres 16 descartável (não o banco de desenvolvimento compartilhado), confirmando rejeição de colisão de nome (case-insensitive) e de slug, e que ambos ficam disponíveis de novo após soft delete.
+
+Mais 1 migration da Sprint 7, encadeada sobre a 16 (`0aa72aead06a`):
+
+17. `c573b41b553c` — `alter_issues_remove_team_add_status`: remove `team_id`/`status_id` (e seus índices/FKs) de `issues`; adiciona `status` (enum fixo, `domain_enum`), `estimate`, `due_date`; troca o índice único de `(team_id, number)` para `(workspace_id, number)`; adiciona `(workspace_id, status, deleted_at)`, `(creator_id, deleted_at)`, `(project_id, deleted_at)`; cria `workspace_issue_counters` (§6.3, ADR-012). Migration destrutiva direta (sem *expand → backfill → contract*) — `issues` nunca teve linha em produção.
+
+Validada com `alembic upgrade head` → `alembic downgrade -1` → `alembic upgrade head` sem erro contra Postgres real (container de desenvolvimento, tabela `issues` esvaziada antes da segunda aplicação — ver nota de reversibilidade estrutural, não de dado, no próprio arquivo de migration).
+
+Mais 4 migrations da Sprint 8, encadeadas sobre a 17 (`c573b41b553c`), todas aditivas (§6.4, ADR-013):
+
+18. `f42ae23f3ec0` — `add_storage_provider_to_attachments`: `NOT NULL` direto com `server_default` temporário (tabela nunca teve linha em produção).
+19. `a7c1d9f0b2e4` — `add_description_to_labels`: coluna nova, nullable.
+20. `f5044a958f94` — `create_label_activity_logs`: nova tabela + índice `(label_id, created_at)`.
+21. `3113f34f2a20` — `create_comment_mentions`: nova tabela (chave primária composta, sem coluna `id` própria).
+
+Validadas com `alembic upgrade head` → `alembic downgrade base` → `alembic upgrade head` sem erro contra Postgres real.

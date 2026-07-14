@@ -1,10 +1,10 @@
 import { ArchiveRestore, Pencil, Trash2 } from "lucide-react";
 
+import { ConfirmActionDialog } from "@/shared/components/ConfirmActionDialog";
 import { Button } from "@/shared/components/ui/button";
 
 import { useArchiveProject, useDeleteProject, useRestoreProject } from "../hooks";
 import type { Project } from "../types";
-import { ConfirmActionDialog } from "./ConfirmActionDialog";
 import { EditProjectDialog } from "./EditProjectDialog";
 
 export function ProjectRowActions({
