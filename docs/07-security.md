@@ -3,7 +3,7 @@
 ## 1. JWT (Access Token)
 
 - Algoritmo `RS256` (par de chaves assimétrico), vida útil **15 minutos**. Curto de propósito: se um access token vazar (XSS, log acidental), a janela de exploração é pequena; a curta duração é o motivo pelo qual o refresh token existe (renovar sem forçar login a cada 15 min).
-- Claims: `sub` (user_id), `iat`, `exp`, `jti` (identificador único do token, usado para blocklist pontual em Redis no caso raro de precisar revogar um access token específico antes da expiração — ex.: usuário reporta comprometimento).
+- Claims: `sub` (user_id), `iat`, `exp`, `jti` (identificador único do token, usado para blocklist pontual em Redis no caso raro de precisar revogar um access token específico antes da expiração — ex.: usuário reporta comprometimento). O `jti` já é gerado e está presente em todo token emitido (Sprint 3); a checagem ativa contra uma blocklist em Redis **não** está implementada ainda — logout hoje revoga a sessão/refresh token, e o access token remanescente expira sozinho em até 15 min, trade-off aceito explicitamente (ver ADR-008). Adicionar a blocklist é melhoria futura, não bloqueio desta sprint.
 - Nunca embute papel/permissão (ver `docs/06-backend.md` §7) — permissão é sempre revalidada contra o banco a cada requisição.
 - Transportado via header `Authorization: Bearer`, nunca em query string (evita vazamento via log de acesso/proxy).
 
@@ -35,7 +35,7 @@ Aplica-se apenas a `POST /auth/refresh` (única rota que depende de cookie para 
 - Implementado via Redis (janela deslizante), no middleware (`docs/06-backend.md` §5), antes de qualquer lógica de negócio ser executada — uma requisição limitada nunca chega a tocar o banco.
 - Limites diferenciados por sensibilidade de rota:
   - `/auth/login`, `/auth/register`: 5 requisições/minuto por IP (mitiga força bruta e enumeration de e-mail).
-  - `/auth/refresh`: 10 requisições/minuto por usuário.
+  - `/auth/refresh`: 10 requisições/minuto pela identidade da sessão (hash do próprio cookie `refresh_token`), com IP como fallback se o cookie não vier. Não é "por usuário" na prática: a identidade do usuário só é conhecida após consultar o banco, o que contradiz checar o limite *antes* de qualquer acesso a dado (ver ADR-008).
   - API em geral (autenticado): 300 requisições/minuto por usuário — generoso o suficiente para uso normal intenso (múltiplas abas, polling), restritivo o suficiente para conter um cliente com bug em loop.
 - Resposta `429` inclui header `Retry-After`.
 
@@ -79,6 +79,78 @@ Um único ponto de falha (ex.: esquecer de checar autorização em uma rota nova
 ## 10. Proteção contra acesso indevido — checklist consolidado
 
 - IDs nunca são sequenciais/adivinháveis (UUID v7, `docs/03-database.md` §1) — mas isso é defesa superficial; a defesa real é a checagem de posse em toda leitura por ID (um UUID de outro workspace corretamente retorna `404`, não `403`, para não confirmar a existência do recurso a quem não tem acesso).
-- Mensagens de erro de autenticação são deliberadamente genéricas (`invalid_credentials` tanto para e-mail inexistente quanto senha errada) — evita enumeration de e-mails cadastrados.
+- Mensagens de erro de autenticação são deliberadamente genéricas (`invalid_credentials` tanto para e-mail inexistente quanto senha errada) — evita enumeration de e-mails cadastrados. Isso por si só não basta: sem cuidado extra, a resposta para "e-mail inexistente" seria muito mais rápida que "senha errada" (que roda Argon2id), vazando a mesma informação por tempo de resposta. Mitigação: quando o e-mail não existe, o login ainda roda uma verificação Argon2id contra um hash dummy fixo antes de retornar o erro, igualando o tempo dos dois caminhos (ADR-008).
 - Toda ação destrutiva de alto impacto (excluir workspace, remover membro `OWNER`... este último é bloqueado por regra, não apenas por confirmação de UI) tem checagem server-side independente da confirmação de UI (RNF-UX-02 é UX, não segurança — a garantia real é sempre no backend).
 - Segredos (chave privada JWT, credenciais de banco/Redis) nunca em código-fonte ou committed — apenas em variáveis de ambiente/secret manager do ambiente de deploy (`docs/06-backend.md` §10).
+
+## 11. Diagramas de fluxo (Sprint 3)
+
+### Login
+
+```mermaid
+sequenceDiagram
+    participant C as Cliente
+    participant A as API (AuthService)
+    participant DB as PostgreSQL
+
+    C->>A: POST /auth/login { email, password }
+    A->>DB: SELECT user WHERE lower(email) = ?
+    alt usuário não existe
+        A->>A: perform_dummy_verification (iguala tempo de resposta)
+        A-->>C: 401 invalid_credentials
+    else usuário existe
+        A->>A: verify_password (Argon2id)
+        alt senha incorreta
+            A-->>C: 401 invalid_credentials
+        else senha correta
+            A->>DB: INSERT Session
+            A->>DB: INSERT RefreshToken (hash SHA-256)
+            A->>A: create_access_token (RS256, 15 min)
+            A-->>C: 200 { access_token, user } + Set-Cookie refresh_token (HttpOnly) + csrf_token
+        end
+    end
+```
+
+### Refresh (com rotação e detecção de reuso)
+
+```mermaid
+sequenceDiagram
+    participant C as Cliente
+    participant A as API (AuthService)
+    participant DB as PostgreSQL
+
+    C->>A: POST /auth/refresh (cookie refresh_token + header X-CSRF-Token)
+    A->>A: compara X-CSRF-Token com cookie csrf_token
+    alt CSRF não bate
+        A-->>C: 401 invalid_refresh_token
+    else CSRF ok
+        A->>DB: SELECT RefreshToken WHERE token_hash = sha256(cookie)
+        alt token não encontrado ou expirado
+            A-->>C: 401 invalid_refresh_token
+        else token já revogado (reuso)
+            A->>DB: UPDATE Session + RefreshToken SET revoked_at (toda a sessão)
+            A-->>C: 401 invalid_refresh_token
+        else token ativo
+            A->>DB: INSERT novo RefreshToken
+            A->>DB: UPDATE token antigo SET revoked_at, replaced_by_id
+            A->>A: create_access_token (novo)
+            A-->>C: 200 { access_token } + Set-Cookie refresh_token (rotacionado)
+        end
+    end
+```
+
+### Ciclo de vida de Session/RefreshToken
+
+```mermaid
+stateDiagram-v2
+    [*] --> Ativo: login (cria Session + RefreshToken)
+    Ativo --> Rotacionado: POST /auth/refresh bem-sucedido
+    Rotacionado --> [*]: token antigo, nunca mais aceito
+    Ativo --> Revogado: POST /auth/logout
+    Ativo --> Revogado: POST /auth/logout-all
+    Rotacionado --> RevogacaoDeDefesa: token antigo reapresentado (reuso detectado)
+    RevogacaoDeDefesa --> Revogado: toda a Session e seus RefreshTokens
+    Revogado --> [*]
+```
+
+`Session` é o nível que efetivamente controla acesso (`docs/09-decision-log.md` ADR-007, Decisão 3): revogar uma `Session` revoga em cascata todo `RefreshToken` ainda ativo dela, e é o mesmo mecanismo usado tanto por `logout` (uma sessão) quanto por `logout-all` (todas as sessões do usuário) quanto pela detecção de reuso (defesa automática).

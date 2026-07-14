@@ -34,12 +34,20 @@
 | Ação | Endpoint | Auth | Request | Response | Códigos |
 |---|---|---|---|---|---|
 | Registrar | `POST /auth/register` | Nenhuma | `{ name, email, password }` | `{ data: { user } }` | 201, 409 (`email_already_registered`), 422 |
-| Login | `POST /auth/login` | Nenhuma | `{ email, password }` | `{ data: { access_token, user } }` + cookie `refresh_token` | 200, 401 (`invalid_credentials`), 429 |
-| Refresh | `POST /auth/refresh` | Cookie `refresh_token` + header CSRF | — | `{ data: { access_token } }` + rotaciona cookie | 200, 401 (`invalid_refresh_token`) |
-| Logout | `POST /auth/logout` | Bearer | — | 204, limpa cookie, revoga token no banco | 204, 401 |
-| Usuário atual | `GET /auth/me` | Bearer | — | `{ data: { user, workspaces: [...] } }` | 200, 401 |
+| Login | `POST /auth/login` | Nenhuma | `{ email, password }` | `{ data: { access_token, user } }` + cookies `refresh_token`/`csrf_token` | 200, 401 (`invalid_credentials`), 429 |
+| Refresh | `POST /auth/refresh` | Cookie `refresh_token` + header `X-CSRF-Token` | — | `{ data: { access_token } }` + rotaciona cookie `refresh_token` | 200, 401 (`invalid_refresh_token`) |
+| Logout | `POST /auth/logout` | Bearer | — | 204, limpa cookies, revoga a sessão atual no banco | 204, 401 |
+| Logout global | `POST /auth/logout-all` | Bearer | — | 204, limpa cookies, revoga **todas** as sessões do usuário | 204, 401 |
 
-Regras de negócio notáveis: `register` não realiza login automático (fluxo explícito, evita ambiguidade de estado); `refresh` fora do padrão (detecção de reuso de refresh token revogado) está detalhado em `docs/07-security.md`.
+Regras de negócio notáveis: `register` não realiza login automático (fluxo explícito, evita ambiguidade de estado); `refresh` fora do padrão (detecção de reuso de refresh token revogado, que revoga a sessão inteira) está detalhado em `docs/07-security.md`. `GET /users/me` (perfil do usuário autenticado) vive em `/users`, não em `/auth` — ver §2.1: é um recurso (o usuário), não uma ação de autenticação.
+
+### 2.1 Usuários (`/users`)
+
+| Ação | Endpoint | Auth | Response | Códigos |
+|---|---|---|---|---|
+| Perfil próprio | `GET /users/me` | Bearer | `{ data: { user } }` | 200, 401 (`invalid_token`) |
+
+`user` aqui **não** inclui a lista de workspaces do usuário — essa composição só faz sentido a partir da Sprint 4 (Workspaces), quando `WorkspaceMember` estiver exposto via API. Até lá, workspaces continuam fora do escopo de autenticação (Sprint 3), conforme ADR-008.
 
 ## 3. Workspaces (`/workspaces`)
 
@@ -118,6 +126,8 @@ Contrato análogo ao de Times/Issues (CRUD + listagem paginada + autorização p
 
 ## 10. Erros — catálogo de `code` (não exaustivo, cresce por feature)
 
-`invalid_credentials`, `email_already_registered`, `invalid_refresh_token`, `slug_taken`, `key_taken`, `name_taken`, `already_member`, `invitation_expired`, `team_not_found`, `issue_not_found`, `version_conflict`, `invalid_status_transition`, `permission_denied`, `rate_limited`, `validation_error`.
+`invalid_credentials`, `email_already_registered`, `invalid_refresh_token`, `invalid_token`, `slug_taken`, `key_taken`, `name_taken`, `already_member`, `invitation_expired`, `team_not_found`, `issue_not_found`, `version_conflict`, `invalid_status_transition`, `permission_denied`, `rate_limited`, `validation_error`.
+
+`invalid_token` (401) cobre qualquer falha de validação do access token Bearer em rota protegida — ausente, malformado, expirado, ou apontando para um usuário que não existe mais (inclusive soft-deleted). Deliberadamente um único código para todo esse espectro, mesmo racional anti-enumeration do `invalid_credentials` — ver `docs/07-security.md` §10 e ADR-008.
 
 Todo novo `code` introduzido em uma feature deve ser adicionado a este catálogo no mesmo PR (regra também em `CLAUDE.md` §17).

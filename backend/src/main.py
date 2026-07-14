@@ -1,7 +1,7 @@
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.core.config import get_settings
@@ -11,7 +11,9 @@ from src.core.exceptions import (
     unhandled_exception_handler,
 )
 from src.core.logging import configure_logging, get_logger
-from src.core.middleware import RequestIDMiddleware
+from src.core.middleware import RateLimitMiddleware, RequestIDMiddleware
+from src.features.auth.router import router as auth_router
+from src.features.users.router import router as users_router
 
 settings = get_settings()
 configure_logging(log_level=settings.log_level, json_output=settings.is_production)
@@ -31,6 +33,11 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Ordem (docs/06-backend.md §5): CORS -> Request ID -> Rate Limit -> rotas.
+# Starlette empilha middlewares em ordem reversa de inserção — o último
+# `add_middleware` chamado é o mais externo — então a ordem de chamada abaixo é
+# o inverso da ordem de execução desejada.
+app.add_middleware(RateLimitMiddleware)
 app.add_middleware(RequestIDMiddleware)
 app.add_middleware(
     CORSMiddleware,
@@ -44,6 +51,11 @@ app.add_middleware(
 # suportado e documentado, mas exige silenciar a variância de tipo aqui.
 app.add_exception_handler(FlowDeskError, flowdesk_exception_handler)  # type: ignore[arg-type]
 app.add_exception_handler(Exception, unhandled_exception_handler)
+
+api_router = APIRouter(prefix="/api/v1")
+api_router.include_router(auth_router)
+api_router.include_router(users_router)
+app.include_router(api_router)
 
 
 @app.get("/health", tags=["system"])

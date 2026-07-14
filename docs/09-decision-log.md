@@ -151,3 +151,28 @@ Este ponto é a demonstração deliberada de "não escolher por popularidade": N
 **Decisão 5 — `Attachment` como associação polimórfica simples**: nova entidade (`docs/00-product-vision.md` já listava anexos como pós-MVP). Modelada com `issue_id`/`comment_id` nullable + `CHECK (num_nonnulls(issue_id, comment_id) = 1)` em vez de uma tabela `attachable` genérica — o domínio só tem dois tipos-alvo possíveis hoje, uma abstração polimórfica mais elaborada seria especulativa (`CLAUDE.md` §1.6).
 
 **Impacto futuro**: `Cycle`, o join `Project ↔ Team` e o papel `GUEST` completo continuam como próximos candidatos naturais de expansão de schema quando suas sprints chegarem (`docs/08-roadmap.md`), sem exigir revisão do que já foi construído aqui.
+
+---
+
+## ADR-008 — Sprint 3 (Identidade e Autenticação): escopo e desvios de implementação
+
+**Contexto**: a Sprint 3 implementou o sistema completo de autenticação (`AuthService`, `core/security.py`, `core/dependencies.py`, rate limiting). O pedido da sprint divergia em alguns pontos do contrato originalmente esboçado em `docs/04-api-design.md` §2 e do escopo de `docs/08-roadmap.md` (que incluía Workspaces). Cada divergência abaixo foi uma decisão deliberada, não um desvio acidental.
+
+**Decisão 1 — Escopo da sprint é só autenticação, sem Workspaces**: `docs/08-roadmap.md` original incluía RF-WS-01–05/07 na Sprint 3. O pedido explícito do usuário para esta sprint excluiu Workspaces/Convites/RBAC/Projetos/Issues — mesmo padrão de resolução de divergência já usado na ADR-007 (pedido explícito do usuário prevalece sobre o roadmap anterior). Workspaces fica para a Sprint 4.
+
+**Decisão 2 — `GET /users/me` em vez de `GET /auth/me`, sem lista de workspaces**: a sprint pediu esse endpoint e path explicitamente. Como é um recurso (o usuário), não uma ação de autenticação, ganhou uma feature própria (`features/users/`) reaproveitando `UserRepository` do auth. A resposta não inclui workspaces (não implementados ainda nesta sprint) — volta na Sprint 4, quando `WorkspaceMember` tiver uma API própria.
+
+**Decisão 3 — `POST /auth/logout-all` adicionado ao contrato**: não estava em `docs/04-api-design.md` original; a sprint pediu "encerrar todas as sessões do usuário" explicitamente. Revoga toda sessão ativa de `SessionRepository.list_active_by_user`, uma por uma, na mesma unidade de trabalho.
+
+**Decisão 4 — Mitigação de timing side-channel no login**: sem cuidado extra, "e-mail inexistente" responde muito mais rápido que "senha errada" (que roda Argon2id), vazando por tempo de resposta a mesma informação que `invalid_credentials` genérico tenta esconder. Quando o e-mail não existe, o login roda `perform_dummy_verification` (Argon2id contra um hash fixo, nunca uma senha real) antes de recusar — iguala o tempo dos dois caminhos.
+
+**Decisão 5 — Blocklist de `jti` adiada**: `docs/07-security.md` §1 descreve o blocklist de access token em Redis como mecanismo para o caso raro de revogação pontual antes da expiração, não como parte do fluxo padrão de logout. Implementá-lo agora exigiria um round-trip a Redis em toda requisição autenticada sem necessidade comprovada nesta sprint — logout/logout-all já revogam a sessão e o refresh token, e o access token remanescente expira sozinho em até 15 min (trade-off já aceito em ADR-005). Fica como melhoria futura.
+
+**Decisão 6 — Falha de CSRF em `/auth/refresh` usa o mesmo código `invalid_refresh_token`**: em vez de um código dedicado (`csrf_token_invalid`), uma checagem de CSRF malsucedida devolve o mesmo 401 genérico de qualquer outra falha de refresh (token ausente/expirado/reusado). Não revela ao chamador qual das checagens falhou — mesmo racional anti-enumeration do `invalid_credentials`.
+
+**Decisão 7 — Rate limit de `/auth/refresh` por hash do cookie, não por usuário**: o limite documentado em `docs/07-security.md` §6 como "por usuário" na prática usa o hash SHA-256 do próprio cookie `refresh_token` como chave (com IP como fallback se o cookie não vier) — a identidade do usuário só é conhecida depois de uma consulta ao banco, o que contradiz checar o rate limit *antes* de qualquer acesso a dado (`docs/06-backend.md` §5).
+
+**Decisão 8 — Commit de transação: `FlowDeskError` commita, exceção não mapeada reverte**: `core/db.py::get_db_session` precisou de uma regra explícita de boundary transacional (nenhuma existia antes da Sprint 3, já que nenhuma rota anterior persistia escrita real via HTTP). Uma `FlowDeskError` é um resultado de negócio válido — pode carregar efeito colateral intencional que deve persistir mesmo quando a requisição termina em erro (ex.: `AuthService.refresh` detecta reuso, revoga a sessão inteira, *e então* lança `InvalidRefreshTokenError`; se essa exceção disparasse rollback, a revogação de defesa seria desfeita silenciosamente). Só uma exceção verdadeiramente inesperada (não mapeada) reverte a transação.
+
+**Decisão 9 — Cliente Redis e engine do Postgres com escopo por event loop**: ambos eram singletons de módulo criados uma vez no import (`core/db.py`, `core/rate_limit.py`), o padrão usado desde a Sprint 2. Isso quebra sob `pytest-asyncio` (loop novo por função de teste) com `RuntimeError: Event loop is closed` na segunda função de teste que toca o recurso — só descoberto agora porque a Sprint 3 é a primeira a ter testes de contrato que de fato usam banco/Redis através da app real (testes de sistema anteriores só tocavam `/health`/`/version`). Corrigido recriando o cliente/engine quando o event loop corrente muda; em produção (um único loop pela vida do processo) o comportamento é idêntico a um singleton normal, sem custo extra.
+

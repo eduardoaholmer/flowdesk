@@ -55,6 +55,34 @@ class RateLimitedError(FlowDeskError):
     status_code = status.HTTP_429_TOO_MANY_REQUESTS
 
 
+class InvalidTokenError(AuthenticationError):
+    """Bearer ausente, malformado, expirado, ou apontando para usuário inexistente/desativado.
+
+    Todas essas causas colapsam no mesmo `code` deliberadamente — não damos ao
+    cliente informação suficiente para distinguir "seu token expirou" de "essa
+    conta não existe mais" (`docs/07-security.md` §10, anti-enumeration).
+    """
+
+    code = "invalid_token"
+    message = "Token inválido ou expirado."
+
+
+def error_response(
+    *, code: str, message: str, status_code: int, details: object = None
+) -> JSONResponse:
+    """Constrói o envelope de erro padrão (CLAUDE.md §8) fora do fluxo de exceções.
+
+    Usado pelo handler global abaixo e por qualquer middleware (ex.: rate limit)
+    que precise responder antes de o request alcançar o `ExceptionMiddleware` do
+    Starlette — que não intercepta com segurança exceções levantadas em
+    middlewares `BaseHTTPMiddleware` de terceiros.
+    """
+    return JSONResponse(
+        status_code=status_code,
+        content={"error": {"code": code, "message": message, "details": details}},
+    )
+
+
 async def flowdesk_exception_handler(request: Request, exc: FlowDeskError) -> JSONResponse:
     """Handler global: traduz exceção de domínio -> envelope de erro padrão (CLAUDE.md §8)."""
     if exc.status_code >= status.HTTP_500_INTERNAL_SERVER_ERROR:
@@ -62,15 +90,8 @@ async def flowdesk_exception_handler(request: Request, exc: FlowDeskError) -> JS
     else:
         logger.info("domain_error", code=exc.code, path=request.url.path)
 
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={
-            "error": {
-                "code": exc.code,
-                "message": exc.message,
-                "details": exc.details,
-            }
-        },
+    return error_response(
+        code=exc.code, message=exc.message, status_code=exc.status_code, details=exc.details
     )
 
 

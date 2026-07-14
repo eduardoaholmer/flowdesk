@@ -59,6 +59,8 @@ Middlewares são funções puras compostas na criação da app (`main.py`), nunc
 - JWT assinado com chave assimétrica (`RS256`) — permite que, no futuro, outros serviços validem o token com a chave pública sem precisarem do segredo de assinatura, caso o sistema cresça para múltiplos serviços.
 - Claims mínimos no access token: `sub` (user_id), `iat`, `exp`, `jti`. Nenhum dado de workspace/papel embutido no token — papel é sempre resolvido em tempo real contra `workspace_members` (evita token "stale" carregando uma permissão já revogada).
 
+**Implementado na Sprint 3** (`docs/09-decision-log.md` ADR-008 tem o racional de cada desvio): `core/security.py` (hash/verify Argon2id, criação/decodificação de JWT, geração e hash de refresh token), `core/dependencies.py` (`get_current_user`, `get_user_repository`, `get_session_repository`), `core/rate_limit.py` + `RateLimitMiddleware` em `core/middleware.py`, e a feature `features/auth/` completa (`schemas.py`/`service.py`/`router.py`, além do `models.py`/`repository.py` já existentes da Sprint 2). `features/users/` é uma feature nova e enxuta só com `GET /users/me`, reaproveitando o `UserRepository` do auth em vez de duplicá-lo — o perfil do usuário é o mesmo agregado, exposto sob um path de recurso diferente por convenção de nomenclatura (`docs/04-api-design.md` §2.1).
+
 ## 8. Autorização (implementação)
 
 - `core/authorization.py` expõe `can(user: CurrentUser, action: str, resource: Resource) -> bool`, implementada como consulta a uma matriz estática `PERMISSION_MATRIX: dict[Role, set[str]]` (ver `docs/07-security.md` para a matriz completa) combinada com checagens contextuais (ex.: `"comment:delete"` é permitido ao autor independentemente do papel).

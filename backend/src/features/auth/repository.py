@@ -5,6 +5,7 @@ from typing import Protocol
 
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from src.features.auth.models import RefreshToken, Session, User
 
@@ -43,6 +44,9 @@ class SessionRepositoryProtocol(Protocol):
     async def get_refresh_token_by_hash(self, token_hash: str) -> RefreshToken | None: ...
     async def revoke_session(self, session_id: uuid.UUID) -> None: ...
     async def list_active_by_user(self, user_id: uuid.UUID) -> Sequence[Session]: ...
+    async def revoke_refresh_token(
+        self, token_id: uuid.UUID, *, replaced_by_id: uuid.UUID | None = None
+    ) -> None: ...
 
 
 class SessionRepository:
@@ -64,7 +68,15 @@ class SessionRepository:
         return token
 
     async def get_refresh_token_by_hash(self, token_hash: str) -> RefreshToken | None:
-        stmt = select(RefreshToken).where(RefreshToken.token_hash == token_hash)
+        """Carrega a `Session` junto (`selectinload`) — quem chama precisa do
+        `user_id` do dono do token (ex.: para emitir um novo access token no
+        refresh) sem uma segunda ida ao banco.
+        """
+        stmt = (
+            select(RefreshToken)
+            .where(RefreshToken.token_hash == token_hash)
+            .options(selectinload(RefreshToken.session))
+        )
         result: RefreshToken | None = await self._session.scalar(stmt)
         return result
 
@@ -85,3 +97,16 @@ class SessionRepository:
     async def list_active_by_user(self, user_id: uuid.UUID) -> Sequence[Session]:
         stmt = select(Session).where(Session.user_id == user_id, Session.revoked_at.is_(None))
         return (await self._session.scalars(stmt)).all()
+
+    async def revoke_refresh_token(
+        self, token_id: uuid.UUID, *, replaced_by_id: uuid.UUID | None = None
+    ) -> None:
+        """Revoga um refresh token específico — usado na rotação (`docs/07-security.md`
+        §2): o token apresentado é marcado revogado e ligado ao seu substituto via
+        `replaced_by_id`, mantendo a cadeia que permite detectar reuso depois.
+        """
+        await self._session.execute(
+            update(RefreshToken)
+            .where(RefreshToken.id == token_id)
+            .values(revoked_at=datetime.now(UTC), replaced_by_id=replaced_by_id)
+        )
