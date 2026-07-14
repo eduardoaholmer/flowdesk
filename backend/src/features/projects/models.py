@@ -1,9 +1,10 @@
 import enum
 import uuid
-from datetime import date
+from datetime import date, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import ForeignKey, Index
+from sqlalchemy import DateTime, ForeignKey, Index, func, text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.db.base import Base, SoftDeleteMixin, TimestampMixin, UUIDPrimaryKeyMixin, domain_enum
@@ -13,17 +14,28 @@ if TYPE_CHECKING:
 
 
 class ProjectStatus(enum.StrEnum):
-    PLANNED = "PLANNED"
-    IN_PROGRESS = "IN_PROGRESS"
-    COMPLETED = "COMPLETED"
-    CANCELED = "CANCELED"
+    ACTIVE = "ACTIVE"
+    ARCHIVED = "ARCHIVED"
 
 
 class Project(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
-    """Agrupamento de issues acima do time — RF-PROJ-01, pós-MVP como feature, mas o
-    schema é modelado agora (pedido explícito do usuário nesta sprint). Sem join com
-    `Team` ainda: um projeto hoje é apenas workspace-scoped, não atrelado a times
-    específicos (isso chega junto do join `project_teams`, deixado fora por ora).
+    """Agrupamento de issues acima do time — RF-PROJ-01.
+
+    `status` modela só o ciclo de vida administrativo (visível/arquivado), não
+    progresso de execução — isso pertence a um workflow por Issue, fora de
+    escopo aqui. Redefinido na Sprint 6 (ACTIVE/ARCHIVED) a partir do placeholder
+    especulativo de 4 valores modelado na Sprint 2 (PLANNED/IN_PROGRESS/
+    COMPLETED/CANCELED): a tabela nunca teve linha em produção e o contrato de
+    negócio desta sprint pede exatamente arquivar/restaurar — ver ADR em
+    `docs/09-decision-log.md`.
+
+    `target_date`/`lead_id` vêm do modelo original da Sprint 2 e são mantidos
+    (nenhuma regra de negócio desta sprint os usa ainda) para não descartar
+    campo já modelado sem necessidade — ficam prontos para Cycles/Dashboard.
+
+    Sem join com `Team` ainda: um projeto hoje é apenas workspace-scoped, não
+    atrelado a times específicos (isso chega junto do join `project_teams`,
+    deixado fora por ora).
     """
 
     __tablename__ = "projects"
@@ -33,13 +45,67 @@ class Project(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
         ForeignKey("workspaces.id", ondelete="RESTRICT"), nullable=False
     )
     name: Mapped[str] = mapped_column(nullable=False)
+    slug: Mapped[str] = mapped_column(nullable=False)
     description: Mapped[str | None] = mapped_column(default=None)
+    icon: Mapped[str | None] = mapped_column(default=None)
+    color: Mapped[str | None] = mapped_column(default=None)
     status: Mapped[ProjectStatus] = mapped_column(
-        domain_enum(ProjectStatus), nullable=False, default=ProjectStatus.PLANNED
+        domain_enum(ProjectStatus), nullable=False, default=ProjectStatus.ACTIVE
     )
     target_date: Mapped[date | None] = mapped_column(default=None)
     lead_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="RESTRICT"), default=None
     )
+    created_by: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
 
     issues: Mapped[list["Issue"]] = relationship(back_populates="project")
+
+
+Index(
+    "uq_projects_workspace_id_slug_active",
+    Project.workspace_id,
+    Project.slug,
+    unique=True,
+    postgresql_where=text("deleted_at IS NULL"),
+)
+
+Index(
+    "uq_projects_workspace_id_name_active",
+    Project.workspace_id,
+    func.lower(Project.name),
+    unique=True,
+    postgresql_where=text("deleted_at IS NULL"),
+)
+
+
+class ProjectActivityLog(UUIDPrimaryKeyMixin, Base):
+    """Auditoria de eventos de projeto (criação, atualização, arquivamento,
+    restauração, exclusão) — append-only, sem `updated_at`, sem soft delete,
+    mesmo racional de `WorkspaceActivityLog` (`features/workspaces/models.py`).
+
+    Tabela própria em vez de reaproveitar `activity_logs` (histórico de diff de
+    campo de uma `Issue`) ou `workspace_activity_logs` (payload sem `project_id`
+    dedicado): cada log de auditoria deste sistema é modelado para o agregado
+    que audita, não generalizado em uma tabela polimórfica — ver ADR-009 em
+    `docs/09-decision-log.md`.
+    """
+
+    __tablename__ = "project_activity_logs"
+    __table_args__ = (
+        Index("ix_project_activity_logs_project_id_created_at", "project_id", "created_at"),
+    )
+
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="RESTRICT"), nullable=False
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="RESTRICT"), nullable=False
+    )
+    actor_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    action: Mapped[str] = mapped_column(nullable=False)
+    metadata_: Mapped[dict[str, object] | None] = mapped_column("metadata", JSONB, default=None)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

@@ -43,29 +43,76 @@ Aplica-se apenas a `POST /auth/refresh` (única rota que depende de cookie para 
 
 Argon2id (vencedor da Password Hashing Competition, resistente tanto a ataque por GPU quanto por side-channel — motivo de preferi-lo a bcrypt, que é adequado mas mais antigo e com menos resistência a paralelização por hardware dedicado). Parâmetros de custo (memória/iterações/paralelismo) calibrados para ~250ms por hash no hardware de produção alvo, revisados a cada major version do projeto conforme guidance da OWASP evolui.
 
-## 8. Validação de permissões
+## 8. Validação de permissões (RBAC — Sprint 5)
 
-Ver `CLAUDE.md` §10 e `docs/06-backend.md` §8 para a implementação. Matriz de permissões por papel (workspace-level):
+Ver `CLAUDE.md` §10 e `docs/06-backend.md` §8 para a implementação (`core/permissions.py::Permission`, `core/authorization.py::ROLE_PERMISSIONS`/`PermissionService`).
 
-| Ação | OWNER | ADMIN | MEMBER | GUEST |
-|---|---|---|---|---|
-| Gerenciar billing/exclusão do workspace | ✅ | ❌ | ❌ | ❌ |
-| Convidar/remover membros | ✅ | ✅ | ❌ | ❌ |
-| Alterar papel de membro | ✅ | ✅ (exceto OWNER) | ❌ | ❌ |
-| Criar/editar/excluir time | ✅ | ✅ | ❌ | ❌ |
-| Configurar workflow de status | ✅ | ✅ | ❌ | ❌ |
-| Criar issue | ✅ | ✅ | ✅ | ❌ |
-| Editar issue (qualquer) | ✅ | ✅ | ✅ | ❌ |
-| Excluir issue (própria) | ✅ | ✅ | ✅ (se `creator_id` = self) | ❌ |
-| Excluir issue (de outro) | ✅ | ✅ | ❌ | ❌ |
-| Comentar | ✅ | ✅ | ✅ | ✅ (leitura+comentário) |
-| Excluir comentário (próprio) | ✅ | ✅ | ✅ | ✅ |
-| Excluir comentário (de outro) | ✅ | ✅ | ❌ | ❌ |
-| Visualizar issues/board | ✅ | ✅ | ✅ | ✅ |
+### 8.1 Fluxo de autorização
+
+Toda decisão de autorização passa pelo mesmo caminho, sem exceção — nenhuma rota ou service reimplementa `if member.role == ...`:
+
+```
+Request -> Authentication (get_current_user) -> Workspace Context (get_workspace_context)
+        -> Permission Service (PermissionService.can/require) -> Service Layer -> Repository
+```
+
+- **Authentication** resolve `CurrentUser` a partir do Bearer JWT (Sprint 3, inalterado).
+- **Workspace Context** (`core/authorization.py::get_workspace_context`) resolve `workspace_id` do path e confirma que o chamador é membro ativo daquele workspace — não-membro e workspace inexistente colapsam no mesmo `workspace_not_found` (404, §9.1).
+- **Permission Service** (`PermissionService.can`/`.require`) consulta a permissão exigida contra o papel do membro resolvido. Rotas declaram isso via `Depends(require_permission(Permission.X))` — nunca um `if` manual no corpo da rota (`CLAUDE.md` §10).
+- Só depois de passar por essas três etapas o **Service Layer** é chamado — que já pode assumir a chamada autorizada, e só volta ao `PermissionService` para checagens contextuais que dependem de um recurso já buscado (ex.: `require_can_manage_member`, §8.4).
+
+### 8.2 Catálogo de permissões
+
+Permissões são strings estáveis `"<domínio>.<ação>"` (`core/permissions.py::Permission`), nunca literais soltos:
+
+| Domínio | Permissões |
+|---|---|
+| Workspace | `workspace.view`, `workspace.update`, `workspace.delete`, `workspace.invite` |
+| Membros | `member.remove`, `member.update_role` |
+| Projetos | `project.create`, `project.read`, `project.update`, `project.delete` |
+| Issues *(feature na Sprint 6+)* | `issue.create`, `issue.read`, `issue.update`, `issue.delete`, `issue.assign`, `issue.change_status` |
+| Comentários *(feature na Sprint 6+)* | `comment.create`, `comment.update`, `comment.delete` |
+| Labels *(feature na Sprint 6+)* | `label.create`, `label.update`, `label.delete` |
+
+A feature de Projetos foi implementada na Sprint 6 (`docs/08-roadmap.md`) sem nenhuma mudança de desenho de RBAC: `core/permissions.py` e `core/authorization.py::ROLE_PERMISSIONS` já traziam as quatro permissões acima, corretamente posicionadas na matriz, desde que foram modeladas preventivamente na Sprint 5 (ADR-010). A feature só passou a exercitá-las via `Depends(require_permission(...))`.
+
+### 8.3 Matriz de permissões por papel
+
+A fonte de verdade é `ROLE_PERMISSIONS`/`OWNERSHIP_OVERRIDE_PERMISSIONS` em `core/authorization.py` — esta tabela é a descrição legível para humanos; divergência entre as duas é bug.
+
+| Permissão | OWNER | ADMIN | MEMBER | GUEST | Observação |
+|---|---|---|---|---|---|
+| `workspace.view` | ✅ | ✅ | ✅ | ✅ | Requisito mínimo para qualquer ação — sem ela, o service nem resolve o `WorkspaceContext`. |
+| `workspace.update` | ✅ | ✅ | ❌ | ❌ | |
+| `workspace.delete` | ✅ | ❌ | ❌ | ❌ | Única ação irreversível do domínio — reservada ao dono, nunca delegável a ADMIN. |
+| `workspace.invite` | ✅ | ✅ | ❌ | ❌ | Cobre criar, listar e cancelar convite — mesma checagem para as três ações (eram idênticas antes da Sprint 5 via `_require_role`, ADR-009). |
+| `member.remove` | ✅ | ✅ (exceto OWNER) | ❌ | ❌ | Exceção "exceto OWNER" é contextual (`require_can_manage_member`, §8.4), não expressável na matriz estática. |
+| `member.update_role` | ✅ | ✅ (exceto OWNER) | ❌ | ❌ | Idem. Promover alguém a OWNER é sempre rejeitado (422 na validação de schema — transferência de propriedade é fora de escopo, ADR-009/ADR-010). |
+| `project.create` / `update` / `delete` | ✅ | ✅ | ❌ | ❌ | |
+| `project.read` | ✅ | ✅ | ✅ | ✅ | |
+| `issue.create` | ✅ | ✅ | ✅ | ❌ | |
+| `issue.read` | ✅ | ✅ | ✅ | ✅ | |
+| `issue.update` | ✅ | ✅ | ✅ | ❌ | MEMBER edita qualquer issue do time, não só a própria. |
+| `issue.delete` | ✅ | ✅ | ✅ (só a própria) | ❌ | MEMBER só via **ownership override** (§8.5) — não está no conjunto base do papel. |
+| `issue.assign` / `issue.change_status` | ✅ | ✅ | ✅ | ❌ | |
+| `comment.create` | ✅ | ✅ | ✅ | ✅ | GUEST é o único caso "somente leitura + comentário" — pensado para stakeholders externos (`docs/00-product-vision.md` §5). |
+| `comment.update` / `comment.delete` | ✅ | ✅ | ✅ (só o próprio) | ✅ (só o próprio) | MEMBER/GUEST só via ownership override. |
+| `label.create` | ✅ | ✅ | ✅ | ❌ | |
+| `label.update` / `label.delete` | ✅ | ✅ | ❌ | ❌ | |
+
+### 8.4 Regra contextual: gerenciamento de membro
+
+`member.remove`/`member.update_role` concedem a permissão *base* a OWNER/ADMIN (checado por `Depends(require_permission(...))`, antes do service ser chamado), mas "ADMIN não pode gerenciar um OWNER" só é decidível depois que o service busca a `WorkspaceMember`-alvo pelo `member_id` do path — o papel do alvo não está disponível na etapa de Workspace Context. Por isso o service chama `PermissionService.require_can_manage_member(actor_role, target_role)` explicitamente, gerando `403 cannot_manage_owner` quando um ADMIN mira um OWNER. Adicionalmente, gerenciar a própria associação por esses endpoints (`member_id` = o próprio chamador) é sempre rejeitado com `409 cannot_manage_own_membership` — sair é `DELETE .../members/me`, trocar o próprio papel exigiria uma transferência de propriedade (fora de escopo, ver ADR-010).
+
+### 8.5 Ownership override
+
+Além da matriz por papel, `OWNERSHIP_OVERRIDE_PERMISSIONS` (`comment.update`, `comment.delete`, `issue.delete`) concede a permissão a **qualquer** papel quando o chamador é o dono do recurso (`resource_owner_id == member.user_id`), independente do que a matriz base do papel diz. Isso modela "excluir issue/comentário própria" sem uma segunda matriz por recurso: o papel decide o caso geral, a posse decide a exceção. `PermissionService.can(member=..., permission=..., resource_owner_id=...)` é o único lugar que resolve essa combinação.
+
+### 8.6 Auditoria de acesso negado
+
+Toda chamada a `PermissionService.require`/`.require_can_manage_member` que resulta em negação emite um log estruturado (`structlog`, `CLAUDE.md` §9) no nível `WARNING` com `event="permission_denied"`, `user_id`, `workspace_id`, `role` e `permission` — nunca persistido em `workspace_activity_logs` (reservada a eventos de negócio bem-sucedidos, ADR-009 Decisão 1), mas suficiente para detecção de abuso via agregação de logs.
 
 `GUEST` é um papel somente leitura + comentário, pensado para stakeholders externos observando o progresso sem poder alterar o trabalho — fora do MVP (ver `docs/00-product-vision.md` §5), mas já modelado na matriz para não exigir migração de schema quando for implementado.
-
-Toda linha desta tabela corresponde a uma entrada em `PERMISSION_MATRIX` no código — a tabela **é** a especificação, o código é a implementação; divergência entre os dois é bug.
 
 ## 9. Isolamento entre Workspaces (multi-tenancy)
 
@@ -76,7 +123,7 @@ Defesa em profundidade, duas camadas independentes que precisam **ambas** falhar
 
 Um único ponto de falha (ex.: esquecer de checar autorização em uma rota nova) não é suficiente para vazar dado entre tenants — é preciso que o desenvolvedor também esqueça de aplicar o filtro de `workspace_id` no repository, o que é estruturalmente difícil de esquecer porque o parâmetro é obrigatório na assinatura do método (não opcional com default `None`).
 
-**Implementação real (Sprint 4) difere do esboço original desta seção**: a checagem de posse/papel hoje vive em duas funções puras no service (`_require_member`/`_require_role`, `backend/src/features/workspaces/service.py`), chamadas explicitamente no início de cada método — **não** via `Depends(require_permission(...))` sobre uma `PERMISSION_MATRIX` central em `core/authorization.py`, que ainda não existe. Essa infraestrutura de RBAC (§8 acima, que já descreve o desenho-alvo) é escopo explícito da Sprint 5; até lá, `_require_role` só entende "está na lista de papéis permitidos", sem a granularidade de ação-por-ação da matriz completa. A garantia de isolamento (item 1 acima) já vale hoje — o que falta é só a generalização/centralização da checagem de papel, não a checagem de posse do tenant. Ver ADR-009 em `docs/09-decision-log.md`.
+**Implementado desde a Sprint 5** exatamente como descrito acima: a checagem de posse (`get_workspace_context`) e de papel (`Depends(require_permission(Permission.X))`) vivem em `core/authorization.py`, resolvidas antes do service layer ser chamado — nenhuma rota ou service reimplementa a checagem (`CLAUDE.md` §10). Isso substitui as duas funções puras que a Sprint 4 usava como ponto de substituição único (`_require_member`/`_require_role`, `backend/src/features/workspaces/service.py`, removidas nesta sprint) sem alterar a garantia de isolamento em si (item 1 acima), só centralizá-la e dar a ela granularidade ação-por-ação via `PERMISSION_MATRIX`. Ver ADR-009 (Sprint 4) e ADR-010 (Sprint 5) em `docs/09-decision-log.md`.
 
 ### 9.1 Não-membro nunca recebe 403
 
@@ -217,12 +264,68 @@ Não existe "workspace ativo" guardado em sessão de servidor — cada requisiç
 
 ```mermaid
 flowchart TD
-    Req["Requisição autenticada\nBearer + workspace_id no path"] --> Svc["Service: _require_member(workspace_id, user_id)"]
-    Svc -->|"não é membro (ou workspace não existe)"| NF["404 workspace_not_found"]
-    Svc -->|"é membro"| Role{"Ação exige papel\nespecífico?"}
-    Role -->|"não"| Repo["Repository: WHERE workspace_id = :id"]
-    Role -->|"sim"| Chk["_require_role(member, OWNER/ADMIN)"]
-    Chk -->|"papel insuficiente"| PD["403 permission_denied"]
-    Chk -->|"papel ok"| Repo
+    Req["Requisição autenticada\nBearer + workspace_id no path"] --> Ctx["get_workspace_context\n(core/authorization.py)"]
+    Ctx -->|"não é membro (ou workspace não existe)"| NF["404 workspace_not_found"]
+    Ctx -->|"é membro"| Perm["Depends(require_permission(Permission.X))\nPermissionService.can(member, permission)"]
+    Perm -->|"permissão negada"| PD["403 permission_denied\n(log WARNING permission_denied)"]
+    Perm -->|"permissão concedida"| Svc["Service Layer\n(regra de negócio)"]
+    Svc --> Repo["Repository: WHERE workspace_id = :id"]
     Repo --> DB[(PostgreSQL\nfiltrado por workspace_id)]
 ```
+
+Ver §13 abaixo (Sprint 5) para o detalhamento completo do fluxo de autorização, incluindo a checagem contextual de gerenciamento de membro.
+
+## 13. Diagramas de fluxo (Sprint 5 — RBAC)
+
+### Autorização de uma rota protegida (ex.: `PATCH /workspaces/{workspace_id}`)
+
+```mermaid
+sequenceDiagram
+    participant C as Cliente
+    participant Auth as get_current_user
+    participant Ctx as get_workspace_context
+    participant Perm as PermissionService
+    participant Svc as WorkspaceService
+    participant DB as PostgreSQL
+
+    C->>Auth: Bearer <access_token>
+    Auth-->>Ctx: CurrentUser
+    Ctx->>DB: SELECT Workspace WHERE id = :workspace_id
+    alt workspace não existe
+        Ctx-->>C: 404 workspace_not_found
+    else workspace existe
+        Ctx->>DB: SELECT WorkspaceMember WHERE workspace_id + user_id
+        alt chamador não é membro
+            Ctx-->>C: 404 workspace_not_found
+        else chamador é membro
+            Ctx-->>Perm: WorkspaceContext(workspace, member)
+            Perm->>Perm: can(member, Permission.WORKSPACE_UPDATE)
+            alt permissão negada
+                Perm->>Perm: log WARNING permission_denied
+                Perm-->>C: 403 permission_denied
+            else permissão concedida
+                Perm-->>Svc: member (repassado pelo router se necessário)
+                Svc->>DB: UPDATE Workspace ...
+                Svc-->>C: 200 { data: workspace }
+            end
+        end
+    end
+```
+
+### Gerenciar membro (`PATCH`/`DELETE .../members/{member_id}`) — checagem em duas etapas
+
+```mermaid
+flowchart TD
+    Req["PATCH .../members/{member_id}\n{ role }"] --> Dep["Depends(require_permission(MEMBER_UPDATE_ROLE))\n(base: OWNER/ADMIN)"]
+    Dep -->|"negado"| PD1["403 permission_denied"]
+    Dep -->|"concedido"| Svc["WorkspaceService.update_member_role"]
+    Svc --> Fetch["repo.get_member_by_id(workspace_id, member_id)"]
+    Fetch -->|"não encontrado"| NF["404 member_not_found"]
+    Fetch -->|"encontrado"| Self{"target.user_id == current_user.id?"}
+    Self -->|"sim"| Own["409 cannot_manage_own_membership"]
+    Self -->|"não"| Ctx["PermissionService.require_can_manage_member(\n  actor_role, target.role)"]
+    Ctx -->|"ADMIN mirando OWNER"| PD2["403 cannot_manage_owner"]
+    Ctx -->|"permitido"| Update["UPDATE role + activity_log member.role_changed"]
+```
+
+A mesma checagem em duas etapas (permissão base via `Depends`, regra contextual via `PermissionService` chamado explicitamente pelo service) se aplica a `member.remove` — só troca a ação final por `remove_member` + `activity_log member.removed`. Promover alguém a `OWNER` por este endpoint nunca chega a essa checagem: `MemberUpdateRoleRequest` rejeita `role: "OWNER"` na validação de schema (`422`, mesmo padrão de `InvitationCreateRequest`).

@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+import src.db.models_registry  # noqa: F401
 from src.core.config import get_settings
 from src.core.exceptions import (
     FlowDeskError,
@@ -13,6 +14,7 @@ from src.core.exceptions import (
 from src.core.logging import configure_logging, get_logger
 from src.core.middleware import RateLimitMiddleware, RequestIDMiddleware
 from src.features.auth.router import router as auth_router
+from src.features.projects.router import router as projects_router
 from src.features.users.router import router as users_router
 from src.features.workspaces.router import invitations_router
 from src.features.workspaces.router import router as workspaces_router
@@ -59,6 +61,7 @@ api_router.include_router(auth_router)
 api_router.include_router(users_router)
 api_router.include_router(workspaces_router)
 api_router.include_router(invitations_router)
+api_router.include_router(projects_router)
 app.include_router(api_router)
 
 

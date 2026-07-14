@@ -81,9 +81,18 @@ Cada sprint tem Definition of Done (DoD) própria, mas todas herdam a DoD-base a
 - **Funcionalidades**: matriz de permissão completa por papel/ação (`docs/07-security.md` §8); `PATCH .../members/{member_id}` (alterar papel) e `DELETE .../members/{member_id}` (remover outro membro), adiados na Sprint 4 (ADR-009 Decisão 5).
 - **Dependências**: Sprint 4.
 - **Critérios de aceite**: toda rota que precisa de autorização declarada via `Depends(require_permission(...))`, nunca `if` solto no service; matriz de permissões testada linha a linha contra `docs/07-security.md` §8.
-- **DoD**: DoD-base.
+- **DoD**: DoD-base + aprovação explícita do usuário antes de iniciar a Sprint 6.
 
-## Sprint 6 — Núcleo de Issues
+> **Nota (pós-execução)**: executado como planejado, com dois acréscimos além do esboço acima — `core/permissions.py` (catálogo `Permission`) como módulo próprio separado de `core/authorization.py` (matriz + `PermissionService`), e a checagem contextual `require_can_manage_member` (ADMIN não gerencia OWNER) chamada explicitamente pelo service, já que depende de um recurso buscado por `member_id` e não é resolvível só a partir do `workspace_id` do path. Detalhamento completo em ADR-010 (`docs/09-decision-log.md`).
+
+## Sprint 6 — Núcleo de Projetos (concluída — substitui "Núcleo de Issues" abaixo)
+
+> **Nota (pós-execução)**: o pedido explícito do usuário para esta sprint foi a feature de Projetos (RF-PROJ-01), não "Núcleo de Issues" (Team/Issue/Label/WorkflowState) como esta posição do roadmap previa — mesmo padrão de resolução de divergência já usado nas ADR-007/008/009 (`docs/09-decision-log.md`). `Project` já estava modelado desde a Sprint 2 (ADR-007 Decisão 2) e o RBAC necessário (`Permission.PROJECT_*`) já existia desde a Sprint 5 (ADR-010) sem exigir nenhuma mudança. O conteúdo original de "Núcleo de Issues" (objetivo, funcionalidades e critérios de aceite abaixo) permanece pendente, como próximo trabalho de núcleo do produto, ainda não renumerado para uma sprint específica. Detalhamento completo em ADR-011.
+
+- **Entregue**: `features/projects/` completo (router/service/repository/schemas/exceptions) — CRUD de projeto, arquivar/restaurar como transições de estado explícitas e idempotency-guarded, exclusão bloqueada por issues ativas vinculadas, unicidade de nome (case-insensitive) e de slug por workspace (DB + service), `ProjectActivityLog` (auditoria própria, mesmo padrão de `WorkspaceActivityLog`). Duas migrations (`fc0a10c66145`, `0aa72aead06a`). `ProjectStatus` redefinido do placeholder especulativo da Sprint 2 (`PLANNED/IN_PROGRESS/COMPLETED/CANCELED`) para `ACTIVE/ARCHIVED`. Extração de `core/slug.py` (reaproveitado de `WorkspaceService`) e correção de um bug latente de configuração de mapper cross-feature (`db/models_registry.py`).
+- **DoD**: DoD-base satisfeita para a entrega de Projetos (lint/type-check/testes verdes; `docs/03-database.md`, `docs/04-api-design.md` e `docs/09-decision-log.md` atualizados no mesmo conjunto de mudanças). O primeiro fluxo E2E Playwright (critério original desta posição) fica para quando "Núcleo de Issues" for de fato executado.
+
+**Conteúdo original desta posição do roadmap (não executado nesta sprint — ver nota acima):**
 
 - **Objetivo**: a funcionalidade central do produto — camada de service/router sobre o schema de `Team`/`Issue`/`Label`/`WorkflowState` já modelado na Sprint 2, agora com RBAC completo (Sprint 5) disponível.
 - **Funcionalidades**: RF-TEAM-01 a 03; RF-ISSUE-01 a 09.
@@ -104,12 +113,13 @@ Cada sprint tem Definition of Done (DoD) própria, mas todas herdam a DoD-base a
 - **Critérios de aceite**: comentários com CRUD e permissões corretas; menção `@usuário` reconhecida e armazenada; log de atividade completo e visível no detalhe da issue, cobrindo ao menos criação, mudança de status, mudança de responsável.
 - **DoD**: DoD-base.
 
-## Sprint 8 — Planejamento (Projetos e Ciclos)
+## Sprint 8 — Planejamento (Ciclos)
 
-- **Objetivo**: camada de planejamento acima da issue individual. `Project` já está modelado desde a Sprint 2 — esta sprint constrói a feature (service/router) e modela `Cycle` (ainda não existe) e o join `Project ↔ Team`.
-- **Funcionalidades**: RF-PROJ-01; RF-CYCLE-01, 02.
-- **Dependências**: Sprint 6 (issues precisam existir para serem agrupadas).
-- **Critérios de aceite**: projeto agrupando issues de múltiplos times; ciclo com cálculo de progresso (burndown simples) correto contra dados de teste conhecidos.
+> **Nota (pós-execução da Sprint 6)**: RF-PROJ-01 (feature de Projetos) já foi entregue na Sprint 6, adiantada em relação a este planejamento original — ver nota na Sprint 6 e ADR-011. Esta sprint mantém em aberto só o que Projetos-a-feature não cobriu: `Cycle` (ainda não modelado) e o join `Project ↔ Team`.
+- **Objetivo**: camada de planejamento acima da issue individual — modelar `Cycle` (ainda não existe) e o join `Project ↔ Team`, e agrupar issues em ciclos com cálculo de progresso.
+- **Funcionalidades**: RF-CYCLE-01, 02.
+- **Dependências**: Sprint 6 (issues precisam existir para serem agrupadas; a feature de Projetos já está pronta desde a Sprint 6).
+- **Critérios de aceite**: projeto agrupando issues de múltiplos times (via o novo join `Project ↔ Team`); ciclo com cálculo de progresso (burndown simples) correto contra dados de teste conhecidos.
 - **DoD**: DoD-base.
 
 ## Sprint 9 — Polimento e Observabilidade

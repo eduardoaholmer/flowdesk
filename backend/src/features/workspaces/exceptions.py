@@ -49,3 +49,29 @@ class InvitationEmailMismatchError(PermissionDeniedError):
 class CannotLeaveAsSoleOwnerError(ConflictError):
     code = "sole_owner_cannot_leave"
     message = "Transfira a propriedade do workspace antes de sair — você é o único OWNER."
+
+
+class MemberNotFoundError(NotFoundError):
+    code = "member_not_found"
+    message = "Membro não encontrado."
+
+
+class CannotManageOwnMembershipError(ConflictError):
+    """`PATCH`/`DELETE .../members/{member_id}` são ações administrativas sobre
+    *outro* membro — gerenciar a própria associação (sair, trocar o próprio
+    papel) passa por `DELETE .../members/me` ou por uma transferência de
+    propriedade (fora de escopo, ver `docs/09-decision-log.md` ADR-009/ADR-010).
+    """
+
+    code = "cannot_manage_own_membership"
+    message = "Use o endpoint de sair do workspace para alterar sua própria associação."
+
+
+class CannotManageOwnerError(PermissionDeniedError):
+    """Regra contextual de `docs/07-security.md` §8: um ADMIN pode gerenciar
+    qualquer membro, exceto outro OWNER — evita que um ADMIN rebaixe ou remova
+    o dono do workspace.
+    """
+
+    code = "cannot_manage_owner"
+    message = "Não é possível alterar ou remover um OWNER."

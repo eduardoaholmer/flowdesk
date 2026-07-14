@@ -1,29 +1,12 @@
 import enum
-import re
 import uuid
 from datetime import UTC, datetime
 
 from pydantic import BaseModel, ConfigDict, EmailStr, field_validator
 
+from src.core.slug import validate_slug_format as _validate_slug_format
 from src.features.auth.schemas import UserResponse
 from src.features.workspaces.models import Invitation, WorkspaceMember, WorkspaceRole
-
-_SLUG_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
-_SLUG_MIN_LENGTH = 3
-_SLUG_MAX_LENGTH = 50
-
-
-def _validate_slug_format(value: str) -> str:
-    if not (_SLUG_MIN_LENGTH <= len(value) <= _SLUG_MAX_LENGTH):
-        raise ValueError(
-            f"O slug deve ter entre {_SLUG_MIN_LENGTH} e {_SLUG_MAX_LENGTH} caracteres."
-        )
-    if not _SLUG_RE.match(value):
-        raise ValueError(
-            "O slug deve conter apenas letras minúsculas, números e hífens "
-            "(sem hífen no início/fim ou repetido)."
-        )
-    return value
 
 
 class WorkspaceCreateRequest(BaseModel):
@@ -113,6 +96,17 @@ class InvitationCreateRequest(BaseModel):
     def _validate_role(cls, value: WorkspaceRole) -> WorkspaceRole:
         if value == WorkspaceRole.OWNER:
             raise ValueError("Não é possível convidar diretamente como OWNER.")
+        return value
+
+
+class MemberUpdateRoleRequest(BaseModel):
+    role: WorkspaceRole
+
+    @field_validator("role")
+    @classmethod
+    def _validate_role(cls, value: WorkspaceRole) -> WorkspaceRole:
+        if value == WorkspaceRole.OWNER:
+            raise ValueError("Não é possível promover um membro a OWNER por este endpoint.")
         return value
 
 

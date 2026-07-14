@@ -2,15 +2,18 @@ import uuid
 
 from fastapi import APIRouter, Depends, Query, status
 
+from src.core.authorization import require_permission
 from src.core.dependencies import get_current_user
+from src.core.permissions import Permission
 from src.core.schemas import CollectionEnvelope, DataEnvelope, PaginationMeta
 from src.core.security import CurrentUser
 from src.features.workspaces.dependencies import get_invitation_service, get_workspace_service
-from src.features.workspaces.models import WorkspaceRole
+from src.features.workspaces.models import WorkspaceMember, WorkspaceRole
 from src.features.workspaces.schemas import (
     InvitationCreatedResponse,
     InvitationCreateRequest,
     InvitationResponse,
+    MemberUpdateRoleRequest,
     WorkspaceCreateRequest,
     WorkspaceMemberResponse,
     WorkspaceResponse,
@@ -51,10 +54,10 @@ async def list_workspaces(
 @router.get("/{workspace_id}", response_model=DataEnvelope[WorkspaceResponse])
 async def get_workspace(
     workspace_id: uuid.UUID,
-    current_user: CurrentUser = Depends(get_current_user),
+    _member: WorkspaceMember = Depends(require_permission(Permission.WORKSPACE_VIEW)),
     service: WorkspaceService = Depends(get_workspace_service),
 ) -> DataEnvelope[WorkspaceResponse]:
-    workspace = await service.get(current_user, workspace_id)
+    workspace = await service.get(workspace_id)
     return DataEnvelope(data=WorkspaceResponse.model_validate(workspace))
 
 
@@ -63,6 +66,7 @@ async def update_workspace(
     workspace_id: uuid.UUID,
     payload: WorkspaceUpdateRequest,
     current_user: CurrentUser = Depends(get_current_user),
+    _member: WorkspaceMember = Depends(require_permission(Permission.WORKSPACE_UPDATE)),
     service: WorkspaceService = Depends(get_workspace_service),
 ) -> DataEnvelope[WorkspaceResponse]:
     workspace = await service.update(current_user, workspace_id, payload)
@@ -73,6 +77,7 @@ async def update_workspace(
 async def delete_workspace(
     workspace_id: uuid.UUID,
     current_user: CurrentUser = Depends(get_current_user),
+    _member: WorkspaceMember = Depends(require_permission(Permission.WORKSPACE_DELETE)),
     service: WorkspaceService = Depends(get_workspace_service),
 ) -> None:
     await service.delete(current_user, workspace_id)
@@ -84,11 +89,11 @@ async def list_members(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     role: WorkspaceRole | None = Query(None),
-    current_user: CurrentUser = Depends(get_current_user),
+    _member: WorkspaceMember = Depends(require_permission(Permission.WORKSPACE_VIEW)),
     service: WorkspaceService = Depends(get_workspace_service),
 ) -> CollectionEnvelope[WorkspaceMemberResponse]:
     members, total = await service.list_members(
-        current_user, workspace_id, page=page, per_page=per_page, role=role
+        workspace_id, page=page, per_page=per_page, role=role
     )
     return CollectionEnvelope(
         data=[WorkspaceMemberResponse.from_member(m) for m in members],
@@ -102,7 +107,39 @@ async def leave_workspace(
     current_user: CurrentUser = Depends(get_current_user),
     service: WorkspaceService = Depends(get_workspace_service),
 ) -> None:
+    """Não passa por `require_permission`: sair não é uma permissão condicionada
+    a papel, é o direito de qualquer membro sobre a própria associação — a
+    checagem de posse acontece dentro de `WorkspaceService.leave`.
+    """
     await service.leave(current_user, workspace_id)
+
+
+@router.patch(
+    "/{workspace_id}/members/{member_id}", response_model=DataEnvelope[WorkspaceMemberResponse]
+)
+async def update_member_role(
+    workspace_id: uuid.UUID,
+    member_id: uuid.UUID,
+    payload: MemberUpdateRoleRequest,
+    current_user: CurrentUser = Depends(get_current_user),
+    acting_member: WorkspaceMember = Depends(require_permission(Permission.MEMBER_UPDATE_ROLE)),
+    service: WorkspaceService = Depends(get_workspace_service),
+) -> DataEnvelope[WorkspaceMemberResponse]:
+    member = await service.update_member_role(
+        current_user, workspace_id, member_id, payload.role, acting_member.role
+    )
+    return DataEnvelope(data=WorkspaceMemberResponse.from_member(member))
+
+
+@router.delete("/{workspace_id}/members/{member_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_member(
+    workspace_id: uuid.UUID,
+    member_id: uuid.UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+    acting_member: WorkspaceMember = Depends(require_permission(Permission.MEMBER_REMOVE)),
+    service: WorkspaceService = Depends(get_workspace_service),
+) -> None:
+    await service.remove_member(current_user, workspace_id, member_id, acting_member.role)
 
 
 @router.post(
@@ -114,6 +151,7 @@ async def create_invitation(
     workspace_id: uuid.UUID,
     payload: InvitationCreateRequest,
     current_user: CurrentUser = Depends(get_current_user),
+    _member: WorkspaceMember = Depends(require_permission(Permission.WORKSPACE_INVITE)),
     service: InvitationService = Depends(get_invitation_service),
 ) -> DataEnvelope[InvitationCreatedResponse]:
     issued = await service.create(current_user, workspace_id, payload)
@@ -126,11 +164,11 @@ async def list_invitations(
     workspace_id: uuid.UUID,
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
-    current_user: CurrentUser = Depends(get_current_user),
+    _member: WorkspaceMember = Depends(require_permission(Permission.WORKSPACE_INVITE)),
     service: InvitationService = Depends(get_invitation_service),
 ) -> CollectionEnvelope[InvitationResponse]:
     invitations, total = await service.list_for_workspace(
-        current_user, workspace_id, page=page, per_page=per_page
+        workspace_id, page=page, per_page=per_page
     )
     return CollectionEnvelope(
         data=[InvitationResponse.from_invitation(i) for i in invitations],
@@ -144,10 +182,10 @@ async def list_invitations(
 async def cancel_invitation(
     workspace_id: uuid.UUID,
     invitation_id: uuid.UUID,
-    current_user: CurrentUser = Depends(get_current_user),
+    _member: WorkspaceMember = Depends(require_permission(Permission.WORKSPACE_INVITE)),
     service: InvitationService = Depends(get_invitation_service),
 ) -> None:
-    await service.cancel(current_user, workspace_id, invitation_id)
+    await service.cancel(workspace_id, invitation_id)
 
 
 @invitations_router.post("/{token}/accept", response_model=DataEnvelope[WorkspaceMemberResponse])

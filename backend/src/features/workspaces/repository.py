@@ -30,6 +30,12 @@ class WorkspaceRepositoryProtocol(Protocol):
     async def get_member(
         self, workspace_id: uuid.UUID, user_id: uuid.UUID
     ) -> WorkspaceMember | None: ...
+    async def get_member_by_id(
+        self, workspace_id: uuid.UUID, member_id: uuid.UUID
+    ) -> WorkspaceMember | None: ...
+    async def update_member_role(
+        self, member: WorkspaceMember, role: WorkspaceRole
+    ) -> WorkspaceMember: ...
     async def list_members(
         self,
         workspace_id: uuid.UUID,
@@ -126,6 +132,28 @@ class WorkspaceRepository:
         )
         result: WorkspaceMember | None = await self._session.scalar(stmt)
         return result
+
+    async def get_member_by_id(
+        self, workspace_id: uuid.UUID, member_id: uuid.UUID
+    ) -> WorkspaceMember | None:
+        stmt = (
+            select(WorkspaceMember)
+            .where(
+                WorkspaceMember.id == member_id,
+                WorkspaceMember.workspace_id == workspace_id,
+                WorkspaceMember.deleted_at.is_(None),
+            )
+            .options(selectinload(WorkspaceMember.user))
+        )
+        result: WorkspaceMember | None = await self._session.scalar(stmt)
+        return result
+
+    async def update_member_role(
+        self, member: WorkspaceMember, role: WorkspaceRole
+    ) -> WorkspaceMember:
+        member.role = role
+        await self._session.flush()
+        return member
 
     async def list_members(
         self,

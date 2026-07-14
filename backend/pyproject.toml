@@ -44,9 +44,18 @@ ignore = []
 
 # FastAPI's `Depends(...)`-in-default-argument é o idioma canônico de DI do
 # projeto (CLAUDE.md §4) — sem isso, bugbear (B008) marca todo `Depends`/`Query`
-# como falso positivo de "mutable default argument".
+# como falso positivo de "mutable default argument". `require_permission` é a
+# factory de dependency do RBAC (Sprint 5, `core/authorization.py`) — mesma
+# situação: `Depends(require_permission(Permission.X))` é o idioma pretendido
+# (CLAUDE.md §10), não uma call de efeito colateral escondida em um default.
 [tool.ruff.lint.flake8-bugbear]
-extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Header", "fastapi.Body"]
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.Query",
+    "fastapi.Header",
+    "fastapi.Body",
+    "src.core.authorization.require_permission",
+]
 
 [tool.ruff.format]
 quote-style = "double"

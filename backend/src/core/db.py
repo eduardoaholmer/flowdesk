@@ -26,6 +26,11 @@ def _get_session_factory() -> async_sessionmaker[AsyncSession]:
     `RuntimeError: Event loop is closed` (mesmo racional do `db_engine` em
     `tests/conftest.py`, aqui replicado porque este módulo é código de
     produção, não uma fixture controlável por teste).
+
+    `eager_defaults` (colunas com `onupdate`/`server_default` voltando
+    populadas no próprio `UPDATE`/`INSERT` via `RETURNING`, sem exigir
+    lazy-refresh depois) é configurado por mapper, não aqui — ver
+    `TimestampMixin` em `src/db/base.py`.
     """
     global _engine, _session_factory, _engine_loop
     loop = asyncio.get_running_loop()

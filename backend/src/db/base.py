@@ -33,12 +33,23 @@ class UUIDPrimaryKeyMixin:
 
 
 class TimestampMixin:
-    """created_at / updated_at padrão — ver docs/03-database.md §3."""
+    """created_at / updated_at padrão — ver docs/03-database.md §3.
+
+    `eager_defaults=True`: sem isso, `updated_at` (que tem `onupdate` calculado
+    pelo servidor) fica marcado como expirado após o `UPDATE` do flush — uma
+    leitura subsequente fora de uma coroutine (ex.: `Response.model_validate(obj)`
+    logo após `service.update(...)`) tenta um lazy-refresh síncrono e quebra com
+    `MissingGreenlet`, já que a engine é assíncrona. Com `eager_defaults=True` e
+    Postgres (que suporta `RETURNING`), o valor novo já volta no próprio
+    `UPDATE`/`INSERT`, sem round-trip extra nem lazy-load.
+    """
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+    __mapper_args__ = {"eager_defaults": True}
 
 
 class SoftDeleteMixin:

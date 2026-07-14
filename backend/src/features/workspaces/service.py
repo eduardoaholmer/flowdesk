@@ -1,22 +1,23 @@
-import re
 import secrets
-import unicodedata
 import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
+from src.core.authorization import PermissionService
 from src.core.config import Settings
-from src.core.exceptions import PermissionDeniedError
 from src.core.security import CurrentUser, generate_invitation_token, hash_invitation_token
+from src.core.slug import slugify
 from src.features.auth.repository import UserRepositoryProtocol
 from src.features.workspaces.exceptions import (
     AlreadyMemberError,
     CannotLeaveAsSoleOwnerError,
+    CannotManageOwnMembershipError,
     InvitationAlreadyPendingError,
     InvitationEmailMismatchError,
     InvitationExpiredError,
     InvitationNotFoundError,
+    MemberNotFoundError,
     SlugTakenError,
     WorkspaceNotFoundError,
 )
@@ -37,9 +38,6 @@ from src.features.workspaces.schemas import (
     WorkspaceUpdateRequest,
 )
 
-_SLUG_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
-_SLUG_MIN_LENGTH = 3
-_SLUG_MAX_LENGTH = 50
 _SLUG_COLLISION_RETRIES = 5
 
 
@@ -49,47 +47,19 @@ class InvitationIssued:
     token: str
 
 
-def _slugify(name: str) -> str:
-    """Melhor esforço de transliteração (`unicodedata`, sem dependência externa
-    tipo `python-slugify`) — não precisa ser perfeito para todo alfabeto, só
-    determinístico o bastante para reduzir colisão antes do fallback de sufixo.
-    """
-    normalized = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode("ascii")
-    slug = re.sub(r"[^a-z0-9]+", "-", normalized.lower()).strip("-")
-    slug = re.sub(r"-{2,}", "-", slug)
-    if len(slug) < _SLUG_MIN_LENGTH:
-        slug = f"{slug}-{secrets.token_hex(3)}" if slug else secrets.token_hex(4)
-    return slug[:_SLUG_MAX_LENGTH].strip("-")
-
-
-async def _require_member(
-    workspace_repo: WorkspaceRepositoryProtocol, workspace_id: uuid.UUID, user_id: uuid.UUID
-) -> WorkspaceMember:
-    """Checagem de posse compartilhada por todo método de service desta feature
-    (`CLAUDE.md` §6): não-membro recebe o mesmo `WorkspaceNotFoundError` de
-    workspace inexistente — nunca confirmamos existência a quem não participa.
-    """
-    member = await workspace_repo.get_member(workspace_id, user_id)
-    if member is None:
-        raise WorkspaceNotFoundError()
-    return member
-
-
-def _require_role(member: WorkspaceMember, *allowed: WorkspaceRole) -> None:
-    """Checagem mínima de papel usada nesta sprint — `CLAUDE.md` §10 pede
-    `Depends(require_permission(...))` sobre uma matriz central em
-    `core/authorization.py`, mas essa infraestrutura de RBAC é escopo explícito
-    da Sprint 5 (ver ADR-009). Isolada aqui como função pura, sem estado de
-    protocolo HTTP, para ser um ponto de substituição único quando a Sprint 5
-    chegar — nenhum outro lugar do código reimplementa essa checagem.
-    """
-    if member.role not in allowed:
-        raise PermissionDeniedError()
-
-
 class WorkspaceService:
-    def __init__(self, workspace_repo: WorkspaceRepositoryProtocol) -> None:
+    def __init__(
+        self, workspace_repo: WorkspaceRepositoryProtocol, permission_service: PermissionService
+    ) -> None:
+        """Autorização (posse de tenant e papel) não é mais checada aqui — o
+        router já resolveu `Depends(require_permission(...))` antes deste
+        service ser chamado (ver `core/authorization.py`, Sprint 5). Este
+        service só recebe `permission_service` para checagens contextuais que
+        dependem de um recurso já buscado (`require_can_manage_member`), que
+        não são resolvíveis apenas a partir do path da requisição.
+        """
         self._workspace_repo = workspace_repo
+        self._permission_service = permission_service
 
     async def create(self, current_user: CurrentUser, payload: WorkspaceCreateRequest) -> Workspace:
         slug = await self._resolve_slug(payload.name, payload.slug)
@@ -120,17 +90,13 @@ class WorkspaceService:
         total = await self._workspace_repo.count_by_user(current_user.id)
         return workspaces, total
 
-    async def get(self, current_user: CurrentUser, workspace_id: uuid.UUID) -> Workspace:
-        workspace = await self._get_active_workspace(workspace_id)
-        await _require_member(self._workspace_repo, workspace_id, current_user.id)
-        return workspace
+    async def get(self, workspace_id: uuid.UUID) -> Workspace:
+        return await self._get_active_workspace(workspace_id)
 
     async def update(
         self, current_user: CurrentUser, workspace_id: uuid.UUID, payload: WorkspaceUpdateRequest
     ) -> Workspace:
         workspace = await self._get_active_workspace(workspace_id)
-        member = await _require_member(self._workspace_repo, workspace_id, current_user.id)
-        _require_role(member, WorkspaceRole.OWNER)
 
         changes: dict[str, dict[str, object]] = {}
         if payload.name is not None and payload.name != workspace.name:
@@ -153,8 +119,6 @@ class WorkspaceService:
 
     async def delete(self, current_user: CurrentUser, workspace_id: uuid.UUID) -> None:
         workspace = await self._get_active_workspace(workspace_id)
-        member = await _require_member(self._workspace_repo, workspace_id, current_user.id)
-        _require_role(member, WorkspaceRole.OWNER)
 
         await self._workspace_repo.soft_delete(workspace_id)
         await self._record_activity(
@@ -163,15 +127,12 @@ class WorkspaceService:
 
     async def list_members(
         self,
-        current_user: CurrentUser,
         workspace_id: uuid.UUID,
         *,
         page: int,
         per_page: int,
         role: WorkspaceRole | None,
     ) -> tuple[Sequence[WorkspaceMember], int]:
-        await self._get_active_workspace(workspace_id)
-        await _require_member(self._workspace_repo, workspace_id, current_user.id)
         members = await self._workspace_repo.list_members(
             workspace_id, page=page, per_page=per_page, role=role
         )
@@ -179,8 +140,9 @@ class WorkspaceService:
         return members, total
 
     async def leave(self, current_user: CurrentUser, workspace_id: uuid.UUID) -> None:
-        await self._get_active_workspace(workspace_id)
-        member = await _require_member(self._workspace_repo, workspace_id, current_user.id)
+        member = await self._workspace_repo.get_member(workspace_id, current_user.id)
+        if member is None:
+            raise WorkspaceNotFoundError()
 
         if member.role == WorkspaceRole.OWNER:
             owner_count = await self._workspace_repo.count_members(
@@ -192,6 +154,64 @@ class WorkspaceService:
         await self._workspace_repo.remove_member(member.id)
         await self._record_activity(
             workspace_id, current_user.id, "member.left", {"user_id": str(current_user.id)}
+        )
+
+    async def update_member_role(
+        self,
+        current_user: CurrentUser,
+        workspace_id: uuid.UUID,
+        member_id: uuid.UUID,
+        new_role: WorkspaceRole,
+        acting_role: WorkspaceRole,
+    ) -> WorkspaceMember:
+        """`acting_role` já veio autorizado por `Depends(require_permission(...))`
+        para a permissão base (`member.update_role`) — o que falta checar aqui é
+        a regra contextual que depende do papel do alvo (`require_can_manage_member`),
+        só conhecida depois de buscar a `WorkspaceMember` a ser alterada.
+        """
+        target = await self._workspace_repo.get_member_by_id(workspace_id, member_id)
+        if target is None:
+            raise MemberNotFoundError()
+        if target.user_id == current_user.id:
+            raise CannotManageOwnMembershipError()
+
+        self._permission_service.require_can_manage_member(
+            actor_role=acting_role, target_role=target.role
+        )
+
+        old_role = target.role
+        updated = await self._workspace_repo.update_member_role(target, new_role)
+        await self._record_activity(
+            workspace_id,
+            current_user.id,
+            "member.role_changed",
+            {"member_id": str(member_id), "old_role": old_role.value, "new_role": new_role.value},
+        )
+        return updated
+
+    async def remove_member(
+        self,
+        current_user: CurrentUser,
+        workspace_id: uuid.UUID,
+        member_id: uuid.UUID,
+        acting_role: WorkspaceRole,
+    ) -> None:
+        target = await self._workspace_repo.get_member_by_id(workspace_id, member_id)
+        if target is None:
+            raise MemberNotFoundError()
+        if target.user_id == current_user.id:
+            raise CannotManageOwnMembershipError()
+
+        self._permission_service.require_can_manage_member(
+            actor_role=acting_role, target_role=target.role
+        )
+
+        await self._workspace_repo.remove_member(target.id)
+        await self._record_activity(
+            workspace_id,
+            current_user.id,
+            "member.removed",
+            {"member_id": str(member_id), "role": target.role.value},
         )
 
     async def _get_active_workspace(self, workspace_id: uuid.UUID) -> Workspace:
@@ -206,7 +226,7 @@ class WorkspaceService:
                 raise SlugTakenError()
             return requested_slug
 
-        base = _slugify(name)
+        base = slugify(name)
         candidate = base
         for _ in range(_SLUG_COLLISION_RETRIES):
             if await self._workspace_repo.get_by_slug(candidate) is None:
@@ -247,10 +267,6 @@ class InvitationService:
     async def create(
         self, current_user: CurrentUser, workspace_id: uuid.UUID, payload: InvitationCreateRequest
     ) -> InvitationIssued:
-        await self._get_active_workspace(workspace_id)
-        member = await _require_member(self._workspace_repo, workspace_id, current_user.id)
-        _require_role(member, WorkspaceRole.OWNER, WorkspaceRole.ADMIN)
-
         email = payload.email.lower()
         invited_user = await self._user_repo.get_by_email(email)
         if invited_user is not None:
@@ -282,25 +298,15 @@ class InvitationService:
         return InvitationIssued(invitation=invitation, token=token)
 
     async def list_for_workspace(
-        self, current_user: CurrentUser, workspace_id: uuid.UUID, *, page: int, per_page: int
+        self, workspace_id: uuid.UUID, *, page: int, per_page: int
     ) -> tuple[Sequence[Invitation], int]:
-        await self._get_active_workspace(workspace_id)
-        member = await _require_member(self._workspace_repo, workspace_id, current_user.id)
-        _require_role(member, WorkspaceRole.OWNER, WorkspaceRole.ADMIN)
-
         invitations = await self._invitation_repo.list_by_workspace(
             workspace_id, page=page, per_page=per_page
         )
         total = await self._invitation_repo.count_by_workspace(workspace_id)
         return invitations, total
 
-    async def cancel(
-        self, current_user: CurrentUser, workspace_id: uuid.UUID, invitation_id: uuid.UUID
-    ) -> None:
-        await self._get_active_workspace(workspace_id)
-        member = await _require_member(self._workspace_repo, workspace_id, current_user.id)
-        _require_role(member, WorkspaceRole.OWNER, WorkspaceRole.ADMIN)
-
+    async def cancel(self, workspace_id: uuid.UUID, invitation_id: uuid.UUID) -> None:
         invitation = await self._invitation_repo.get_by_id(workspace_id, invitation_id)
         if invitation is None:
             raise InvitationNotFoundError()
@@ -344,12 +350,6 @@ class InvitationService:
             {"invitation_id": str(invitation.id)},
         )
         return member
-
-    async def _get_active_workspace(self, workspace_id: uuid.UUID) -> Workspace:
-        workspace = await self._workspace_repo.get_by_id(workspace_id)
-        if workspace is None:
-            raise WorkspaceNotFoundError()
-        return workspace
 
     async def _record_activity(
         self,

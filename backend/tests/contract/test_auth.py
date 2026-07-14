@@ -1,23 +1,6 @@
 import uuid
-from collections.abc import AsyncGenerator
 
-import pytest
 from httpx import AsyncClient, Response
-from redis.asyncio import from_url
-from src.core.config import get_settings
-
-
-@pytest.fixture(autouse=True)
-async def _clear_login_rate_limit() -> AsyncGenerator[None, None]:
-    """Vários testes deste arquivo chamam `/auth/login`/`/auth/register` — sem
-    isolar a janela de rate limit (Redis real, não uma transação revertida),
-    um teste consumiria o limite do próximo.
-    """
-    redis = from_url(get_settings().redis_url, decode_responses=True)  # type: ignore[no-untyped-call]
-    async for key in redis.scan_iter("ratelimit:*"):
-        await redis.delete(key)
-    yield
-    await redis.aclose()
 
 
 def _unique_email() -> str:

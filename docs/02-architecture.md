@@ -89,7 +89,7 @@ A seta pontilhada existe para deixar explícito o que é **proibido**: um router
 - **Config**: carregamento de variáveis de ambiente via Pydantic Settings, validado na inicialização (falha rápido se uma variável obrigatória faltar).
 - **DB session**: fábrica de sessão assíncrona por requisição (uma sessão por request, fechada ao final via dependency do FastAPI).
 - **Security**: hashing de senha (Argon2id), emissão/validação de JWT, geração de refresh token.
-- **Authorization**: função pura `can(user, action, resource)` e dependency `require_permission(...)`.
+- **Authorization** (`core/permissions.py` + `core/authorization.py`, Sprint 5): catálogo central `Permission`, matriz `ROLE_PERMISSIONS` por `WorkspaceRole`, `PermissionService.can(member, permission, resource_owner_id=None)`/`.require(...)`, e a dependency `require_permission(permission)` usada em toda rota de recurso de tenant (`Depends(require_permission(Permission.WORKSPACE_UPDATE))`). Ver `docs/07-security.md` §8 para o fluxo completo e a matriz.
 - **Exceptions**: hierarquia de domínio e exception handler global (`CLAUDE.md` §7).
 - **Logging**: configuração de `structlog`, middleware de `request_id`.
 
@@ -187,3 +187,6 @@ sequenceDiagram
 | ADR-005 | JWT + Refresh Token rotativo em vez de sessão pura em servidor |
 | ADR-006 | PostgreSQL em vez de banco não-relacional |
 | ADR-007 | Desvios da modelagem de domínio da Sprint 2 em relação ao ER original (Team/WorkflowState no escopo, Session nova, Attachment polimórfico) |
+| ADR-008 | Sprint 3 (Identidade e Autenticação): escopo e desvios de implementação |
+| ADR-009 | Sprint 4 (Multi-Tenancy: Workspaces, Memberships e Convites): escopo e desvios de implementação |
+| ADR-010 | Sprint 5 (RBAC): `core/authorization.py` centraliza permissão, exceção deliberada de `core/` depender de `features/workspaces/` |

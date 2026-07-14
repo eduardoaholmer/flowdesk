@@ -90,6 +90,20 @@ class FakeWorkspaceRepository:
                 return member
         return None
 
+    async def get_member_by_id(
+        self, workspace_id: uuid.UUID, member_id: uuid.UUID
+    ) -> WorkspaceMember | None:
+        member = self.members.get(member_id)
+        if member is None or member.workspace_id != workspace_id or member.deleted_at is not None:
+            return None
+        return member
+
+    async def update_member_role(
+        self, member: WorkspaceMember, role: WorkspaceRole
+    ) -> WorkspaceMember:
+        member.role = role
+        return member
+
     async def list_members(
         self,
         workspace_id: uuid.UUID,

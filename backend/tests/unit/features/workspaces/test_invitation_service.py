@@ -2,8 +2,8 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from src.core.authorization import PermissionService
 from src.core.config import Settings
-from src.core.exceptions import PermissionDeniedError
 from src.core.security import CurrentUser
 from src.features.auth.models import User
 from src.features.workspaces.exceptions import (
@@ -12,7 +12,6 @@ from src.features.workspaces.exceptions import (
     InvitationEmailMismatchError,
     InvitationExpiredError,
     InvitationNotFoundError,
-    WorkspaceNotFoundError,
 )
 from src.features.workspaces.models import WorkspaceMember, WorkspaceRole
 from src.features.workspaces.schemas import InvitationCreateRequest, WorkspaceCreateRequest
@@ -20,6 +19,13 @@ from src.features.workspaces.service import InvitationService, WorkspaceService
 
 from tests.unit.features.auth.fakes import FakeUserRepository
 from tests.unit.features.workspaces.fakes import FakeInvitationRepository, FakeWorkspaceRepository
+
+# Autorização (quem pode convidar/cancelar) não é mais uma regra deste service
+# — o router já resolveu `Depends(require_permission(WORKSPACE_INVITE))` antes
+# dele ser chamado (Sprint 5, `core/authorization.py`). Os cenários de
+# OWNER/ADMIN podem, MEMBER/GUEST/não-membro não podem, vivem agora em
+# `tests/unit/core/test_authorization.py` (matriz pura) e em
+# `tests/contract/test_authorization.py` (fim a fim, via HTTP).
 
 
 @pytest.fixture
@@ -39,7 +45,7 @@ def user_repo() -> FakeUserRepository:
 
 @pytest.fixture
 def workspace_service(workspace_repo: FakeWorkspaceRepository) -> WorkspaceService:
-    return WorkspaceService(workspace_repo)
+    return WorkspaceService(workspace_repo, PermissionService())
 
 
 @pytest.fixture
@@ -54,40 +60,6 @@ def service(
 
 def _user(email: str = "ada@example.com") -> CurrentUser:
     return CurrentUser(id=uuid.uuid4(), email=email, name="Ada Lovelace")
-
-
-async def test_create_requires_owner_or_admin(
-    service: InvitationService,
-    workspace_service: WorkspaceService,
-    workspace_repo: FakeWorkspaceRepository,
-) -> None:
-    owner = _user()
-    guest = _user("guest@example.com")
-    workspace = await workspace_service.create(owner, WorkspaceCreateRequest(name="Acme"))
-    await workspace_repo.add_member(
-        WorkspaceMember(workspace_id=workspace.id, user_id=guest.id, role=WorkspaceRole.GUEST)
-    )
-
-    with pytest.raises(PermissionDeniedError):
-        await service.create(
-            guest,
-            workspace.id,
-            InvitationCreateRequest(email="invitee@example.com", role=WorkspaceRole.MEMBER),
-        )
-
-
-async def test_create_rejects_non_member_actor(
-    service: InvitationService, workspace_service: WorkspaceService
-) -> None:
-    owner = _user()
-    workspace = await workspace_service.create(owner, WorkspaceCreateRequest(name="Acme"))
-
-    with pytest.raises(WorkspaceNotFoundError):
-        await service.create(
-            _user("outsider@example.com"),
-            workspace.id,
-            InvitationCreateRequest(email="invitee@example.com", role=WorkspaceRole.MEMBER),
-        )
 
 
 async def test_create_issues_token_and_records_activity(
@@ -242,29 +214,16 @@ async def test_cancel_invitation(
         InvitationCreateRequest(email="invitee@example.com", role=WorkspaceRole.MEMBER),
     )
 
-    await service.cancel(owner, workspace.id, issued.invitation.id)
+    await service.cancel(workspace.id, issued.invitation.id)
 
     assert await invitation_repo.get_by_id(workspace.id, issued.invitation.id) is None
 
 
-async def test_cancel_requires_owner_or_admin(
-    service: InvitationService,
-    workspace_service: WorkspaceService,
-    workspace_repo: FakeWorkspaceRepository,
+async def test_cancel_rejects_unknown_invitation(
+    service: InvitationService, workspace_service: WorkspaceService
 ) -> None:
     owner = _user()
-    member_user = _user("member@example.com")
     workspace = await workspace_service.create(owner, WorkspaceCreateRequest(name="Acme"))
-    issued = await service.create(
-        owner,
-        workspace.id,
-        InvitationCreateRequest(email="invitee@example.com", role=WorkspaceRole.MEMBER),
-    )
-    await workspace_repo.add_member(
-        WorkspaceMember(
-            workspace_id=workspace.id, user_id=member_user.id, role=WorkspaceRole.MEMBER
-        )
-    )
 
-    with pytest.raises(PermissionDeniedError):
-        await service.cancel(member_user, workspace.id, issued.invitation.id)
+    with pytest.raises(InvitationNotFoundError):
+        await service.cancel(workspace.id, uuid.uuid4())
