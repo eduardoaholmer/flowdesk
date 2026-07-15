@@ -1,5 +1,8 @@
-import { ErrorState } from "@/shared/components/ErrorState";
-import { Skeleton } from "@/shared/components/ui/skeleton";
+import { Tag } from "lucide-react";
+
+import { EmptyState } from "@/shared/components/feedback/EmptyState";
+import { ErrorState } from "@/shared/components/feedback/ErrorState";
+import { ListSkeleton } from "@/shared/components/skeletons/ListSkeleton";
 
 import { useLabels } from "../hooks";
 import { CreateLabelDialog } from "./CreateLabelDialog";
@@ -21,19 +24,17 @@ export function LabelsListPage({ workspaceId }: { workspaceId: string }) {
       </div>
 
       {isLoading ? (
-        <div className="flex flex-col gap-2">
-          <Skeleton className="h-10 w-full" />
-          <Skeleton className="h-10 w-full" />
-          <Skeleton className="h-10 w-full" />
-        </div>
+        <ListSkeleton rows={3} />
       ) : isError ? (
         <ErrorState message="Não foi possível carregar as labels." onRetry={() => refetch()} />
       ) : labels && labels.length > 0 ? (
         <LabelsTable workspaceId={workspaceId} labels={labels} />
       ) : (
-        <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
-          Nenhuma label criada ainda.
-        </div>
+        <EmptyState
+          icon={Tag}
+          title="Nenhuma label ainda"
+          description="Crie a primeira label deste workspace."
+        />
       )}
     </div>
   );

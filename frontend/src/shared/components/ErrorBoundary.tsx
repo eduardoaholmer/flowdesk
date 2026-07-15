@@ -1,6 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 
-import { ErrorState } from "@/shared/components/ErrorState";
+import { ErrorState } from "@/shared/components/feedback/ErrorState";
 
 interface Props {
   children: ReactNode;

@@ -3,9 +3,20 @@
 cd frontend && npx lint-staged
 cd ..
 
-if [ -x backend/.venv/Scripts/pre-commit ] || [ -x backend/.venv/bin/pre-commit ]; then
+BACKEND_PRE_COMMIT=""
+if [ -x backend/.venv/bin/pre-commit ]; then
+  BACKEND_PRE_COMMIT=backend/.venv/bin/pre-commit
+elif [ -x backend/.venv/Scripts/pre-commit ]; then
+  BACKEND_PRE_COMMIT=backend/.venv/Scripts/pre-commit
+fi
+
+# O bit executável por si só não garante que o venv funciona neste shell — um
+# `.venv` criado dentro de outro container (path absoluto diferente no shebang,
+# ex. `/app/.venv`) tem o bit setado mas quebra ao rodar. `--version` é barato
+# e prova que o binário de fato executa antes de tentar ativar o venv inteiro.
+if [ -n "$BACKEND_PRE_COMMIT" ] && "$BACKEND_PRE_COMMIT" --version >/dev/null 2>&1; then
   . backend/.venv/Scripts/activate 2>/dev/null || . backend/.venv/bin/activate
   pre-commit run
 else
-  echo "pre-commit não encontrado em backend/.venv — pulando hooks de backend (ver README)."
+  echo "pre-commit não encontrado/utilizável em backend/.venv — pulando hooks de backend (ver README)."
 fi

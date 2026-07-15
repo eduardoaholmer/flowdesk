@@ -17,7 +17,7 @@ todo o desenvolvimento.
 | Frontend | React 19, TypeScript, Vite, Tailwind CSS, shadcn/ui |
 | Estado (frontend) | TanStack Query (servidor) + Zustand (cliente, a partir da primeira necessidade real) |
 | Qualidade | Ruff + Mypy (backend), ESLint + Prettier + TypeScript strict (frontend), Pytest, pre-commit, Husky |
-| Infra | Docker Compose (dev), GitHub Actions (CI) |
+| Infra | Docker Compose (dev e produção), GitHub Actions (CI + Dependabot) |
 
 Justificativa completa de cada escolha em [`docs/09-decision-log.md`](./docs/09-decision-log.md).
 
@@ -42,8 +42,10 @@ FlowDesk/
 ├── docs/                  # visão de produto, requisitos, arquitetura, API, segurança, roadmap...
 ├── backend/                # API FastAPI
 ├── frontend/                # SPA React
-├── docker/                # Dockerfiles de desenvolvimento
-├── docker-compose.yml
+├── docker/                # Dockerfiles multi-stage (development/production)
+├── docker-compose.yml      # dev (hot-reload)
+├── docker-compose.prod.yml # produção (imagens imutáveis, sem bind mount)
+├── PRODUCTION_CHECKLIST.md # checklist de prontidão para produção
 └── .github/workflows/     # CI
 ```
 
@@ -63,7 +65,13 @@ Isso sobe PostgreSQL, Redis, backend e frontend, todos com hot-reload via volume
 - Frontend: http://localhost:5173
 - Backend: http://localhost:8000
 - Swagger (OpenAPI): http://localhost:8000/docs
-- Health check: http://localhost:8000/health
+- Liveness: http://localhost:8000/health
+- Readiness (banco/Redis/storage): http://localhost:8000/health/ready
+
+Para simular a topologia de produção localmente (imagens imutáveis, sem bind mount, Nginx
+servindo o build estático do frontend): `docker compose -f docker-compose.prod.yml --env-file
+.env.production up --build`. Ver [`PRODUCTION_CHECKLIST.md`](./PRODUCTION_CHECKLIST.md) antes de
+um deploy real.
 
 ### Opção 2 — Rodando cada app localmente
 
@@ -109,13 +117,18 @@ staged. Para o lado do backend funcionar localmente, instale as dependências de
 `cd backend && poetry install`.
 
 CI (GitHub Actions, [`.github/workflows/ci.yml`](./.github/workflows/ci.yml)) roda lint,
-type-check e testes de cada app em toda PR e falha caso qualquer um desses passos falhe.
+type-check e testes de cada app em toda PR e falha caso qualquer um desses passos falhe; um job
+adicional builda as imagens Docker de produção dos dois apps (também bloqueante). `pip-audit`/
+`npm audit` rodam em toda PR de forma não-bloqueante, e o
+[`Dependabot`](./.github/dependabot.yml) abre PR semanal de atualização de dependências (`pip`,
+`npm`, GitHub Actions).
 
 ## Roadmap
 
-Este repositório está na **Sprint 1 — Fundação**: monorepo, backend e frontend de pé sem
-regra de negócio, Docker Compose, CI e ferramentas de qualidade configurados. Nenhuma
-funcionalidade de produto (autenticação, workspaces, issues) existe ainda.
+O projeto já passou por autenticação, multi-tenancy (workspaces), RBAC, projetos, issues,
+comentários/labels/anexos e uma sprint de hardening de produção (observabilidade, segurança,
+Docker de produção, CI). Nenhuma dessas sprints alterou o essencial deste README — a stack e a
+arquitetura acima seguem valendo.
 
 Roadmap completo, sprint a sprint, com critérios de aceite e Definition of Done, em
-[`docs/08-roadmap.md`](./docs/08-roadmap.md).
+[`docs/08-roadmap.md`](./docs/08-roadmap.md) (fonte de verdade para o estado atual do projeto).

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Pencil, Trash2 } from "lucide-react";
 
-import { ConfirmActionDialog } from "@/shared/components/ConfirmActionDialog";
+import { ConfirmActionDialog } from "@/shared/components/overlay/ConfirmActionDialog";
 import { Avatar, AvatarFallback } from "@/shared/components/ui/avatar";
 import { Button } from "@/shared/components/ui/button";
 import { Textarea } from "@/shared/components/ui/textarea";

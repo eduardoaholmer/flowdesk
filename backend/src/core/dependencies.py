@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.core.config import Settings, get_settings
 from src.core.db import get_db_session
 from src.core.exceptions import InvalidTokenError
+from src.core.logging import user_id_ctx
 from src.core.security import CurrentUser, decode_access_token
 from src.features.auth.repository import SessionRepository, UserRepository, UserRepositoryProtocol
 
@@ -39,4 +40,5 @@ async def get_current_user(
     if user is None:
         raise InvalidTokenError()
 
+    user_id_ctx.set(str(user.id))
     return CurrentUser(id=user.id, email=user.email, name=user.name)

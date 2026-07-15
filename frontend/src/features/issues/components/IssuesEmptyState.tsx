@@ -1,6 +1,6 @@
 import { ListTodo } from "lucide-react";
 
-import { EmptyState } from "@/shared/components/EmptyState";
+import { EmptyState } from "@/shared/components/feedback/EmptyState";
 
 import { CreateIssueDialog } from "./CreateIssueDialog";
 

@@ -10,6 +10,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
+import { workspaceRoutes } from "@/shared/lib/routes";
 
 import { createWorkspace } from "../api";
 
@@ -34,7 +35,7 @@ export function CreateFirstWorkspaceForm() {
     try {
       const workspace = await createWorkspace(values.name);
       await queryClient.invalidateQueries({ queryKey: ["users", "me"] });
-      navigate(`/w/${workspace.slug}/projects`, { replace: true });
+      navigate(workspaceRoutes.projects(workspace.slug), { replace: true });
     } catch {
       toast.error("Não foi possível criar o workspace.");
     } finally {

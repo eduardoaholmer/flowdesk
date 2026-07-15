@@ -1,6 +1,7 @@
 import asyncio
 from collections.abc import AsyncGenerator
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -71,3 +72,11 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
             raise
         else:
             await session.commit()
+
+
+async def ping_database() -> None:
+    """Round-trip mínimo contra o Postgres, usado por `core/health.py` — levanta se a
+    conexão/credenciais/rede estiverem quebradas, sem depender de nenhuma tabela de domínio."""
+    session_factory = _get_session_factory()
+    async with session_factory() as session:
+        await session.execute(text("SELECT 1"))

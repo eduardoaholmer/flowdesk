@@ -1,14 +1,15 @@
 import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
-import { ErrorState } from "@/shared/components/ErrorState";
+import { ErrorState } from "@/shared/components/feedback/ErrorState";
+import { Pagination } from "@/shared/components/navigation/Pagination";
+import { ListSkeleton } from "@/shared/components/skeletons/ListSkeleton";
 import { useDebouncedValue } from "@/shared/hooks/useDebouncedValue";
+import { cn } from "@/shared/lib/utils";
 
 import { useProjects } from "../hooks";
 import type { ProjectStatus } from "../types";
 import { ProjectsEmptyState } from "./ProjectsEmptyState";
-import { ProjectsListSkeleton } from "./ProjectsListSkeleton";
-import { ProjectsPagination } from "./ProjectsPagination";
 import { ProjectsTable } from "./ProjectsTable";
 import { ProjectsToolbar } from "./ProjectsToolbar";
 
@@ -76,18 +77,19 @@ export function ProjectsListPage({
       />
 
       {isLoading ? (
-        <ProjectsListSkeleton />
+        <ListSkeleton rows={5} />
       ) : isError ? (
         <ErrorState message="Não foi possível carregar os projetos." onRetry={() => refetch()} />
       ) : data && data.data.length > 0 ? (
-        <div className="flex flex-col gap-4" style={{ opacity: isPlaceholderData ? 0.6 : 1 }}>
+        <div className={cn("flex flex-col gap-4", isPlaceholderData && "opacity-60")}>
           <ProjectsTable
             workspaceId={workspaceId}
             workspaceSlug={workspaceSlug}
             projects={data.data}
           />
-          <ProjectsPagination
+          <Pagination
             meta={data.meta}
+            itemLabel="projeto"
             onPageChange={(next) => updateParams({ page: next })}
           />
         </div>

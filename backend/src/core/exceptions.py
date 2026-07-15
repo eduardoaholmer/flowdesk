@@ -1,9 +1,16 @@
 from fastapi import Request, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from src.core.logging import get_logger
 
 logger = get_logger(__name__)
+
+_HTTP_STATUS_CODES: dict[int, str] = {
+    status.HTTP_404_NOT_FOUND: "not_found",
+    status.HTTP_405_METHOD_NOT_ALLOWED: "method_not_allowed",
+}
 
 
 class FlowDeskError(Exception):
@@ -108,3 +115,31 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
             }
         },
     )
+
+
+async def request_validation_error_handler(
+    request: Request, exc: RequestValidationError
+) -> JSONResponse:
+    """Erro de validação do FastAPI (corpo/query malformado) antes de alcançar um schema
+    de domínio — precisa do mesmo envelope que `ValidationError` (CLAUDE.md §8), não o
+    formato default do FastAPI (`{"detail": [...]}`)."""
+    logger.info("request_validation_error", path=request.url.path)
+    details = [
+        {"field": ".".join(str(part) for part in error["loc"]), "message": error["msg"]}
+        for error in exc.errors()
+    ]
+    return error_response(
+        code="validation_error",
+        message="Dados inválidos.",
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        details=details,
+    )
+
+
+async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
+    """Rede de segurança para `HTTPException` do Starlette (ex.: rota inexistente, método
+    não permitido) — sem isso, essas respostas vazam o formato default do Starlette
+    (`{"detail": "..."}`) em vez do envelope de erro padrão (CLAUDE.md §8)."""
+    code = _HTTP_STATUS_CODES.get(exc.status_code, "http_error")
+    message = exc.detail if isinstance(exc.detail, str) else "Erro ao processar a requisição."
+    return error_response(code=code, message=message, status_code=exc.status_code)

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import time
 import uuid
@@ -26,8 +28,8 @@ def _get_redis() -> Redis:
     global _redis, _redis_loop
     loop = asyncio.get_running_loop()
     if _redis is None or _redis_loop is not loop:
-        # redis-py não anota o retorno de `from_url` o suficiente para o modo
-        # estrito do mypy — mesma situação do `# type: ignore[arg-type]` em main.py.
+        # `from_url` não tem anotação de retorno em redis-py (biblioteca externa,
+        # não código nosso) — chamada não tipada aceita mesmo sob `mypy --strict`.
         _redis = from_url(  # type: ignore[no-untyped-call]
             get_settings().redis_url, decode_responses=True
         )
@@ -62,3 +64,8 @@ async def check_rate_limit(key: str, *, limit: int, window_seconds: int) -> Rate
     if count > limit:
         return RateLimitResult(allowed=False, retry_after_seconds=window_seconds)
     return RateLimitResult(allowed=True, retry_after_seconds=0)
+
+
+async def ping_redis() -> None:
+    """Round-trip mínimo contra o Redis, usado por `core/health.py`."""
+    await _get_redis().ping()

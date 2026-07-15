@@ -1,3 +1,4 @@
+import { MAX_PICKER_PAGE_SIZE } from "@/shared/lib/constants";
 import { httpClient } from "@/shared/lib/httpClient";
 import type { CollectionEnvelope, DataEnvelope } from "@/shared/lib/apiTypes";
 
@@ -11,7 +12,7 @@ export async function createWorkspace(name: string): Promise<Workspace> {
 export async function listWorkspaceMembers(workspaceId: string): Promise<WorkspaceMember[]> {
   const { data } = await httpClient.get<CollectionEnvelope<WorkspaceMember>>(
     `/workspaces/${workspaceId}/members`,
-    { params: { per_page: 100 } },
+    { params: { per_page: MAX_PICKER_PAGE_SIZE } },
   );
   return data.data;
 }

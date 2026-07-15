@@ -39,14 +39,20 @@ Em teste de contrato (API completa), overrides substituem `get_db_session` por u
 
 Ver hierarquia completa em `CLAUDE.md` §7. Detalhe de implementação: o exception handler global é registrado uma única vez em `main.py` via `app.add_exception_handler(FlowDeskError, handler)`, cobrindo toda subclasse automaticamente (Python dispatch por herança) — uma nova exceção de domínio nunca exige registrar um novo handler, apenas herdar da classe correta e (se necessário) mapear seu HTTP status em um dicionário central `EXCEPTION_STATUS_MAP`.
 
+Duas exceções que **não** são de domínio também são traduzidas para o mesmo envelope de erro (`core/exceptions.py`, Sprint 8.7) — sem isso, elas vazariam o formato default do FastAPI/Starlette:
+
+- `RequestValidationError` (corpo/query malformado, capturado pelo próprio FastAPI antes de qualquer schema de domínio ser alcançado) → `request_validation_error_handler`, `code="validation_error"`, 422.
+- `starlette.exceptions.HTTPException` (ex.: rota inexistente) → `http_exception_handler`, mapeado por status (`404`→`"not_found"`, `405`→`"method_not_allowed"`, senão `"http_error"`).
+
 ## 5. Middleware
 
-Ordem de execução (do mais externo ao mais interno):
+Ordem de execução (do mais externo ao mais interno), implementada em `core/middleware.py` e composta em `main.py`:
 
-1. **CORS** — origem permitida = domínio do frontend configurado por ambiente (nunca `*` em produção, ver `docs/07-security.md`).
-2. **Request ID** — gera/propaga `X-Request-ID`, injeta em contexto de log estruturado.
-3. **Rate limiting** — checagem contra Redis (janela deslizante) antes de qualquer processamento de negócio; aplica-se por IP em rotas anônimas (`/auth/login`) e por usuário autenticado nas demais.
-4. **Logging de acesso** — loga método, path, status, duração, `request_id`, `user_id` ao final da requisição.
+1. **CORS** — origem permitida = domínio do frontend configurado por ambiente (nunca `*` em produção — `allow_methods`/`allow_headers` também são listas explícitas, não `*`, ver `docs/07-security.md` §5).
+2. **Security Headers** (`SecurityHeadersMiddleware`, Sprint 8.7) — `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy` em toda resposta; `Strict-Transport-Security` só quando `ENVIRONMENT=production` (ver `docs/07-security.md` §14).
+3. **Request ID** (`RequestIDMiddleware`) — gera/propaga `X-Request-ID`, injeta em contexto de log estruturado via `contextvars`.
+4. **Access Log** (`AccessLogMiddleware`, Sprint 8.7) — loga uma linha `http_request` (método, path, status, `duration_ms`) ao final de cada requisição; também reseta o contexto de `user_id` no início de cada requisição (`get_current_user`, em `core/dependencies.py`, o preenche quando a requisição é autenticada).
+5. **Rate limiting** (`RateLimitMiddleware`) — checagem contra Redis (janela deslizante) antes de qualquer processamento de negócio; aplica-se por IP em rotas anônimas (`/auth/login`) e por usuário autenticado nas demais.
 
 Middlewares são funções puras compostas na criação da app (`main.py`), nunca acopladas a uma feature específica.
 
@@ -79,13 +85,30 @@ Middlewares são funções puras compostas na criação da app (`main.py`), nunc
 
 ## 9. Logs
 
-Ver `CLAUDE.md` §9 para o padrão. Implementação: `structlog` configurado em `core/logging.py`, processadores adicionam `request_id` (via `contextvars`, propagado pelo middleware), timestamp ISO, e renderizam JSON em produção / formato legível colorido em desenvolvimento (mesma configuração, `renderer` trocado por variável de ambiente).
+Ver `CLAUDE.md` §9 para o padrão. Implementação: `structlog` configurado em `core/logging.py`, processadores adicionam `request_id`, `user_id` (ambos via `contextvars`, propagados pelo `RequestIDMiddleware`/`AccessLogMiddleware`/`get_current_user` — Sprint 8.7) e `environment` (fixado uma vez em `configure_logging`, não por `contextvar`, já que não varia por requisição), timestamp ISO, e renderizam JSON em produção / formato legível colorido em desenvolvimento (mesma configuração, `renderer` trocado por variável de ambiente). Todo log carrega os três campos quando aplicável — nenhum evento de negócio precisa declará-los manualmente.
 
 ## 10. Configuração
 
 - `core/config.py`: classe `Settings(BaseSettings)` do Pydantic, carrega de variáveis de ambiente (`.env` em desenvolvimento, variáveis reais de ambiente em produção — nunca `.env` committado; `.env.example` documenta as chaves esperadas).
-- Falha rápida: a aplicação não sobe se uma variável obrigatória (`DATABASE_URL`, `JWT_PRIVATE_KEY`, `REDIS_URL`) estiver ausente — validado na construção do `Settings`, antes de qualquer rota estar disponível.
+- Falha rápida: a aplicação não sobe se uma variável obrigatória (`DATABASE_URL`, `JWT_PRIVATE_KEY`, `REDIS_URL`) estiver ausente — validado na construção do `Settings`, antes de qualquer rota estar disponível. `environment` é um `Literal["development", "test", "production"]` (não `str` livre) — um valor fora desse conjunto também falha na inicialização. Um segundo validador (`_forbid_dev_key_in_production`, Sprint 8.7) recusa subir com `ENVIRONMENT=production` se `JWT_PUBLIC_KEY` ainda for o par de chaves de desenvolvimento checado em `.env.example` (ADR-008/ADR-016).
 - Configuração é lida uma vez no startup e injetada via `Depends(get_settings)` onde necessário (cacheada com `lru_cache`) — nunca `os.getenv` disperso pelo código.
+
+### Referência de variáveis de ambiente (backend)
+
+| Variável | Obrigatória | Default | Descrição |
+|---|---|---|---|
+| `ENVIRONMENT` | não | `development` | `development` \| `test` \| `production` — controla formato de log (JSON vs. legível) e os validadores de produção. |
+| `LOG_LEVEL` | não | `INFO` | Nível mínimo de log (`DEBUG`/`INFO`/`WARNING`/`ERROR`). |
+| `DATABASE_URL` | **sim** | — | DSN async do Postgres (`postgresql+asyncpg://...`). |
+| `REDIS_URL` | **sim** | — | DSN do Redis (rate limit). |
+| `CORS_ORIGINS` | não | `http://localhost:5173` | Lista separada por vírgula de origens permitidas. |
+| `JWT_PRIVATE_KEY` / `JWT_PUBLIC_KEY` | **sim** | — | Par RS256 (PEM com `\n` escapado), nunca o par de dev em produção (ver acima). |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | não | `15` | Vida útil do access token. |
+| `REFRESH_TOKEN_EXPIRE_DAYS` | não | `30` | Vida útil do refresh token. |
+| `INVITATION_EXPIRE_DAYS` | não | `7` | Vida útil de um convite de workspace. |
+| `UPLOAD_DIR` | não | `var/uploads` | Diretório local de anexos (`core/storage.py::LocalStorageProvider`). |
+| `MAX_UPLOAD_SIZE_BYTES` | não | `10485760` (10 MB) | Teto de tamanho de um anexo. |
+| `ALLOWED_UPLOAD_CONTENT_TYPES` | não | ver `core/config.py` | Lista branca de `Content-Type` separada por vírgula. |
 
 ## 11. Projetos (implementação, Sprint 6)
 
@@ -102,3 +125,11 @@ Ver `CLAUDE.md` §9 para o padrão. Implementação: `structlog` configurado em 
 - `LabelService` não recebe `PermissionService` injetado, mesmo racional de `ProjectService` (§11): `label.update`/`label.delete` não têm ownership override, então toda autorização é resolvida por `Depends(require_permission(...))` no router.
 - `AttachmentService.upload_to_issue` recebe `storage: StorageProvider` (`core/storage.py`, `Protocol`) injetado — `LocalStorageProvider` é a única implementação nesta sprint (disco local sob `Settings.upload_dir`), mas o service nunca importa essa classe concreta diretamente, só o protocolo, deixando a troca por um provider `"s3"` futuro restrita a `core/storage.py` + `core/dependencies.py`, sem tocar `AttachmentService`. `Attachment.storage_key` é sempre um ponteiro opaco (nome gerado, prefixado por UUID) — nunca o nome original do arquivo nem um path absoluto vazado para fora dessa camada.
 - `core/validators.py::validate_hex_color`: extraída de `features/projects/schemas.py` (Sprint 6) porque `LabelCreateRequest`/`LabelUpdateRequest` precisam exatamente da mesma validação — mesmo racional já aplicado a `core/slug.py` (§11).
+
+## 13. Health Checks (implementação, Sprint 8.7)
+
+- `GET /health` (liveness) permanece um retorno fixo (`{"status": "ok"}`) — só confirma que o processo aceita conexões, sem depender de nenhuma dependência externa. É o que um orquestrador usa para decidir se reinicia o container.
+- `GET /health/ready` (readiness) roda `core/health.py::run_health_checks()` — checagens concorrentes (`asyncio.gather`) de banco (`SELECT 1` via `core/db.py::ping_database`), Redis (`PING` via `core/rate_limit.py::ping_redis`) e do diretório de upload (existe e é gravável). Responde 503 se qualquer checagem falhar, para que um load balancer pare de rotear tráfego para esta instância antes que ela receba uma requisição real e falhe.
+- Esta rota não é autenticada (um orquestrador não consegue autenticar um probe) e fica fora de `_API_PREFIX`, logo fora do `RateLimitMiddleware` — por isso o texto completo de uma falha (`str(exc)`, que pode conter host/porta/detalhe de driver) nunca vai no corpo da resposta HTTP, só no log estruturado (`health_check_failed`). O campo `detail` de cada checagem só é populado na resposta quando `not settings.is_production`.
+- Adicionar uma nova dependência externa (ex.: um provider de storage remoto) é uma função de checagem nova + uma linha em `run_health_checks` — o registro foi desenhado para isso, sem precisar tocar `/health/ready` em si.
+- `GET /version` inclui `uptime_seconds` (calculado a partir de um timestamp de `time.monotonic()` guardado em `app.state` no `lifespan`) — útil para detectar reinícios inesperados sem depender de log externo.

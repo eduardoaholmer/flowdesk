@@ -8,6 +8,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/shared/components/ui/table";
+import { workspaceRoutes } from "@/shared/lib/routes";
 
 import { ProjectRowActions } from "./ProjectRowActions";
 import { ProjectStatusBadge } from "./ProjectStatusBadge";
@@ -38,7 +39,7 @@ export function ProjectsTable({
             <TableRow key={project.id}>
               <TableCell>
                 <Link
-                  to={`/w/${workspaceSlug}/projects/${project.id}`}
+                  to={workspaceRoutes.projectDetail(workspaceSlug, project.id)}
                   className="flex items-center gap-2 font-medium hover:underline"
                 >
                   {project.color && (

@@ -4,6 +4,7 @@ import { CreateFirstWorkspaceForm } from "@/features/workspaces/components/Creat
 import { EmptyLayout } from "@/shared/components/layout/EmptyLayout";
 import { useCurrentUser } from "@/shared/hooks/useCurrentUser";
 import { Skeleton } from "@/shared/components/ui/skeleton";
+import { workspaceRoutes } from "@/shared/lib/routes";
 
 export function HomePage() {
   const { data: profile, isLoading } = useCurrentUser();
@@ -19,7 +20,7 @@ export function HomePage() {
 
   const firstWorkspace = profile?.workspaces[0];
   if (firstWorkspace) {
-    return <Navigate to={`/w/${firstWorkspace.slug}/projects`} replace />;
+    return <Navigate to={workspaceRoutes.projects(firstWorkspace.slug)} replace />;
   }
 
   return (

@@ -3,13 +3,15 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/shared/components/ui/button";
 import type { PaginationMeta } from "@/shared/lib/apiTypes";
 
-export function ProjectsPagination({
-  meta,
-  onPageChange,
-}: {
+interface PaginationProps {
   meta: PaginationMeta;
+  /** Rótulo singular do item paginado (ex.: "issue", "projeto") — pluralizado com "s". */
+  itemLabel: string;
   onPageChange: (page: number) => void;
-}) {
+}
+
+/** Generaliza o padrão antes duplicado em `IssuesPagination`/`ProjectsPagination`. */
+export function Pagination({ meta, itemLabel, onPageChange }: PaginationProps) {
   if (meta.total_pages <= 1) {
     return null;
   }
@@ -17,7 +19,7 @@ export function ProjectsPagination({
   return (
     <div className="flex items-center justify-between text-sm text-muted-foreground">
       <span>
-        Página {meta.page} de {meta.total_pages} · {meta.total} projeto
+        Página {meta.page} de {meta.total_pages} · {meta.total} {itemLabel}
         {meta.total === 1 ? "" : "s"}
       </span>
       <div className="flex items-center gap-1">

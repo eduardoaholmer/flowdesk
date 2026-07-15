@@ -2,6 +2,7 @@ import { Bell, LogOut, Menu, Search } from "lucide-react";
 import { Link, useLocation, useParams } from "react-router-dom";
 
 import { logout } from "@/features/auth/api";
+import { Logo } from "@/shared/components/brand/Logo";
 import { ThemeToggle } from "@/shared/components/ThemeToggle";
 import {
   Breadcrumb,
@@ -29,6 +30,7 @@ import { Empty, EmptyDescription, EmptyMedia, EmptyTitle } from "@/shared/compon
 import { Popover, PopoverContent, PopoverTrigger } from "@/shared/components/ui/popover";
 import { useCurrentUser } from "@/shared/hooks/useCurrentUser";
 import { useDisclosure } from "@/shared/hooks/useDisclosure";
+import { workspaceRoutes } from "@/shared/lib/routes";
 import { getInitials } from "@/shared/lib/string";
 import { useAuthStore } from "@/shared/stores/authStore";
 import { useUiStore } from "@/shared/stores/uiStore";
@@ -44,10 +46,13 @@ function useBreadcrumbItems(workspaceSlug: string, workspaceName: string) {
   const [, , section, detail] = pathname.split("/").filter(Boolean);
 
   const items: { label: string; to?: string }[] = [
-    { label: workspaceName, to: `/w/${workspaceSlug}/issues` },
+    { label: workspaceName, to: workspaceRoutes.issues(workspaceSlug) },
   ];
 
   if (section) {
+    // `section` é dinâmico (issues/projects/labels, lido da URL atual) — não dá para
+    // usar um builder de `workspaceRoutes` sem reconstruir o mesmo `switch` que a URL
+    // já resolveu; reconstrução direta aqui é o caso genuinamente dinâmico, não duplicação.
     items.push({
       label: SECTION_LABELS[section] ?? section,
       to: detail ? `/w/${workspaceSlug}/${section}` : undefined,
@@ -68,7 +73,7 @@ function TopbarBreadcrumb() {
   const items = useBreadcrumbItems(workspaceSlug ?? "", workspace?.name ?? "FlowDesk");
 
   if (!workspaceSlug) {
-    return <span className="text-sm font-medium text-muted-foreground">FlowDesk</span>;
+    return <Logo size="sm" />;
   }
 
   return (

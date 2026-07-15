@@ -86,6 +86,16 @@ jobs:
           JWT_PUBLIC_KEY: ${{ env.JWT_PUBLIC_KEY }}
         run: poetry run pytest -v
 
+      # Não bloqueante deliberadamente (CLAUDE.md §1.6): advisories de dependências
+      # transitivas fora do nosso controle tornariam este step barulhento o bastante
+      # para virar ruído ignorado, o oposto do que um gate de CI deveria ser. Ainda
+      # assim roda em toda PR — o resultado fica visível no summary do job.
+      - name: pip-audit (dependências vulneráveis — não bloqueante)
+        continue-on-error: true
+        run: |
+          poetry run pip install pip-audit
+          poetry run pip-audit --local
+
   frontend:
     name: Frontend — lint, type-check, test, build
     runs-on: ubuntu-latest
@@ -120,3 +130,34 @@ jobs:
         env:
           VITE_API_URL: http://localhost:8000/api/v1
         run: npm run build
+
+      # Não bloqueante pelo mesmo motivo do pip-audit do job backend acima.
+      - name: npm audit (dependências vulneráveis — não bloqueante)
+        continue-on-error: true
+        run: npm audit --audit-level=high
+
+  docker:
+    name: Docker — build de imagens de produção
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build backend (production)
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          file: ./docker/backend.Dockerfile
+          target: production
+          push: false
+
+      - name: Build frontend (production)
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          file: ./docker/frontend.Dockerfile
+          target: production
+          push: false
+          build-args: |
+            VITE_API_URL=http://localhost:8000/api/v1

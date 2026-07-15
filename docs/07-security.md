@@ -29,6 +29,7 @@ Aplica-se apenas a `POST /auth/refresh` (única rota que depende de cookie para 
 - Produção: origem permitida = domínio exato do frontend (lista explícita via `Settings`, nunca wildcard `*` combinado com `allow_credentials=True` — combinação proibida pela própria spec CORS por bom motivo).
 - Desenvolvimento: origem `http://localhost:5173` (Vite) explicitamente configurada, não `*`, para que o comportamento de desenvolvimento espelhe produção e bugs de CORS sejam pegos cedo.
 - `allow_credentials=True` (necessário para o cookie de refresh trafegar cross-origin entre o domínio do frontend e da API, caso sejam subdomínios distintos).
+- `allow_methods`/`allow_headers` (Sprint 8.7) também são listas explícitas, não `*` — `["GET", "POST", "PATCH", "DELETE", "OPTIONS"]` e `["Authorization", "Content-Type", "X-CSRF-Token"]`, os únicos método/headers que a API de fato usa (auditado contra todo `router.py` e `frontend/src/shared/lib/httpClient.ts`). `expose_headers=["X-Request-ID"]` permite que o frontend/devtools leia o header de correlação da resposta.
 
 ## 6. Rate Limiting
 
@@ -334,3 +335,17 @@ flowchart TD
 ```
 
 A mesma checagem em duas etapas (permissão base via `Depends`, regra contextual via `PermissionService` chamado explicitamente pelo service) se aplica a `member.remove` — só troca a ação final por `remove_member` + `activity_log member.removed`. Promover alguém a `OWNER` por este endpoint nunca chega a essa checagem: `MemberUpdateRoleRequest` rejeita `role: "OWNER"` na validação de schema (`422`, mesmo padrão de `InvitationCreateRequest`).
+
+## 14. Security Headers (Sprint 8.7)
+
+`SecurityHeadersMiddleware` (`docs/06-backend.md` §5) aplica os seguintes headers em toda resposta:
+
+| Header | Valor | Racional |
+|---|---|---|
+| `X-Content-Type-Options` | `nosniff` | Impede que o navegador tente adivinhar o `Content-Type` de uma resposta (ex.: interpretar um upload como HTML/script). |
+| `X-Frame-Options` | `DENY` | A API/SPA nunca deveria ser embutida em `<iframe>` de outra origem — mitiga clickjacking. |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` | Não vaza path/query da API em requisições de referrer cross-origin. |
+| `Permissions-Policy` | `camera=(), microphone=(), geolocation=()` | Nenhuma feature de produto usa essas APIs de browser — desabilitadas explicitamente em vez de deixar o default do navegador. |
+| `Strict-Transport-Security` | `max-age=63072000; includeSubDomains` | **Só em produção** (`ENVIRONMENT=production`) — sob HTTP puro de desenvolvimento local, o header não tem efeito protetivo e sinalizaria uma garantia que o ambiente não cumpre. |
+
+Nenhum destes é configurável por variável de ambiente — são invariantes de segurança, não parâmetro de produto (`CLAUDE.md` §1.6).

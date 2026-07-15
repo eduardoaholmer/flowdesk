@@ -9,9 +9,15 @@ from src.main import app
 
 @pytest.fixture
 async def client() -> AsyncGenerator[AsyncClient, None]:
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as async_client:
-        yield async_client
+    """`ASGITransport` não dispara o lifespan do app (diferente do `TestClient` síncrono
+    do Starlette) — sem isto, `app.state.started_at` nunca é setado e `GET /version`
+    quebra em qualquer teste de contrato. `app.router.lifespan_context` é o mesmo
+    context manager passado a `FastAPI(lifespan=...)` em `src/main.py`.
+    """
+    async with app.router.lifespan_context(app):
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as async_client:
+            yield async_client
 
 
 @pytest.fixture

@@ -11,6 +11,7 @@ import {
   TableRow,
 } from "@/shared/components/ui/table";
 import { formatDate } from "@/shared/lib/date";
+import { workspaceRoutes } from "@/shared/lib/routes";
 import { getInitials } from "@/shared/lib/string";
 
 import { IssuePriorityBadge } from "./IssuePriorityBadge";
@@ -54,7 +55,7 @@ export function IssuesTable({
                 </TableCell>
                 <TableCell>
                   <Link
-                    to={`/w/${workspaceSlug}/issues/${issue.id}`}
+                    to={workspaceRoutes.issueDetail(workspaceSlug, issue.id)}
                     className="font-medium hover:underline"
                   >
                     {issue.title}

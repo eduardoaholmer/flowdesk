@@ -7,6 +7,82 @@ versionados — o desenvolvimento acontece diretamente em `main`, sprint a sprin
 
 ## [Unreleased]
 
+### Identidade visual — FlowDesk "Ring Gate"
+
+- Marca oficial integrada a partir da spec de produção do design (`brand/Logo.tsx`):
+  símbolo em anel com duas barras, geometria travada em grid de 100u, cores de tinta
+  `#14130F`/`#FAF8F3` (claro/escuro) sem uso de `filter: invert()`.
+- Favicon (`public/favicon.svg`) substituído do placeholder gerado pela marca real,
+  com variante clara/escura via `prefers-color-scheme`.
+- `Logo` (lockups símbolo/horizontal/vertical) substitui o texto "FlowDesk" solto em
+  `Topbar`/`LoginPage`.
+
+### Sprint 8.7 — Production Readiness & Observability
+
+- Envelope de erro padrão estendido a `RequestValidationError` e `HTTPException` do
+  Starlette (antes vazavam o formato default do FastAPI em vez de `{"error": {...}}`).
+- `GET /health/ready` (novo): checagens reais de banco, Redis e storage, com registro
+  extensível para novas dependências (`core/health.py`); `GET /health` permanece liveness
+  pura; `GET /version` ganhou `uptime_seconds`. Detalhe de falha (`str(exc)`) só aparece
+  na resposta HTTP fora de produção — em produção fica só no log estruturado.
+- Logging estruturado agora carrega `user_id` e `environment` em toda linha (além do
+  `request_id` já existente); nova linha de access-log (`http_request`) por requisição.
+- `SecurityHeadersMiddleware` novo (`X-Content-Type-Options`, `X-Frame-Options`,
+  `Referrer-Policy`, `Permissions-Policy`, HSTS em produção); CORS com
+  `allow_methods`/`allow_headers` explícitos em vez de `*`.
+- `Settings` recusa subir com `ENVIRONMENT=production` usando a chave JWT de
+  desenvolvimento; `environment` validado contra um conjunto fechado de valores.
+- Docker multi-stage (`development`/`production`) para backend e frontend, agora
+  copiando `poetry.lock` no build (antes só `pyproject.toml`, então a imagem podia
+  re-resolver dependências fora do que o `pip-audit` do CI auditou);
+  `docker-compose.prod.yml` novo demonstrando a topologia de produção. Ambos os
+  targets `production` validados com `docker build` nesta sessão.
+- CI: `pip-audit`/`npm audit` (não bloqueantes) e um novo job que builda as imagens
+  Docker de produção (bloqueante); `.github/dependabot.yml` novo.
+- `PRODUCTION_CHECKLIST.md` novo na raiz do repositório.
+- Corrigido um bug de tipagem pré-existente em `core/rate_limit.py`: `Redis` (sem
+  parâmetro genérico) e um `from_url()` sem retorno anotado — ambos exigem tratamento
+  explícito (`Redis` sem `[str]`, `# type: ignore[no-untyped-call]` comentado) contra a
+  versão de `redis`/`mypy` de fato pinada em `poetry.lock` (5.3.1 / 1.20.2). `mypy src`
+  verde.
+- Corrigido `tests/conftest.py::client`: `httpx.ASGITransport` não disparava o lifespan
+  do FastAPI, então `app.state.started_at` nunca era setado e `GET /version` quebrava em
+  qualquer teste de contrato.
+
+### Sprint 8.6 — Architecture Hardening & Code Quality
+
+- `shared/lib/routes.ts` (route builder único) substitui 11 pontos de template literal
+  solto de rota espalhados pelo frontend.
+- Code-splitting por rota em `router.tsx` (`React.lazy` + `Suspense`), endereçando o
+  chunk único de 760kB da Sprint 8.5.
+- `MAX_PICKER_PAGE_SIZE` (`shared/lib/constants.ts`) elimina `per_page: 100` repetido em
+  4 arquivos.
+- `frontend/.husky/pre-commit` mais defensivo: checa se o `pre-commit` do backend de
+  fato executa antes de tentar ativar o venv.
+- Barrel exports e múltiplos path aliases (pedidos originalmente) **não** foram
+  adicionados — contradiziam decisão já documentada (`docs/05-frontend.md` §1,
+  `docs/10-coding-standards.md` §3); ver ADR-015.
+
+### Sprint 8.5 — Frontend Foundation & Design System Preparation
+
+- Design system documentado (`src/design-system/*.md`) e primeiros componentes
+  compostos reutilizáveis sob `shared/components/{layout, navigation, typography,
+  data-display, forms, overlay, feedback, motion}/`, construídos sobre as primitivas
+  shadcn/ui — fundação para a sprint de identidade visual/telas finais não precisar de
+  refatoração estrutural.
+- `Sidebar`/`Topbar` reescritos: colapsar, menu mobile (`Sheet`), seletor de workspace
+  com dado real, breadcrumb estrutural, busca/notificações como pontos de extensão sem
+  integração ainda.
+- `shared/theme/tokens/*.ts` (um arquivo por categoria) substitui o antigo
+  `theme/tokens.ts` único; `shared/stores/uiStore.ts` (primeiro store de UI
+  cliente-only); `ErrorBoundary`, `EmptyState`/`ErrorState` (movidos para
+  `feedback/`), skeletons genéricos (`PageSkeleton`/`CardSkeleton`/`TableSkeleton`/
+  `ListSkeleton`/`KanbanSkeleton`) substituindo duplicação real entre issues/projects.
+- Hooks (`useBreakpoint`, `useMediaQuery`, `useDisclosure`, `useLocalStorage`,
+  `usePrevious`) e utils (`date.ts`, `string.ts`, `number.ts`, `validation.ts`) novos,
+  substituindo duplicação real de formatação em 5 componentes de feature.
+- 21 componentes shadcn/ui novos instalados via CLI.
+
 ### Sprint 1.5 — Bootstrap do repositório e hardening da fundação
 
 - Repositório publicado no GitHub com metadados de projeto open source (LICENSE, CONTRIBUTING,

@@ -1,6 +1,6 @@
 import { ArchiveRestore, Pencil, Trash2 } from "lucide-react";
 
-import { ConfirmActionDialog } from "@/shared/components/ConfirmActionDialog";
+import { ConfirmActionDialog } from "@/shared/components/overlay/ConfirmActionDialog";
 import { Button } from "@/shared/components/ui/button";
 
 import { useArchiveProject, useDeleteProject, useRestoreProject } from "../hooks";

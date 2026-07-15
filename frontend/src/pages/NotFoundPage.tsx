@@ -1,15 +1,18 @@
 import { Link } from "react-router-dom";
 
+import { NotFoundState } from "@/shared/components/feedback/NotFoundState";
 import { Button } from "@/shared/components/ui/button";
 
 export function NotFoundPage() {
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-4 text-center">
-      <h1 className="text-4xl font-semibold">404</h1>
-      <p className="text-muted-foreground">Página não encontrada.</p>
-      <Button asChild>
-        <Link to="/">Voltar para o início</Link>
-      </Button>
+    <div className="flex h-full items-center justify-center">
+      <NotFoundState
+        action={
+          <Button asChild>
+            <Link to="/">Voltar para o início</Link>
+          </Button>
+        }
+      />
     </div>
   );
 }

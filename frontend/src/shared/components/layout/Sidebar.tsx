@@ -23,6 +23,7 @@ import { Sheet, SheetContent, SheetTitle } from "@/shared/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/components/ui/tooltip";
 import { useBreakpoint } from "@/shared/hooks/useBreakpoint";
 import { useCurrentUser } from "@/shared/hooks/useCurrentUser";
+import { workspaceRoutes } from "@/shared/lib/routes";
 import { getInitials } from "@/shared/lib/string";
 import { cn } from "@/shared/lib/utils";
 import { useUiStore } from "@/shared/stores/uiStore";
@@ -43,9 +44,9 @@ function getNavGroups(workspaceSlug: string): NavGroup[] {
     {
       label: "Workspace",
       items: [
-        { label: "Issues", to: `/w/${workspaceSlug}/issues`, icon: ListTodo },
-        { label: "Projetos", to: `/w/${workspaceSlug}/projects`, icon: FolderKanban },
-        { label: "Labels", to: `/w/${workspaceSlug}/labels`, icon: Tags },
+        { label: "Issues", to: workspaceRoutes.issues(workspaceSlug), icon: ListTodo },
+        { label: "Projetos", to: workspaceRoutes.projects(workspaceSlug), icon: FolderKanban },
+        { label: "Labels", to: workspaceRoutes.labels(workspaceSlug), icon: Tags },
       ],
     },
   ];
@@ -133,7 +134,7 @@ function WorkspaceSwitcher({
         <DropdownMenuSeparator />
         {profile.workspaces.map((workspace) => (
           <DropdownMenuItem key={workspace.id} asChild>
-            <Link to={`/w/${workspace.slug}/issues`}>
+            <Link to={workspaceRoutes.issues(workspace.slug)}>
               <span className="flex-1 truncate">{workspace.name}</span>
               {workspace.slug === workspaceSlug && (
                 <span className="text-xs text-muted-foreground">Ativo</span>

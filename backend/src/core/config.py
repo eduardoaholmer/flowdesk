@@ -1,7 +1,24 @@
 from functools import lru_cache
+from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Chave pública de DEV do par gerado só para desenvolvimento local (`.env.example`,
+# `docs/09-decision-log.md` ADR-008) — nunca deveria aparecer em um ambiente de
+# produção. Comparada em `_forbid_dev_key_in_production` abaixo para transformar esse
+# risco documentado em uma falha de inicialização real, não só um comentário.
+_DEV_JWT_PUBLIC_KEY = (
+    "-----BEGIN PUBLIC KEY-----\n"
+    "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAr0FxunGNtYrO+OQT8vmb\n"
+    "OdG4+rO1XClx/d+X5K/2u8415yxNU3l9k5fP2W0gO4DzXA/IbcuJ5qpK19HOc30E\n"
+    "7DB5JkeA0ZaJNEDspCMoXcHcj5d1nWxMgF1OkpXd0lSX2nf40rh4IoYnn4gFRL21\n"
+    "TOdF+5D9fvNtqNFxtJjQEOryAt+MQvhPbpmuPulYAxP+d21rXFNAdWiFMD9/yt89\n"
+    "MnoLYLJ9GUMwk5GcPRMl73mYvQcZE8YRJMLYKjzGpmE1vfGz3UGEDGCg8GNh95Wr\n"
+    "Do4Ri+7wgQDv7cFOqu4iILLMdcGK1r3s2BmiDru7oVtaAdIlH41KDQrCHgZrhIAC\n"
+    "AQIDAQAB\n"
+    "-----END PUBLIC KEY-----"
+)
 
 
 class Settings(BaseSettings):
@@ -14,7 +31,7 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-    environment: str = "development"
+    environment: Literal["development", "test", "production"] = "development"
     log_level: str = "INFO"
     api_version: str = "0.1.0"
 
@@ -78,6 +95,19 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.environment == "production"
+
+    @model_validator(mode="after")
+    def _forbid_dev_key_in_production(self) -> "Settings":
+        """ADR-008 documenta o risco de reusar o par de chaves de DEV em produção — aqui
+        isso vira uma falha de inicialização real (`CLAUDE.md` §6), não só um comentário.
+        """
+        if self.is_production and self.jwt_public_key_pem.strip() == _DEV_JWT_PUBLIC_KEY.strip():
+            raise ValueError(
+                "ENVIRONMENT=production não pode usar o par de chaves JWT de "
+                "desenvolvimento (ver docs/09-decision-log.md ADR-008). Gere um par "
+                "novo antes de subir este ambiente."
+            )
+        return self
 
 
 @lru_cache

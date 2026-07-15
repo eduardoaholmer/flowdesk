@@ -1,3 +1,4 @@
+import time
 import uuid
 from collections.abc import Awaitable, Callable
 
@@ -7,9 +8,11 @@ from starlette.responses import Response
 
 from src.core.config import get_settings
 from src.core.exceptions import InvalidTokenError, error_response
-from src.core.logging import request_id_ctx
+from src.core.logging import get_logger, request_id_ctx, user_id_ctx
 from src.core.rate_limit import check_rate_limit
 from src.core.security import decode_access_token, hash_refresh_token
+
+logger = get_logger(__name__)
 
 REQUEST_ID_HEADER = "X-Request-ID"
 
@@ -54,6 +57,59 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
             except ValueError:
                 pass
         return str(uuid.uuid4())
+
+
+class AccessLogMiddleware(BaseHTTPMiddleware):
+    """Uma linha de log por requisição (`http_request`): método, path, status, duração.
+
+    Reseta `user_id_ctx` no início de cada requisição (mesmo racional defensivo do
+    `request_id_ctx` em `RequestIDMiddleware`: um cliente de teste pode disparar várias
+    requisições sequenciais na mesma task do asyncio, e sem reset o `user_id` de uma
+    requisição autenticada vazaria para a próxima). `get_current_user`
+    (`core/dependencies.py`) preenche o valor quando a requisição é autenticada — por
+    isso este middleware precisa rodar por fora de onde a rota é de fato resolvida.
+    """
+
+    async def dispatch(
+        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        token = user_id_ctx.set(None)
+        start = time.perf_counter()
+        try:
+            response = await call_next(request)
+        finally:
+            user_id_ctx.reset(token)
+        duration_ms = round((time.perf_counter() - start) * 1000, 2)
+
+        log = logger.warning if response.status_code >= 500 else logger.info
+        log(
+            "http_request",
+            method=request.method,
+            path=request.url.path,
+            status_code=response.status_code,
+            duration_ms=duration_ms,
+        )
+        return response
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Cabeçalhos de segurança padrão (`docs/07-security.md` §14) em toda resposta.
+
+    HSTS só é enviado em produção — sob HTTP puro (dev local), o header não tem efeito
+    protetivo e sinalizaria uma garantia que o ambiente não cumpre.
+    """
+
+    async def dispatch(
+        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        if get_settings().is_production:
+            response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains"
+        return response
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):

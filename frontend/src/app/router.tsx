@@ -1,15 +1,25 @@
+import { Suspense, type ReactNode } from "react";
 import { createBrowserRouter } from "react-router-dom";
 
+import {
+  IssueDetailPage,
+  IssuesPage,
+  LabelsPage,
+  ProjectDetailPage,
+  ProjectsPage,
+} from "@/app/lazyPages";
 import { AppLayout } from "@/shared/components/layout/AppLayout";
 import { RequireAuth } from "@/shared/components/RequireAuth";
+import { PageSkeleton } from "@/shared/components/skeletons/PageSkeleton";
+import { routePatterns } from "@/shared/lib/routes";
 import { HomePage } from "@/pages/HomePage";
-import { IssueDetailPage } from "@/pages/IssueDetailPage";
-import { IssuesPage } from "@/pages/IssuesPage";
-import { LabelsPage } from "@/pages/LabelsPage";
 import { LoginPage } from "@/pages/LoginPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
-import { ProjectDetailPage } from "@/pages/ProjectDetailPage";
-import { ProjectsPage } from "@/pages/ProjectsPage";
+
+/** HomePage/LoginPage/NotFoundPage ficam fora do lazy — pequenas e sempre necessárias cedo. */
+function withPageSuspense(element: ReactNode) {
+  return <Suspense fallback={<PageSkeleton />}>{element}</Suspense>;
+}
 
 export const router = createBrowserRouter([
   { path: "/login", element: <LoginPage /> },
@@ -20,11 +30,14 @@ export const router = createBrowserRouter([
         element: <AppLayout />,
         children: [
           { index: true, path: "/", element: <HomePage /> },
-          { path: "/w/:workspaceSlug/projects", element: <ProjectsPage /> },
-          { path: "/w/:workspaceSlug/projects/:projectId", element: <ProjectDetailPage /> },
-          { path: "/w/:workspaceSlug/issues", element: <IssuesPage /> },
-          { path: "/w/:workspaceSlug/issues/:issueId", element: <IssueDetailPage /> },
-          { path: "/w/:workspaceSlug/labels", element: <LabelsPage /> },
+          { path: routePatterns.projects, element: withPageSuspense(<ProjectsPage />) },
+          {
+            path: routePatterns.projectDetail,
+            element: withPageSuspense(<ProjectDetailPage />),
+          },
+          { path: routePatterns.issues, element: withPageSuspense(<IssuesPage />) },
+          { path: routePatterns.issueDetail, element: withPageSuspense(<IssueDetailPage />) },
+          { path: routePatterns.labels, element: withPageSuspense(<LabelsPage />) },
         ],
       },
     ],

@@ -1,14 +1,15 @@
 import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
-import { ErrorState } from "@/shared/components/ErrorState";
+import { ErrorState } from "@/shared/components/feedback/ErrorState";
+import { Pagination } from "@/shared/components/navigation/Pagination";
+import { ListSkeleton } from "@/shared/components/skeletons/ListSkeleton";
 import { useDebouncedValue } from "@/shared/hooks/useDebouncedValue";
+import { cn } from "@/shared/lib/utils";
 
 import { useIssues } from "../hooks";
 import type { IssuePriority, IssueSort, IssueStatus } from "../types";
 import { IssuesEmptyState } from "./IssuesEmptyState";
-import { IssuesListSkeleton } from "./IssuesListSkeleton";
-import { IssuesPagination } from "./IssuesPagination";
 import { IssuesTable } from "./IssuesTable";
 import { IssuesToolbar } from "./IssuesToolbar";
 
@@ -111,14 +112,15 @@ export function IssuesListPage({
       />
 
       {isLoading ? (
-        <IssuesListSkeleton />
+        <ListSkeleton rows={8} />
       ) : isError ? (
         <ErrorState message="Não foi possível carregar as issues." onRetry={() => refetch()} />
       ) : data && data.data.length > 0 ? (
-        <div className="flex flex-col gap-4" style={{ opacity: isPlaceholderData ? 0.6 : 1 }}>
+        <div className={cn("flex flex-col gap-4", isPlaceholderData && "opacity-60")}>
           <IssuesTable workspaceId={workspaceId} workspaceSlug={workspaceSlug} issues={data.data} />
-          <IssuesPagination
+          <Pagination
             meta={data.meta}
+            itemLabel="issue"
             onPageChange={(next) => updateParams({ page: next })}
           />
         </div>

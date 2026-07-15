@@ -13,6 +13,7 @@ import {
   SelectValue,
 } from "@/shared/components/ui/select";
 import { Textarea } from "@/shared/components/ui/textarea";
+import { MAX_PICKER_PAGE_SIZE } from "@/shared/lib/constants";
 
 import type { IssuePriority, IssueStatus } from "../types";
 
@@ -61,7 +62,7 @@ export function IssueFormFields({
 }) {
   const { data: projects } = useProjects(workspaceId, {
     page: 1,
-    per_page: 100,
+    per_page: MAX_PICKER_PAGE_SIZE,
     sort: "-created_at",
   });
   const { data: members } = useWorkspaceMembers(workspaceId);

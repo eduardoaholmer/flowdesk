@@ -5,10 +5,12 @@ import { CommentList } from "@/features/comments/components/CommentList";
 import { IssueLabelPicker } from "@/features/labels/components/IssueLabelPicker";
 import { useProjects } from "@/features/projects/hooks";
 import { useWorkspaceMembers } from "@/features/workspaces/hooks";
-import { ErrorState } from "@/shared/components/ErrorState";
+import { ErrorState } from "@/shared/components/feedback/ErrorState";
 import { Separator } from "@/shared/components/ui/separator";
 import { Skeleton } from "@/shared/components/ui/skeleton";
+import { MAX_PICKER_PAGE_SIZE } from "@/shared/lib/constants";
 import { formatDate } from "@/shared/lib/date";
+import { workspaceRoutes } from "@/shared/lib/routes";
 
 import { useIssue } from "../hooks";
 import { IssueActivityTimeline } from "./IssueActivityTimeline";
@@ -28,7 +30,10 @@ export function IssueDetailView({
   const navigate = useNavigate();
   const { data: issue, isLoading, isError, refetch } = useIssue(workspaceId, issueId);
   const { data: members } = useWorkspaceMembers(workspaceId);
-  const { data: projects } = useProjects(workspaceId, { page: 1, per_page: 100 });
+  const { data: projects } = useProjects(workspaceId, {
+    page: 1,
+    per_page: MAX_PICKER_PAGE_SIZE,
+  });
 
   if (isLoading) {
     return (
@@ -64,7 +69,7 @@ export function IssueDetailView({
         <IssueRowActions
           workspaceId={workspaceId}
           issue={issue}
-          onDeleted={() => navigate(`/w/${workspaceSlug}/issues`, { replace: true })}
+          onDeleted={() => navigate(workspaceRoutes.issues(workspaceSlug), { replace: true })}
         />
       </div>
 

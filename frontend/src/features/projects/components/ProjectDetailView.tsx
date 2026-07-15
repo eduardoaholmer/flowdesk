@@ -1,8 +1,9 @@
 import { useNavigate } from "react-router-dom";
 
-import { ErrorState } from "@/shared/components/ErrorState";
+import { ErrorState } from "@/shared/components/feedback/ErrorState";
 import { Skeleton } from "@/shared/components/ui/skeleton";
 import { formatDate } from "@/shared/lib/date";
+import { workspaceRoutes } from "@/shared/lib/routes";
 
 import { useProject } from "../hooks";
 import { ProjectRowActions } from "./ProjectRowActions";
@@ -60,7 +61,7 @@ export function ProjectDetailView({
         <ProjectRowActions
           workspaceId={workspaceId}
           project={project}
-          onDeleted={() => navigate(`/w/${workspaceSlug}/projects`, { replace: true })}
+          onDeleted={() => navigate(workspaceRoutes.projects(workspaceSlug), { replace: true })}
         />
       </div>
 

@@ -9,6 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/shared/components/ui/select";
+import { MAX_PICKER_PAGE_SIZE } from "@/shared/lib/constants";
 
 import { CreateIssueDialog } from "./CreateIssueDialog";
 import type { IssuePriority, IssueSort, IssueStatus } from "../types";
@@ -66,7 +67,7 @@ export function IssuesToolbar({
 }) {
   const { data: projects } = useProjects(workspaceId, {
     page: 1,
-    per_page: 100,
+    per_page: MAX_PICKER_PAGE_SIZE,
     sort: "-created_at",
   });
 
