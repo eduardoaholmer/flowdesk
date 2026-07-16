@@ -159,13 +159,15 @@ Cada sprint tem Definition of Done (DoD) própria, mas todas herdam a DoD-base a
 - **Critérios de aceite**: nenhum comportamento de produto mudou; lint, type-check e testes verdes nos dois apps; `docker build --target production` funcional para os dois Dockerfiles (validado via novo job de CI); `/health/ready` reportando `ok` com Postgres/Redis reais.
 - **DoD**: DoD-base + `docs/06-backend.md`, `docs/07-security.md`, `docs/02-architecture.md` e `docs/09-decision-log.md` (ADR-016) atualizados no mesmo conjunto de mudanças.
 
-## Sprint 9 — Polimento e Observabilidade
+## Sprint 9 — Polimento e Observabilidade (em andamento — fase 1 concluída)
 
 - **Objetivo**: fechar lacunas de produção real antes de considerar o MVP+ "apresentável". `Notification` já está modelada desde a Sprint 2.
 - **Funcionalidades**: RF-NOTIF-01, 02; RF-AUTH-06 (recuperação de senha); hardening de rate limit por rota; métricas básicas (contagem de erro 5xx por rota, latência p95 por endpoint).
 - **Dependências**: Sprints 3–8.
 - **Critérios de aceite**: notificação in-app gerada e visível para menção e mudança de status; reset de senha funcional; dashboard mínimo (ainda que só via logs estruturados agregáveis) mostrando latência e taxa de erro por rota.
 - **DoD**: DoD-base + revisão de segurança completa do checklist de `docs/07-security.md`.
+
+> **Nota (pós-execução, fase 1)**: uma auditoria completa do repositório (2026-07-16) encontrou esta sprint com `features/notifications/` já parcialmente implementada (router/service/schemas/repository) mas não commitada, quebrando 31 testes de outras features (`IssueService`/`CommentService` haviam ganhado um argumento novo — `notification_service` — sem os fixtures de teste correspondentes serem atualizados). Fase 1 (este conjunto de mudanças) fechou: (1) correção dos fixtures quebrados + testes unitários/contrato completos para `NotificationService` (cobertura que faltava inteiramente); (2) RF-NOTIF-01/02 — notificação de menção (`CommentService._notify_mentions`) e de mudança de status (`IssueService._notify_status_change`), ambas sem notificar auto-ação; (3) RF-AUTH-06 (recuperação de senha) via `MailSender`, ver ADR-017; (4) hardening de rate limit por rota, mesma ADR-017. **Pendente para uma fase 2**: métricas básicas (contagem de erro 5xx por rota, latência p95 por endpoint) e a revisão de segurança completa do checklist de `docs/07-security.md` que a DoD desta sprint exige — não cobertas nesta fase.
 
 ## Sprint 10+ — Extensões futuras (pós-portfólio)
 

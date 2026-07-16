@@ -68,3 +68,22 @@ class RefreshToken(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
 
     session: Mapped[Session] = relationship(back_populates="refresh_tokens")
+
+
+class PasswordResetToken(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """RF-AUTH-06. Uso único (`used_at`, não uma cadeia de rotação como
+    `RefreshToken.replaced_by_id` — não há "próximo" token, só emitir um novo do
+    zero) e vida curta (`Settings.password_reset_token_expire_minutes`, ver
+    `core/config.py`). Descartável, sem valor histórico após expirar/usar — mesmo
+    racional de soft-delete-dispensado de `Notification` (docs/03-database.md §2).
+    """
+
+    __tablename__ = "password_reset_tokens"
+    __table_args__ = (Index("ix_password_reset_tokens_user_id", "user_id"),)
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    token_hash: Mapped[str] = mapped_column(nullable=False, unique=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)

@@ -23,3 +23,13 @@ class InvalidRefreshTokenError(AuthenticationError):
 
     code = "invalid_refresh_token"
     message = "Sessão inválida ou expirada. Faça login novamente."
+
+
+class InvalidPasswordResetTokenError(AuthenticationError):
+    """Cobre token ausente, desconhecido, expirado ou já usado — mesmo racional
+    anti-enumeration de `InvalidRefreshTokenError`: um único `code` genérico não
+    revela ao cliente qual checagem específica falhou.
+    """
+
+    code = "invalid_password_reset_token"
+    message = "Link de recuperação inválido ou expirado. Solicite um novo."

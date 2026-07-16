@@ -7,6 +7,30 @@ versionados — o desenvolvimento acontece diretamente em `main`, sprint a sprin
 
 ## [Unreleased]
 
+### Sprint 9 (fase 1) — Notificações, Recuperação de Senha, Rate Limiting
+
+- Corrigidos 31 testes que estavam quebrados na árvore de trabalho: `IssueService`/
+  `CommentService` haviam ganhado um argumento novo (`notification_service`) sem os
+  fixtures de teste correspondentes serem atualizados. `features/notifications/`
+  ganhou cobertura de teste unitário e de contrato completa (antes zero).
+- RF-NOTIF-01/02: notificação in-app de menção (`CommentService._notify_mentions`) e
+  de mudança de status de issue (`IssueService._notify_status_change`) — nenhuma das
+  duas notifica quando o próprio autor da ação é o destinatário.
+- RF-AUTH-06 (recuperação de senha): `POST /auth/password-reset/request` +
+  `POST /auth/password-reset/confirm`. Token opaco de 256 bits, hash SHA-256 em
+  repouso, uso único, expira em 30 min (`PASSWORD_RESET_TOKEN_EXPIRE_MINUTES`).
+  Sempre `202` no `request` independente de o e-mail existir (anti-enumeration) — o
+  token nunca é devolvido pela resposta HTTP, diferente do convite de workspace;
+  `core/mail.py::MailSenderProtocol` (novo) é o ponto de extensão para um provedor de
+  e-mail real. Confirmar o reset revoga todas as sessões ativas do usuário. Ver
+  ADR-017 em `docs/09-decision-log.md`.
+- Hardening de rate limit por rota: `password-reset/request`/`confirm` no mesmo tier
+  de `login`/`register` (5/min por IP); novo tier de 60/min por IP para qualquer
+  requisição sem Bearer válido a uma rota protegida (antes não era limitada de jeito
+  nenhum).
+- Pendente para uma fase 2 desta sprint: métricas básicas (5xx por rota, p95 por
+  endpoint) e a revisão de segurança completa do checklist de `docs/07-security.md`.
+
 ### Identidade visual — FlowDesk "Ring Gate"
 
 - Marca oficial integrada a partir da spec de produção do design (`brand/Logo.tsx`):

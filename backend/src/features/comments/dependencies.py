@@ -6,6 +6,8 @@ from src.core.db import get_db_session
 from src.features.comments.repository import CommentRepository, CommentRepositoryProtocol
 from src.features.comments.service import CommentService
 from src.features.issues.repository import IssueRepository, IssueRepositoryProtocol
+from src.features.notifications.dependencies import get_notification_service
+from src.features.notifications.service import NotificationService
 from src.features.workspaces.repository import WorkspaceRepository, WorkspaceRepositoryProtocol
 
 
@@ -30,5 +32,8 @@ def get_comment_service(
     issue_repo: IssueRepositoryProtocol = Depends(get_comment_issue_repository),
     workspace_repo: WorkspaceRepositoryProtocol = Depends(get_comment_workspace_repository),
     permission_service: PermissionService = Depends(get_permission_service),
+    notification_service: NotificationService = Depends(get_notification_service),
 ) -> CommentService:
-    return CommentService(comment_repo, issue_repo, workspace_repo, permission_service)
+    return CommentService(
+        comment_repo, issue_repo, workspace_repo, permission_service, notification_service
+    )

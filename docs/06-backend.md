@@ -106,6 +106,7 @@ Ver `CLAUDE.md` §9 para o padrão. Implementação: `structlog` configurado em 
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | não | `15` | Vida útil do access token. |
 | `REFRESH_TOKEN_EXPIRE_DAYS` | não | `30` | Vida útil do refresh token. |
 | `INVITATION_EXPIRE_DAYS` | não | `7` | Vida útil de um convite de workspace. |
+| `PASSWORD_RESET_TOKEN_EXPIRE_MINUTES` | não | `30` | Vida útil de um token de recuperação de senha (RF-AUTH-06, Sprint 9) — curta de propósito, ver ADR-017. |
 | `UPLOAD_DIR` | não | `var/uploads` | Diretório local de anexos (`core/storage.py::LocalStorageProvider`). |
 | `MAX_UPLOAD_SIZE_BYTES` | não | `10485760` (10 MB) | Teto de tamanho de um anexo. |
 | `ALLOWED_UPLOAD_CONTENT_TYPES` | não | ver `core/config.py` | Lista branca de `Content-Type` separada por vírgula. |

@@ -11,6 +11,8 @@ from src.features.auth.exceptions import InvalidRefreshTokenError
 from src.features.auth.schemas import (
     AccessTokenResponse,
     LoginRequest,
+    PasswordResetConfirmRequest,
+    PasswordResetRequest,
     RegisterRequest,
     TokenResponse,
     UserResponse,
@@ -139,3 +141,22 @@ async def logout_all(
 ) -> None:
     await service.logout_all(current_user.id)
     _clear_auth_cookies(response)
+
+
+@router.post("/password-reset/request", status_code=status.HTTP_202_ACCEPTED)
+async def request_password_reset(
+    payload: PasswordResetRequest,
+    service: AuthService = Depends(get_auth_service),
+) -> None:
+    """202, sempre — não 200/404 conforme o e-mail exista ou não (anti-enumeration,
+    `docs/07-security.md` §10). O corpo da resposta nunca carrega o token; ver
+    `core/mail.py::MailSender`."""
+    await service.request_password_reset(payload.email)
+
+
+@router.post("/password-reset/confirm", status_code=status.HTTP_204_NO_CONTENT)
+async def confirm_password_reset(
+    payload: PasswordResetConfirmRequest,
+    service: AuthService = Depends(get_auth_service),
+) -> None:
+    await service.confirm_password_reset(payload.token, payload.new_password)

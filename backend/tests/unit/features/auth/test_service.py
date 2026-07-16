@@ -7,12 +7,18 @@ from src.core.security import hash_refresh_token, verify_password
 from src.features.auth.exceptions import (
     EmailAlreadyRegisteredError,
     InvalidCredentialsError,
+    InvalidPasswordResetTokenError,
     InvalidRefreshTokenError,
 )
 from src.features.auth.schemas import RegisterRequest
 from src.features.auth.service import AuthService
 
-from tests.unit.features.auth.fakes import FakeSessionRepository, FakeUserRepository
+from tests.unit.features.auth.fakes import (
+    FakeMailSender,
+    FakePasswordResetRepository,
+    FakeSessionRepository,
+    FakeUserRepository,
+)
 
 
 @pytest.fixture
@@ -26,10 +32,24 @@ def session_repo() -> FakeSessionRepository:
 
 
 @pytest.fixture
+def password_reset_repo() -> FakePasswordResetRepository:
+    return FakePasswordResetRepository()
+
+
+@pytest.fixture
+def mail_sender() -> FakeMailSender:
+    return FakeMailSender()
+
+
+@pytest.fixture
 def service(
-    user_repo: FakeUserRepository, session_repo: FakeSessionRepository, settings: Settings
+    user_repo: FakeUserRepository,
+    session_repo: FakeSessionRepository,
+    settings: Settings,
+    password_reset_repo: FakePasswordResetRepository,
+    mail_sender: FakeMailSender,
 ) -> AuthService:
-    return AuthService(user_repo, session_repo, settings)
+    return AuthService(user_repo, session_repo, settings, password_reset_repo, mail_sender)
 
 
 def _register_payload(email: str = "ada@example.com") -> RegisterRequest:
@@ -186,3 +206,125 @@ async def test_logout_all_revokes_every_active_session(
         await service.refresh(login_1.refresh_token)
     with pytest.raises(InvalidRefreshTokenError):
         await service.refresh(login_2.refresh_token)
+
+
+async def test_request_password_reset_creates_token_and_sends_mail(
+    service: AuthService,
+    password_reset_repo: FakePasswordResetRepository,
+    mail_sender: FakeMailSender,
+) -> None:
+    await service.register(_register_payload())
+
+    await service.request_password_reset("ada@example.com")
+
+    assert len(password_reset_repo.tokens) == 1
+    assert "ada@example.com" in mail_sender.sent_password_resets
+
+
+async def test_request_password_reset_is_silent_for_unknown_email(
+    service: AuthService,
+    password_reset_repo: FakePasswordResetRepository,
+    mail_sender: FakeMailSender,
+) -> None:
+    await service.request_password_reset("nobody@example.com")
+
+    assert password_reset_repo.tokens == {}
+    assert mail_sender.sent_password_resets == {}
+
+
+async def test_request_password_reset_invalidates_previous_token(
+    service: AuthService, password_reset_repo: FakePasswordResetRepository
+) -> None:
+    await service.register(_register_payload())
+    await service.request_password_reset("ada@example.com")
+    first_token = next(iter(password_reset_repo.tokens.values()))
+
+    await service.request_password_reset("ada@example.com")
+
+    assert first_token.used_at is not None
+    assert len(password_reset_repo.tokens) == 2
+
+
+async def test_confirm_password_reset_changes_password(
+    service: AuthService, user_repo: FakeUserRepository, mail_sender: FakeMailSender
+) -> None:
+    await service.register(_register_payload())
+    await service.request_password_reset("ada@example.com")
+    plain_token = mail_sender.sent_password_resets["ada@example.com"]
+
+    await service.confirm_password_reset(plain_token, "N3w!StrongPassw0rd")
+
+    updated_user = await user_repo.get_by_email("ada@example.com")
+    assert updated_user is not None
+    assert verify_password("N3w!StrongPassw0rd", updated_user.password_hash)
+    assert not verify_password("Str0ng!Passw0rd", updated_user.password_hash)
+
+
+async def test_confirm_password_reset_rejects_unknown_token(service: AuthService) -> None:
+    with pytest.raises(InvalidPasswordResetTokenError):
+        await service.confirm_password_reset("not-a-real-token", "N3w!StrongPassw0rd")
+
+
+async def test_confirm_password_reset_rejects_expired_token(
+    service: AuthService,
+    password_reset_repo: FakePasswordResetRepository,
+    mail_sender: FakeMailSender,
+) -> None:
+    await service.register(_register_payload())
+    await service.request_password_reset("ada@example.com")
+    plain_token = mail_sender.sent_password_resets["ada@example.com"]
+    token = next(iter(password_reset_repo.tokens.values()))
+    token.expires_at = datetime.now(UTC) - timedelta(minutes=1)
+
+    with pytest.raises(InvalidPasswordResetTokenError):
+        await service.confirm_password_reset(plain_token, "N3w!StrongPassw0rd")
+
+
+async def test_confirm_password_reset_rejects_reused_token(
+    service: AuthService, mail_sender: FakeMailSender
+) -> None:
+    await service.register(_register_payload())
+    await service.request_password_reset("ada@example.com")
+    plain_token = mail_sender.sent_password_resets["ada@example.com"]
+    await service.confirm_password_reset(plain_token, "N3w!StrongPassw0rd")
+
+    with pytest.raises(InvalidPasswordResetTokenError):
+        await service.confirm_password_reset(plain_token, "Another!Passw0rd2")
+
+
+async def test_confirm_password_reset_revokes_all_active_sessions(
+    service: AuthService, mail_sender: FakeMailSender
+) -> None:
+    await service.register(_register_payload())
+    login_1 = await service.login(
+        "ada@example.com", "Str0ng!Passw0rd", user_agent=None, ip_address=None
+    )
+    login_2 = await service.login(
+        "ada@example.com", "Str0ng!Passw0rd", user_agent=None, ip_address=None
+    )
+    await service.request_password_reset("ada@example.com")
+    plain_token = mail_sender.sent_password_resets["ada@example.com"]
+
+    await service.confirm_password_reset(plain_token, "N3w!StrongPassw0rd")
+
+    with pytest.raises(InvalidRefreshTokenError):
+        await service.refresh(login_1.refresh_token)
+    with pytest.raises(InvalidRefreshTokenError):
+        await service.refresh(login_2.refresh_token)
+
+
+async def test_confirm_password_reset_allows_login_with_new_password(
+    service: AuthService, mail_sender: FakeMailSender
+) -> None:
+    await service.register(_register_payload())
+    await service.request_password_reset("ada@example.com")
+    plain_token = mail_sender.sent_password_resets["ada@example.com"]
+
+    await service.confirm_password_reset(plain_token, "N3w!StrongPassw0rd")
+
+    with pytest.raises(InvalidCredentialsError):
+        await service.login("ada@example.com", "Str0ng!Passw0rd", user_agent=None, ip_address=None)
+    result = await service.login(
+        "ada@example.com", "N3w!StrongPassw0rd", user_agent=None, ip_address=None
+    )
+    assert result.access_token

@@ -14,11 +14,13 @@ from src.features.attachments.service import AttachmentService
 from src.features.issues.exceptions import IssueNotFoundError
 from src.features.issues.schemas import IssueCreateRequest
 from src.features.issues.service import IssueService
+from src.features.notifications.service import NotificationService
 from src.features.workspaces.models import WorkspaceMember, WorkspaceRole
 
 from tests.unit.features.attachments.fakes import FakeAttachmentRepository, FakeStorageProvider
 from tests.unit.features.issues.fakes import FakeIssueRepository
 from tests.unit.features.labels.fakes import FakeLabelRepository
+from tests.unit.features.notifications.fakes import FakeNotificationRepository
 from tests.unit.features.projects.fakes import FakeProjectRepository
 
 _ALLOWED_TYPES = frozenset({"image/png", "application/pdf"})
@@ -66,7 +68,11 @@ def service(
 
 async def _create_issue(issue_repo: FakeIssueRepository, workspace_id: uuid.UUID) -> uuid.UUID:
     issue_service = IssueService(
-        issue_repo, PermissionService(), FakeProjectRepository(), FakeLabelRepository()
+        issue_repo,
+        PermissionService(),
+        FakeProjectRepository(),
+        FakeLabelRepository(),
+        NotificationService(FakeNotificationRepository()),
     )
     issue = await issue_service.create(_user(), workspace_id, IssueCreateRequest(title="Issue"))
     return issue.id

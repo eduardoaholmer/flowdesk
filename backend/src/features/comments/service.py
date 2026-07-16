@@ -10,8 +10,10 @@ from src.features.comments.models import Comment
 from src.features.comments.repository import CommentRepositoryProtocol
 from src.features.comments.schemas import CommentCreateRequest, CommentUpdateRequest
 from src.features.issues.exceptions import IssueNotFoundError
-from src.features.issues.models import ActivityLog
+from src.features.issues.models import ActivityLog, Issue
 from src.features.issues.repository import IssueRepositoryProtocol
+from src.features.notifications.models import NotificationType
+from src.features.notifications.service import NotificationService
 from src.features.workspaces.models import WorkspaceMember
 from src.features.workspaces.repository import WorkspaceRepositoryProtocol
 
@@ -44,6 +46,7 @@ class CommentService:
         issue_repo: IssueRepositoryProtocol,
         workspace_repo: WorkspaceRepositoryProtocol,
         permission_service: PermissionService,
+        notification_service: NotificationService,
     ) -> None:
         """Recebe `PermissionService`, mesmo racional de `IssueService`:
         editar/excluir comentário tem posse-como-exceção (`Permission.COMMENT_UPDATE`/
@@ -56,11 +59,15 @@ class CommentService:
         comentário aparece na timeline da Issue-mãe, ver ADR-013).
         `workspace_repo` resolve os membros do workspace para detecção de
         menções (`_resolve_mentions`).
+        `notification_service` (Sprint 9) é o *service* público de outra
+        feature, não o repository — padrão explícito de `docs/02-architecture.md`
+        para efeito colateral entre features.
         """
         self._comment_repo = comment_repo
         self._issue_repo = issue_repo
         self._workspace_repo = workspace_repo
         self._permission_service = permission_service
+        self._notification_service = notification_service
 
     async def create(
         self,
@@ -69,7 +76,7 @@ class CommentService:
         issue_id: uuid.UUID,
         payload: CommentCreateRequest,
     ) -> Comment:
-        await self._get_active_issue(workspace_id, issue_id)
+        issue = await self._get_active_issue(workspace_id, issue_id)
 
         comment = await self._comment_repo.create(
             Comment(
@@ -83,6 +90,7 @@ class CommentService:
         if mentioned_ids:
             await self._comment_repo.add_mentions(comment.id, mentioned_ids)
         await self._comment_repo.refresh_mentions(comment)
+        await self._notify_mentions(current_user, issue, comment, mentioned_ids)
 
         await self._record_activity(
             workspace_id,
@@ -150,9 +158,11 @@ class CommentService:
             old_value=_preview(comment.body),
         )
 
-    async def _get_active_issue(self, workspace_id: uuid.UUID, issue_id: uuid.UUID) -> None:
-        if await self._issue_repo.get_by_id(workspace_id, issue_id) is None:
+    async def _get_active_issue(self, workspace_id: uuid.UUID, issue_id: uuid.UUID) -> Issue:
+        issue = await self._issue_repo.get_by_id(workspace_id, issue_id)
+        if issue is None:
             raise IssueNotFoundError()
+        return issue
 
     async def _get_active_comment(self, workspace_id: uuid.UUID, comment_id: uuid.UUID) -> Comment:
         comment = await self._comment_repo.get_by_id(workspace_id, comment_id)
@@ -173,6 +183,32 @@ class CommentService:
             for member in members
             if member.user.email.split("@", 1)[0].lower() in tokens
         ]
+
+    async def _notify_mentions(
+        self,
+        current_user: CurrentUser,
+        issue: Issue,
+        comment: Comment,
+        mentioned_ids: list[uuid.UUID],
+    ) -> None:
+        """Não notifica o próprio autor caso ele se auto-mencione — o `CommentMention`
+        continua registrado normalmente (§8.4 `docs/03-database.md`), só a notificação
+        em si é pulada, mesmo racional de `IssueService._notify_status_change`."""
+        for mentioned_user_id in mentioned_ids:
+            if mentioned_user_id == current_user.id:
+                continue
+            await self._notification_service.notify(
+                user_id=mentioned_user_id,
+                workspace_id=issue.workspace_id,
+                notification_type=NotificationType.MENTION,
+                payload={
+                    "issue_id": str(issue.id),
+                    "issue_identifier": issue.identifier,
+                    "comment_id": str(comment.id),
+                    "actor_name": current_user.name,
+                    "preview": _preview(comment.body),
+                },
+            )
 
     async def _record_activity(
         self,

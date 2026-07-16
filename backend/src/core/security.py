@@ -100,5 +100,16 @@ def hash_invitation_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
+def generate_password_reset_token() -> str:
+    """Mesmo formato de `generate_invitation_token`/`generate_refresh_token` (32
+    bytes urlsafe) — função própria pelo mesmo racional: não acoplar semânticas de
+    expiração/domínio distintas entre si."""
+    return secrets.token_urlsafe(32)
+
+
+def hash_password_reset_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
 def generate_csrf_token() -> str:
     return secrets.token_urlsafe(32)

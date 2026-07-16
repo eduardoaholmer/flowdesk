@@ -29,6 +29,7 @@ from src.features.auth.router import router as auth_router
 from src.features.comments.router import router as comments_router
 from src.features.issues.router import router as issues_router
 from src.features.labels.router import router as labels_router
+from src.features.notifications.router import router as notifications_router
 from src.features.projects.router import router as projects_router
 from src.features.users.router import router as users_router
 from src.features.workspaces.router import invitations_router
@@ -91,6 +92,7 @@ api_router.include_router(issues_router)
 api_router.include_router(labels_router)
 api_router.include_router(comments_router)
 api_router.include_router(attachments_router)
+api_router.include_router(notifications_router)
 app.include_router(api_router)
 
 

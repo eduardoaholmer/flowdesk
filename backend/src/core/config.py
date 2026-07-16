@@ -51,6 +51,10 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 15
     refresh_token_expire_days: int = 30
     invitation_expire_days: int = 7
+    # Curta de propósito (RF-AUTH-06): bem menor que refresh (30 dias) ou convite
+    # (7 dias) — a janela de exposição de um token que dá controle total da conta
+    # deve ser a menor praticável (docs/07-security.md).
+    password_reset_token_expire_minutes: int = 30
 
     # Armazenamento local de anexos (Sprint 8) — `core/storage.py::StorageProvider`
     # é o ponto de extensão para trocar por S3/equivalente sem mudar o contrato

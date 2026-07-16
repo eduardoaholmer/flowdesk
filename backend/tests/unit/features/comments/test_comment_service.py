@@ -9,11 +9,14 @@ from src.features.comments.service import CommentService
 from src.features.issues.exceptions import IssueNotFoundError
 from src.features.issues.schemas import IssueCreateRequest
 from src.features.issues.service import IssueService
+from src.features.notifications.models import NotificationType
+from src.features.notifications.service import NotificationService
 from src.features.workspaces.models import WorkspaceMember, WorkspaceRole
 
 from tests.unit.features.comments.fakes import FakeCommentRepository
 from tests.unit.features.issues.fakes import FakeIssueRepository
 from tests.unit.features.labels.fakes import FakeLabelRepository
+from tests.unit.features.notifications.fakes import FakeNotificationRepository
 from tests.unit.features.projects.fakes import FakeProjectRepository
 from tests.unit.features.workspaces.fakes import FakeWorkspaceRepository
 
@@ -47,17 +50,34 @@ def workspace_repo() -> FakeWorkspaceRepository:
 
 
 @pytest.fixture
+def notification_repo() -> FakeNotificationRepository:
+    return FakeNotificationRepository()
+
+
+@pytest.fixture
+def notification_service(notification_repo: FakeNotificationRepository) -> NotificationService:
+    return NotificationService(notification_repo)
+
+
+@pytest.fixture
 def service(
     comment_repo: FakeCommentRepository,
     issue_repo: FakeIssueRepository,
     workspace_repo: FakeWorkspaceRepository,
+    notification_service: NotificationService,
 ) -> CommentService:
-    return CommentService(comment_repo, issue_repo, workspace_repo, PermissionService())
+    return CommentService(
+        comment_repo, issue_repo, workspace_repo, PermissionService(), notification_service
+    )
 
 
 async def _create_issue(issue_repo: FakeIssueRepository, workspace_id: uuid.UUID) -> uuid.UUID:
     issue_service = IssueService(
-        issue_repo, PermissionService(), FakeProjectRepository(), FakeLabelRepository()
+        issue_repo,
+        PermissionService(),
+        FakeProjectRepository(),
+        FakeLabelRepository(),
+        NotificationService(FakeNotificationRepository()),
     )
     issue = await issue_service.create(_user(), workspace_id, IssueCreateRequest(title="Issue"))
     return issue.id
@@ -112,6 +132,52 @@ async def test_create_detects_and_stores_mentions(
     )
 
     assert comment.mentioned_user_ids == [mentioned_user_id]
+
+
+async def test_create_notifies_mentioned_users(
+    service: CommentService,
+    issue_repo: FakeIssueRepository,
+    workspace_repo: FakeWorkspaceRepository,
+    notification_repo: FakeNotificationRepository,
+) -> None:
+    workspace_id = uuid.uuid4()
+    issue_id = await _create_issue(issue_repo, workspace_id)
+    mentioned_user_id = uuid.uuid4()
+    _add_member(workspace_repo, workspace_id, mentioned_user_id, "grace@example.com")
+
+    comment = await service.create(
+        _user(),
+        workspace_id,
+        issue_id,
+        CommentCreateRequest(body="Olá @grace, pode revisar?"),
+    )
+
+    notifications = list(notification_repo.notifications.values())
+    assert len(notifications) == 1
+    assert notifications[0].user_id == mentioned_user_id
+    assert notifications[0].type == NotificationType.MENTION
+    assert notifications[0].payload["comment_id"] == str(comment.id)
+
+
+async def test_create_does_not_notify_self_mention(
+    service: CommentService,
+    issue_repo: FakeIssueRepository,
+    workspace_repo: FakeWorkspaceRepository,
+    notification_repo: FakeNotificationRepository,
+) -> None:
+    workspace_id = uuid.uuid4()
+    issue_id = await _create_issue(issue_repo, workspace_id)
+    author = _user(email="ada@example.com")
+    _add_member(workspace_repo, workspace_id, author.id, author.email)
+
+    await service.create(
+        author,
+        workspace_id,
+        issue_id,
+        CommentCreateRequest(body="Nota para @ada mesma"),
+    )
+
+    assert notification_repo.notifications == {}
 
 
 async def test_create_ignores_mention_with_no_matching_member(

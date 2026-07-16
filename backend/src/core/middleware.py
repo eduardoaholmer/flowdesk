@@ -19,9 +19,15 @@ REQUEST_ID_HEADER = "X-Request-ID"
 _API_PREFIX = "/api/v1"
 _LOGIN_REGISTER_PATHS = {f"{_API_PREFIX}/auth/login", f"{_API_PREFIX}/auth/register"}
 _REFRESH_PATH = f"{_API_PREFIX}/auth/refresh"
+_PASSWORD_RESET_PATHS = {
+    f"{_API_PREFIX}/auth/password-reset/request",
+    f"{_API_PREFIX}/auth/password-reset/confirm",
+}
 _LOGIN_REGISTER_LIMIT = 5
 _REFRESH_LIMIT = 10
+_PASSWORD_RESET_LIMIT = 5
 _GENERAL_LIMIT = 300
+_UNAUTHENTICATED_LIMIT = 60
 _WINDOW_SECONDS = 60
 
 
@@ -117,13 +123,20 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     (docs/06-backend.md §5, docs/07-security.md §6):
 
     - `/auth/login`, `/auth/register`: 5/min por IP (mitiga força bruta/enumeration).
+    - `/auth/password-reset/request`, `/auth/password-reset/confirm`: 5/min por IP
+      — mesmo racional/limite de login-register: `request` sem limite permitiria
+      encher a tabela de tokens e sondar existência de e-mail por timing;
+      `confirm` sem limite permitiria tentar adivinhar um token (RF-AUTH-06).
     - `/auth/refresh`: 10/min pela identidade da sessão (hash do cookie de refresh
       — a identidade do usuário só é conhecida após consulta ao banco, então
       chegar lá primeiro derrotaria o propósito de limitar antes de tocar o banco;
       ver ADR-008), com IP como fallback se o cookie não vier.
-    - Demais rotas de `/api/v1`: 300/min por usuário, quando um Bearer decodificável
-      está presente (best-effort — um token inválido aqui simplesmente não limita,
-      a rejeição de fato é responsabilidade de `get_current_user`).
+    - Demais rotas de `/api/v1` com Bearer decodificável: 300/min por usuário.
+    - Demais rotas de `/api/v1` sem Bearer decodificável (ausente, malformado,
+      expirado): 60/min por IP — antes esta chamada simplesmente não era limitada
+      (a rejeição ficava só por conta de `get_current_user`), o que deixava
+      qualquer rota autenticada sondável/floodável sem token nenhum; hardening
+      de rate limit por rota, Sprint 9.
 
     Responde 429 diretamente (não levanta `RateLimitedError`): exceções levantadas
     dentro de um `BaseHTTPMiddleware` não passam de forma confiável pelo
@@ -157,6 +170,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if request.method == "POST" and path in _LOGIN_REGISTER_PATHS:
             return f"ip:{client_ip}:{path}", _LOGIN_REGISTER_LIMIT
 
+        if request.method == "POST" and path in _PASSWORD_RESET_PATHS:
+            return f"ip:{client_ip}:{path}", _PASSWORD_RESET_LIMIT
+
         if request.method == "POST" and path == _REFRESH_PATH:
             refresh_cookie = request.cookies.get("refresh_token")
             identity = hash_refresh_token(refresh_cookie) if refresh_cookie else client_ip
@@ -169,7 +185,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 try:
                     claims = decode_access_token(token, get_settings())
                 except InvalidTokenError:
-                    return None
+                    return f"ip:{client_ip}:unauthenticated", _UNAUTHENTICATED_LIMIT
                 return f"user:{claims.sub}", _GENERAL_LIMIT
+            return f"ip:{client_ip}:unauthenticated", _UNAUTHENTICATED_LIMIT
 
         return None

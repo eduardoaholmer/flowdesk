@@ -7,13 +7,14 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from src.features.auth.models import RefreshToken, Session, User
+from src.features.auth.models import PasswordResetToken, RefreshToken, Session, User
 
 
 class UserRepositoryProtocol(Protocol):
     async def create(self, user: User) -> User: ...
     async def get_by_id(self, user_id: uuid.UUID) -> User | None: ...
     async def get_by_email(self, email: str) -> User | None: ...
+    async def update_password(self, user_id: uuid.UUID, password_hash: str) -> None: ...
 
 
 class UserRepository:
@@ -36,6 +37,11 @@ class UserRepository:
         )
         result: User | None = await self._session.scalar(stmt)
         return result
+
+    async def update_password(self, user_id: uuid.UUID, password_hash: str) -> None:
+        await self._session.execute(
+            update(User).where(User.id == user_id).values(password_hash=password_hash)
+        )
 
 
 class SessionRepositoryProtocol(Protocol):
@@ -109,4 +115,47 @@ class SessionRepository:
             update(RefreshToken)
             .where(RefreshToken.id == token_id)
             .values(revoked_at=datetime.now(UTC), replaced_by_id=replaced_by_id)
+        )
+
+
+class PasswordResetRepositoryProtocol(Protocol):
+    async def create(self, token: PasswordResetToken) -> PasswordResetToken: ...
+    async def get_by_token_hash(self, token_hash: str) -> PasswordResetToken | None: ...
+    async def mark_used(self, token_id: uuid.UUID) -> None: ...
+    async def invalidate_active_for_user(self, user_id: uuid.UUID) -> None: ...
+
+
+class PasswordResetRepository:
+    """Agregado próprio, não um sub-recurso de `UserRepository` — mesmo racional de
+    `InvitationRepository` viver separado de `WorkspaceRepository` (`CLAUDE.md` §6).
+    """
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def create(self, token: PasswordResetToken) -> PasswordResetToken:
+        self._session.add(token)
+        await self._session.flush()
+        return token
+
+    async def get_by_token_hash(self, token_hash: str) -> PasswordResetToken | None:
+        stmt = select(PasswordResetToken).where(PasswordResetToken.token_hash == token_hash)
+        result: PasswordResetToken | None = await self._session.scalar(stmt)
+        return result
+
+    async def mark_used(self, token_id: uuid.UUID) -> None:
+        await self._session.execute(
+            update(PasswordResetToken)
+            .where(PasswordResetToken.id == token_id)
+            .values(used_at=datetime.now(UTC))
+        )
+
+    async def invalidate_active_for_user(self, user_id: uuid.UUID) -> None:
+        """Marca como usado qualquer token ainda ativo do usuário antes de emitir um
+        novo — evita duas solicitações consecutivas deixarem dois tokens válidos
+        simultâneos para a mesma conta."""
+        await self._session.execute(
+            update(PasswordResetToken)
+            .where(PasswordResetToken.user_id == user_id, PasswordResetToken.used_at.is_(None))
+            .values(used_at=datetime.now(UTC))
         )

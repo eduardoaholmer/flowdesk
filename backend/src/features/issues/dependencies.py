@@ -6,6 +6,8 @@ from src.core.db import get_db_session
 from src.features.issues.repository import IssueRepository, IssueRepositoryProtocol
 from src.features.issues.service import IssueService
 from src.features.labels.repository import LabelRepository, LabelRepositoryProtocol
+from src.features.notifications.dependencies import get_notification_service
+from src.features.notifications.service import NotificationService
 from src.features.projects.repository import ProjectRepository, ProjectRepositoryProtocol
 
 
@@ -30,5 +32,8 @@ def get_issue_service(
     permission_service: PermissionService = Depends(get_permission_service),
     project_repo: ProjectRepositoryProtocol = Depends(get_issue_project_repository),
     label_repo: LabelRepositoryProtocol = Depends(get_issue_label_repository),
+    notification_service: NotificationService = Depends(get_notification_service),
 ) -> IssueService:
-    return IssueService(issue_repo, permission_service, project_repo, label_repo)
+    return IssueService(
+        issue_repo, permission_service, project_repo, label_repo, notification_service
+    )

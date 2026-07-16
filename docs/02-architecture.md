@@ -202,3 +202,4 @@ sequenceDiagram
 | ADR-014 | Sprint 8.5 (Frontend Foundation): tokens como camada de referência, primeiro store de UI cliente-only, `teams/` deliberadamente não criado (ADR-012) |
 | ADR-015 | Sprint 8.6 (Architecture Hardening): barrels/múltiplos aliases revertidos por já contradizerem decisão documentada; route builder único, code-splitting por rota |
 | ADR-016 | Sprint 8.7 (Production Readiness & Observability): readiness check extensível, envelope de erro para exceções não-domínio, `user_id`/`environment` em todo log, security headers, Docker multi-stage, sem métricas/gunicorn/k8s especulativos |
+| ADR-017 | Sprint 9 fase 1 (RF-AUTH-06 + rate limit por rota): `MailSender` (nunca devolve token de reset pela API, anti-enumeration), uso único + vida curta de `PasswordResetToken`, novo tier de rate limit para tráfego não-autenticado em `/api/v1/*` |

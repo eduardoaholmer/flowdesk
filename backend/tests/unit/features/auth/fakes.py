@@ -2,7 +2,7 @@ import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime
 
-from src.features.auth.models import RefreshToken, Session, User
+from src.features.auth.models import PasswordResetToken, RefreshToken, Session, User
 from uuid6 import uuid7
 
 
@@ -34,6 +34,11 @@ class FakeUserRepository:
             if user.email.lower() == email.lower() and user.deleted_at is None:
                 return user
         return None
+
+    async def update_password(self, user_id: uuid.UUID, password_hash: str) -> None:
+        user = self.users.get(user_id)
+        if user is not None:
+            user.password_hash = password_hash
 
 
 class FakeSessionRepository:
@@ -79,3 +84,43 @@ class FakeSessionRepository:
         if token is not None:
             token.revoked_at = datetime.now(UTC)
             token.replaced_by_id = replaced_by_id
+
+
+class FakePasswordResetRepository:
+    def __init__(self) -> None:
+        self.tokens: dict[uuid.UUID, PasswordResetToken] = {}
+
+    async def create(self, token: PasswordResetToken) -> PasswordResetToken:
+        if token.id is None:
+            token.id = uuid7()
+        self.tokens[token.id] = token
+        return token
+
+    async def get_by_token_hash(self, token_hash: str) -> PasswordResetToken | None:
+        for token in self.tokens.values():
+            if token.token_hash == token_hash:
+                return token
+        return None
+
+    async def mark_used(self, token_id: uuid.UUID) -> None:
+        token = self.tokens.get(token_id)
+        if token is not None:
+            token.used_at = datetime.now(UTC)
+
+    async def invalidate_active_for_user(self, user_id: uuid.UUID) -> None:
+        now = datetime.now(UTC)
+        for token in self.tokens.values():
+            if token.user_id == user_id and token.used_at is None:
+                token.used_at = now
+
+
+class FakeMailSender:
+    """Captura o token em texto puro para asserção — o teste, ao contrário de um
+    chamador HTTP real, tem acesso legítimo a esse valor (`core/mail.py`).
+    """
+
+    def __init__(self) -> None:
+        self.sent_password_resets: dict[str, str] = {}
+
+    async def send_password_reset(self, *, email: str, token: str) -> None:
+        self.sent_password_resets[email] = token

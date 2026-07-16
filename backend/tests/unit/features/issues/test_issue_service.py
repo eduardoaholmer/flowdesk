@@ -19,12 +19,15 @@ from src.features.issues.schemas import IssueCreateRequest, IssueUpdateRequest
 from src.features.issues.service import IssueService
 from src.features.labels.exceptions import LabelNotFoundError
 from src.features.labels.models import Label
+from src.features.notifications.models import NotificationType
+from src.features.notifications.service import NotificationService
 from src.features.projects.exceptions import ProjectNotFoundError
 from src.features.projects.models import Project
 from src.features.workspaces.models import WorkspaceMember, WorkspaceRole
 
 from tests.unit.features.issues.fakes import FakeIssueRepository
 from tests.unit.features.labels.fakes import FakeLabelRepository
+from tests.unit.features.notifications.fakes import FakeNotificationRepository
 from tests.unit.features.projects.fakes import FakeProjectRepository
 
 # Autorização por papel para create/read/update é resolvida pelo router via
@@ -49,12 +52,25 @@ def label_repo() -> FakeLabelRepository:
 
 
 @pytest.fixture
+def notification_repo() -> FakeNotificationRepository:
+    return FakeNotificationRepository()
+
+
+@pytest.fixture
+def notification_service(notification_repo: FakeNotificationRepository) -> NotificationService:
+    return NotificationService(notification_repo)
+
+
+@pytest.fixture
 def service(
     issue_repo: FakeIssueRepository,
     project_repo: FakeProjectRepository,
     label_repo: FakeLabelRepository,
+    notification_service: NotificationService,
 ) -> IssueService:
-    return IssueService(issue_repo, PermissionService(), project_repo, label_repo)
+    return IssueService(
+        issue_repo, PermissionService(), project_repo, label_repo, notification_service
+    )
 
 
 def _user(email: str = "ada@example.com") -> CurrentUser:
@@ -178,6 +194,58 @@ async def test_update_changes_status_and_records_status_changed_activity(
     assert updated.status == IssueStatus.IN_PROGRESS
     assert updated.version == 2
     assert any(entry.action == "issue.status_changed" for entry in issue_repo.activity_log)
+
+
+async def test_update_status_change_notifies_assignee(
+    service: IssueService, notification_repo: FakeNotificationRepository
+) -> None:
+    workspace_id = _workspace_id()
+    actor = _user()
+    assignee_id = uuid.uuid4()
+    issue = await service.create(
+        actor, workspace_id, IssueCreateRequest(title="Issue", assignee_id=assignee_id)
+    )
+
+    await service.update(
+        actor, workspace_id, issue.id, IssueUpdateRequest(status=IssueStatus.IN_PROGRESS)
+    )
+
+    notifications = list(notification_repo.notifications.values())
+    assert len(notifications) == 1
+    assert notifications[0].user_id == assignee_id
+    assert notifications[0].type == NotificationType.STATUS_CHANGE
+    assert notifications[0].payload["issue_identifier"] == issue.identifier
+    assert notifications[0].payload["new_status"] == IssueStatus.IN_PROGRESS.value
+
+
+async def test_update_status_change_does_not_notify_when_unassigned(
+    service: IssueService, notification_repo: FakeNotificationRepository
+) -> None:
+    workspace_id = _workspace_id()
+    actor = _user()
+    issue = await service.create(actor, workspace_id, IssueCreateRequest(title="Issue"))
+
+    await service.update(
+        actor, workspace_id, issue.id, IssueUpdateRequest(status=IssueStatus.IN_PROGRESS)
+    )
+
+    assert notification_repo.notifications == {}
+
+
+async def test_update_status_change_does_not_notify_self_assigned_actor(
+    service: IssueService, notification_repo: FakeNotificationRepository
+) -> None:
+    workspace_id = _workspace_id()
+    actor = _user()
+    issue = await service.create(
+        actor, workspace_id, IssueCreateRequest(title="Issue", assignee_id=actor.id)
+    )
+
+    await service.update(
+        actor, workspace_id, issue.id, IssueUpdateRequest(status=IssueStatus.IN_PROGRESS)
+    )
+
+    assert notification_repo.notifications == {}
 
 
 async def test_update_with_no_changes_does_not_record_activity_or_bump_version(

@@ -15,6 +15,8 @@ from src.features.issues.schemas import IssueCreateRequest, IssueUpdateRequest
 from src.features.labels.exceptions import LabelNotFoundError
 from src.features.labels.models import Label
 from src.features.labels.repository import LabelRepositoryProtocol
+from src.features.notifications.models import NotificationType
+from src.features.notifications.service import NotificationService
 from src.features.projects.exceptions import ProjectNotFoundError
 from src.features.projects.repository import ProjectRepositoryProtocol
 from src.features.workspaces.models import WorkspaceMember
@@ -27,6 +29,7 @@ class IssueService:
         permission_service: PermissionService,
         project_repo: ProjectRepositoryProtocol,
         label_repo: LabelRepositoryProtocol,
+        notification_service: NotificationService,
     ) -> None:
         """Recebe `PermissionService`, ao contrário de `ProjectService`: excluir
         uma issue tem posse-como-exceção (`Permission.ISSUE_DELETE` está em
@@ -44,11 +47,16 @@ class IssueService:
         `features/issues/models.py`), mas validar que o `label_id` recebido
         existe e pertence ao mesmo workspace é responsabilidade do agregado
         Label, não de Issue.
+
+        `notification_service` (Sprint 9) notifica o responsável em uma
+        mudança de status — *service* público de outra feature, não o
+        repository (`docs/02-architecture.md`).
         """
         self._issue_repo = issue_repo
         self._permission_service = permission_service
         self._project_repo = project_repo
         self._label_repo = label_repo
+        self._notification_service = notification_service
 
     async def create(
         self, current_user: CurrentUser, workspace_id: uuid.UUID, payload: IssueCreateRequest
@@ -240,6 +248,7 @@ class IssueService:
                 old_value=issue.status.value,
                 new_value=payload.status.value,
             )
+            await self._notify_status_change(current_user, issue, payload.status)
             issue.status = payload.status
             changed = True
 
@@ -328,6 +337,26 @@ class IssueService:
         project = await self._project_repo.get_by_id(workspace_id, project_id)
         if project is None:
             raise ProjectNotFoundError()
+
+    async def _notify_status_change(
+        self, current_user: CurrentUser, issue: Issue, new_status: IssueStatus
+    ) -> None:
+        """Sem responsável, ou o próprio responsável mudou o status: nada a notificar
+        (mesmo racional de `CommentService._notify_mentions` para auto-menção)."""
+        if issue.assignee_id is None or issue.assignee_id == current_user.id:
+            return
+        await self._notification_service.notify(
+            user_id=issue.assignee_id,
+            workspace_id=issue.workspace_id,
+            notification_type=NotificationType.STATUS_CHANGE,
+            payload={
+                "issue_id": str(issue.id),
+                "issue_identifier": issue.identifier,
+                "actor_name": current_user.name,
+                "old_status": issue.status.value,
+                "new_status": new_status.value,
+            },
+        )
 
     async def _record_activity(
         self,

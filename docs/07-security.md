@@ -36,8 +36,10 @@ Aplica-se apenas a `POST /auth/refresh` (única rota que depende de cookie para 
 - Implementado via Redis (janela deslizante), no middleware (`docs/06-backend.md` §5), antes de qualquer lógica de negócio ser executada — uma requisição limitada nunca chega a tocar o banco.
 - Limites diferenciados por sensibilidade de rota:
   - `/auth/login`, `/auth/register`: 5 requisições/minuto por IP (mitiga força bruta e enumeration de e-mail).
+  - `/auth/password-reset/request`, `/auth/password-reset/confirm`: 5 requisições/minuto por IP (Sprint 9, ADR-017) — mesmo tier de login/register: `request` sem limite permitiria esgotar a tabela de tokens e sondar existência de e-mail por timing; `confirm` sem limite permitiria tentativas de adivinhar um token (mitigado principalmente pela entropia do token em si — 256 bits —, rate limit é defesa em profundidade).
   - `/auth/refresh`: 10 requisições/minuto pela identidade da sessão (hash do próprio cookie `refresh_token`), com IP como fallback se o cookie não vier. Não é "por usuário" na prática: a identidade do usuário só é conhecida após consultar o banco, o que contradiz checar o limite *antes* de qualquer acesso a dado (ver ADR-008).
-  - API em geral (autenticado): 300 requisições/minuto por usuário — generoso o suficiente para uso normal intenso (múltiplas abas, polling), restritivo o suficiente para conter um cliente com bug em loop.
+  - API em geral (autenticado, Bearer válido): 300 requisições/minuto por usuário — generoso o suficiente para uso normal intenso (múltiplas abas, polling), restritivo o suficiente para conter um cliente com bug em loop.
+  - API em geral (sem Bearer válido — ausente, malformado ou expirado): 60 requisições/minuto por IP (Sprint 9, ADR-017) — antes desse tier existir, essa classe de requisição não era limitada de jeito nenhum (só a rejeição de `get_current_user` a barrava, sem custo de rate limit), deixando qualquer rota autenticada sondável/floodável sem token nenhum.
 - Resposta `429` inclui header `Retry-After`.
 
 ## 7. Hash de senhas
@@ -349,3 +351,14 @@ A mesma checagem em duas etapas (permissão base via `Depends`, regra contextual
 | `Strict-Transport-Security` | `max-age=63072000; includeSubDomains` | **Só em produção** (`ENVIRONMENT=production`) — sob HTTP puro de desenvolvimento local, o header não tem efeito protetivo e sinalizaria uma garantia que o ambiente não cumpre. |
 
 Nenhum destes é configurável por variável de ambiente — são invariantes de segurança, não parâmetro de produto (`CLAUDE.md` §1.6).
+
+## 15. Recuperação de senha (Sprint 9, RF-AUTH-06)
+
+`POST /auth/password-reset/request` → `POST /auth/password-reset/confirm` (ADR-017 em `docs/09-decision-log.md` para o racional completo):
+
+- **Anti-enumeration por padrão, não por exceção** (mesmo princípio do §10): `request` sempre responde `202`, exista ou não o e-mail informado — o único jeito de um chamador diferenciar os dois casos seria observar se um e-mail chegou, o que a API nunca confirma.
+- **Token nunca trafega pela resposta HTTP** — diferente do token de convite de workspace (`docs/09-decision-log.md` ADR-009), que é devolvido em texto puro porque quem chama já é o dono legítimo da ação. Aqui o chamador de `request` é não-autenticado por definição (é o próprio mecanismo de recuperar acesso), então devolver o token seria um account takeover trivial para qualquer e-mail conhecido/adivinhado. A entrega é responsabilidade de `core/mail.py::MailSender` — hoje um placeholder de desenvolvimento (`LoggingMailSender`) que loga só um preview truncado do token, nunca o valor completo (`CLAUDE.md` §9).
+- **Token opaco de 256 bits, hash SHA-256 em repouso** — mesmo padrão de `RefreshToken`/`Invitation` (`token_hash` único, nunca o valor em texto puro persistido).
+- **Uso único, vida curta**: `used_at` marcado na confirmação (não uma cadeia de rotação — não há "próximo" token aqui); expira em `PASSWORD_RESET_TOKEN_EXPIRE_MINUTES` (default 30 min, bem menor que o refresh token de 30 dias ou o convite de 7 dias — a janela de exposição de um token que dá controle total da conta deve ser a menor praticável). Solicitar um novo token invalida qualquer token ativo anterior do mesmo usuário.
+- **Confirmar reset revoga todas as sessões ativas** — mesmo efeito de `POST /auth/logout-all`: uma senha comprometida o bastante para justificar reset também compromete qualquer sessão já aberta com a senha antiga. Isso invalida refresh tokens; um access token JWT já emitido continua válido até sua expiração natural (15 min) — não há blocklist de `jti` ainda (ADR-005/008, melhoria futura não bloqueante).
+- **Rate limit dedicado**: ambos os endpoints no mesmo tier de `login`/`register` (5/min por IP, §6).

@@ -45,6 +45,20 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class PasswordResetRequest(BaseModel):
+    email: EmailStr
+
+
+class PasswordResetConfirmRequest(BaseModel):
+    token: str
+    new_password: str
+
+    @field_validator("new_password")
+    @classmethod
+    def _validate_new_password(cls, value: str) -> str:
+        return _validate_strong_password(value)
+
+
 class UserResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

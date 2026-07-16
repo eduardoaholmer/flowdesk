@@ -27,6 +27,7 @@ Tabelas **sem** soft delete (por design, não por omissão):
 - `notifications` — descartável (delete físico ou expiração), não tem valor histórico que justifique soft delete.
 - `issue_labels` — tabela de associação pura (N:N); a relação existe ou não existe, não tem estado "excluído logicamente". `ON DELETE CASCADE` cuida da limpeza se `issues`/`labels` forem removidos fisicamente.
 - `sessions`, `refresh_tokens` — usam `revoked_at`, semanticamente diferente de soft delete (é um estado de segurança, não uma remoção lógica de registro). Ver `docs/09-decision-log.md` para a entidade `Session`, introduzida na Sprint 2 entre `User` e `RefreshToken`.
+- `password_reset_tokens` (Sprint 9, RF-AUTH-06) — mesmo racional de `refresh_tokens`, mas uso único (`used_at`, não uma cadeia de rotação) e vida curta (`Settings.password_reset_token_expire_minutes`, default 30 min); descartável, sem valor histórico após expirar/usar (ADR-017).
 - `team_issue_counters` — tabela de contador interno, sem ciclo de vida de "exclusão" próprio (existe e é atualizada enquanto o time existir).
 
 Toda query de leitura em repository filtra `deleted_at IS NULL` por padrão (reforçado em `CLAUDE.md` §6).
@@ -92,6 +93,10 @@ O pedido explícito do usuário ao final da Sprint 7 apontou esta sprint para Co
 - **`LabelActivityLog`** (`label_activity_logs`, migration `f5044a958f94`) — auditoria do ciclo de vida do próprio `Label` (criação/atualização/exclusão), mesmo formato de `WorkspaceActivityLog`/`ProjectActivityLog` (`metadata JSONB`, append-only). Tabela própria em vez de reaproveitar `ActivityLog` (`issue_id` obrigatório) pelo mesmo racional já aplicado a `WorkspaceActivityLog` (ADR-009) — eventos de ciclo de vida de um Label não pertencem a nenhuma Issue; só quando um Label é *aplicado/removido de uma Issue* é que o evento (`label.added`/`label.removed`) vai para a `ActivityLog` da Issue.
 - **`attachments.storage_provider`** (`string`, `NOT NULL`, migration `f42ae23f3ec0`) — adicionada `NOT NULL` direto com `server_default` temporário (sem *expand → backfill → contract*, §10), mesma justificativa de `projects.slug`/`created_by` na Sprint 6 (ADR-011): `attachments` nunca teve linha em produção, a feature existia só como schema+repository desde a Sprint 2, sem service/router até esta sprint. Identifica qual `StorageProvider` (`core/storage.py`) persistiu o arquivo — `"local"` nesta sprint (disco local sob `var/uploads/`), abrindo caminho para um provider `"s3"` coexistir com dados antigos no futuro sem migração retroativa.
 - **`Comment`/`Label`/`Attachment` em si não são novas tabelas** — existiam desde a `create_comments`/`create_labels`/`create_attachments` da Sprint 2 (§10), só sem service/router/schemas até esta sprint (mesmo padrão "schema dormant" já visto em `Team`/`WorkflowState`, ADR-012).
+
+### 6.5 Adições da Sprint 9 (Notificações, Recuperação de Senha, Rate Limiting)
+
+- **`PasswordResetToken`** (`password_reset_tokens`, migration `f4c36aa63332`) — nova tabela, RF-AUTH-06. Uso único (`used_at`, não uma cadeia de rotação como `RefreshToken.replaced_by_id`) e vida curta (`Settings.password_reset_token_expire_minutes`, default 30 min — bem menor que `refresh_tokens`/`invitations`, ver ADR-017). `user_id` FK `RESTRICT` para `users`, `token_hash` único (SHA-256 do token opaco, mesmo padrão de `refresh_tokens`/`invitations`).
 
 ```mermaid
 erDiagram
@@ -423,6 +428,7 @@ Desde a Sprint 7 (ADR-012 em `docs/09-decision-log.md`), `Issue` não depende ma
 | `users` | único funcional em `lower(email)` | login case-insensitive sem duplicar conta |
 | `sessions` | `(user_id, revoked_at)` | "revogar todas as sessões do usuário" |
 | `refresh_tokens` | `(session_id)` | localizar o token ativo de uma sessão |
+| `password_reset_tokens` | `(user_id)` | invalidar tokens ativos anteriores ao emitir um novo (Sprint 9) |
 | `workspace_members` | `(user_id)` | "listar meus workspaces" |
 | `workspace_members` | `(workspace_id, deleted_at)` | "listar membros ativos do workspace" |
 | `projects` | `(workspace_id, deleted_at)` | listagem de projetos do workspace |
@@ -490,5 +496,9 @@ Mais 4 migrations da Sprint 8, encadeadas sobre a 17 (`c573b41b553c`), todas adi
 19. `a7c1d9f0b2e4` — `add_description_to_labels`: coluna nova, nullable.
 20. `f5044a958f94` — `create_label_activity_logs`: nova tabela + índice `(label_id, created_at)`.
 21. `3113f34f2a20` — `create_comment_mentions`: nova tabela (chave primária composta, sem coluna `id` própria).
+
+Mais 1 migration da Sprint 9, encadeada sobre a 21 (`3113f34f2a20`):
+
+22. `f4c36aa63332` — `create_password_reset_tokens`: nova tabela (`user_id` FK `RESTRICT`, `token_hash` único, `expires_at`, `used_at` nullable) + índice `(user_id)`. Aditiva, sem impacto em tabela existente (RF-AUTH-06, ADR-017).
 
 Validadas com `alembic upgrade head` → `alembic downgrade base` → `alembic upgrade head` sem erro contra Postgres real.
