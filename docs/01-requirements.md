@@ -2,6 +2,8 @@
 
 Convenção: requisitos funcionais usam prefixo `RF`, não funcionais `RNF`. Cada um é rastreável a uma sprint em `docs/08-roadmap.md`. `[MVP]` indica que é obrigatório para o corte descrito em `docs/00-product-vision.md`.
 
+> **Nota (pós-implementação, ADR-020)**: RF-TEAM-01/02/03 e RF-ISSUE-04/05/07 abaixo descrevem `Team` com workflow de status configurável — removido do domínio na Sprint 7 (ADR-012, `docs/09-decision-log.md`) em favor de `Issue` pertencendo diretamente a um workspace, com status como enum fixo (não configurável por time). RF-ISSUE-07 (board por status) nunca foi implementado como board de fato — é hoje o Milestone 5 (Kanban) do roadmap executivo, não mais `[MVP]`. Os requisitos abaixo permanecem como registro do pedido original (Sprint 0); o que de fato existe está em `docs/03-database.md`/`docs/04-api-design.md`, e o que ainda será construído está em `docs/08-roadmap.md`.
+
 ## 1. Requisitos Funcionais
 
 ### Autenticação e Conta (RF-AUTH)

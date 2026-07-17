@@ -1,5 +1,7 @@
 # 00 — Visão de Produto
 
+> **Nota (pós-implementação, ADR-020)**: este documento descreve a visão *original* do produto, incluindo o corte de MVP decidido na Sprint 0. Duas premissas abaixo deixaram de ser verdade na execução real e nunca haviam sido corrigidas aqui até agora (gap de processo identificado na auditoria de 2026-07-16): (1) `Team`/workflow-por-time foi removido do domínio na Sprint 7 (ADR-012) — issues pertencem diretamente a um workspace, com status como enum fixo, não a um time com workflow configurável; (2) o board Kanban por status (§5) deixou de ser MVP — é hoje o Milestone 5 do roadmap executivo (`docs/08-roadmap.md`), um milestone dedicado e pós-engenharia-de-qualidade (M4), não mais um corte inicial. O texto abaixo não foi reescrito (é o registro histórico da decisão original de escopo) — `docs/08-roadmap.md` e `docs/09-decision-log.md` (ADR-007, ADR-012, ADR-018, ADR-020) são a fonte de verdade para o que de fato foi/será construído.
+
 ## 1. Objetivo do produto
 
 FlowDesk é uma ferramenta de gestão de trabalho para times de produto e engenharia — organização de issues, projetos e ciclos de desenvolvimento — construída como alternativa de identidade própria ao Linear.
