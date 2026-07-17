@@ -7,6 +7,16 @@ versionados — o desenvolvimento acontece diretamente em `main`, sprint a sprin
 
 ## [Unreleased]
 
+### Milestone 2 — Product Completeness (concluído, ADR-023)
+
+Com as Sprints 12.1–12.6 (fase 2) completas, o usuário aprovou explicitamente o fechamento
+do Milestone 2 — fase 1 (Sprint 10) + fase 2 (correção de UX, recuperação de senha,
+administração de workspace, command palette, e o Dashboard/Home real que ampliou o escopo
+original da fase 2, ver ADR-022). Nenhuma verificação visual em navegador real foi possível
+em nenhuma sub-sprint desta fase — Docker inacessível no sandbox desta sessão; recomendado ao
+usuário validar via `docker compose up`/`npm run dev` antes de considerar o milestone
+visualmente definitivo. Detalhamento completo em ADR-023 (`docs/09-decision-log.md`).
+
 ### Sprint 12.4 (M2 fase 2) — Polimento do command palette
 
 - `CommandPalette` ganha um indicador de carregamento ("Buscando…") enquanto a busca de
