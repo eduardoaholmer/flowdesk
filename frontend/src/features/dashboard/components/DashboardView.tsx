@@ -1,5 +1,7 @@
+import { ActiveProjectsWidget } from "./ActiveProjectsWidget";
 import { MyIssuesWidget } from "./MyIssuesWidget";
 import { QuickActions } from "./QuickActions";
+import { RecentActivityWidget } from "./RecentActivityWidget";
 
 export function DashboardView({
   workspaceId,
@@ -27,6 +29,8 @@ export function DashboardView({
 
       <div className="grid gap-4 lg:grid-cols-2">
         <MyIssuesWidget workspaceId={workspaceId} workspaceSlug={workspaceSlug} userId={userId} />
+        <RecentActivityWidget workspaceId={workspaceId} workspaceSlug={workspaceSlug} />
+        <ActiveProjectsWidget workspaceId={workspaceId} workspaceSlug={workspaceSlug} />
       </div>
     </div>
   );

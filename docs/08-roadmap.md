@@ -252,12 +252,13 @@ Ao redefinir a ordem oficial de milestones, o usuário manteve M2 aberto (não m
 - **Critérios de aceite**: lint, type-check, testes (incluindo dois testes de componente novos para `MyIssuesWidget`) e build do frontend verdes; `DashboardPage` com seu próprio chunk via code-splitting (Sprint 8.6/ADR-015).
 - **DoD**: DoD-base. **Ressalva**: verificação em navegador real (fluxo autenticado completo) não foi possível nesta sessão — Docker não acessível no sandbox (mesma limitação da ADR-019 para Chromium headless). Recomendado ao usuário validar visualmente via `docker compose up`/`npm run dev` antes de iniciar a Sprint 12.6.
 
-### Sprint 12.6 — M2: Dashboard — atividade recente e projetos ativos (planejada)
+### Sprint 12.6 — M2: Dashboard — atividade recente e projetos ativos (concluída)
 
 - **Objetivo**: completar a Home com os dois widgets identificados na auditoria mas não implementados na 12.5 — atividade recente e projetos ativos.
-- **Escopo previsto**: widget "Atividade recente" (últimas notificações do usuário, `useRecentNotifications`, filtradas client-side pelo `workspace_id` do workspace ativo — o endpoint `GET /notifications` não aceita esse filtro no servidor, ver ADR-022 Decisão 7); widget "Projetos ativos" (`useProjects(workspaceId, {status:"ACTIVE", per_page:5})`, contagem + lista curta). Mesmo esqueleto de página (`DashboardView`) da 12.5, sem mudança estrutural.
+- **Entregue**: `RecentActivityWidget` (`useRecentNotifications`, filtra client-side por `notification.workspace_id === workspaceId` — o endpoint `GET /notifications` não aceita esse filtro no servidor, ver ADR-022 Decisão 7; reaproveita `NotificationItem`/`useMarkNotificationRead`, os mesmos já usados por `TopbarNotifications`, sem duplicar a lógica de descrição por tipo de notificação nem o estado de "marcar como lida"); `ActiveProjectsWidget` (`useProjects(workspaceId, {status:"ACTIVE", per_page:5, sort:"-updated_at"})`, lista com nome do projeto e data-alvo, empty state reaproveitando `CreateProjectDialog`). Ambos adicionados ao mesmo grid de `DashboardView` da 12.5, sem mudança estrutural na página. Dois arquivos de teste de componente novos (`RecentActivityWidget.test.tsx` cobrindo o filtro por workspace explicitamente, `ActiveProjectsWidget.test.tsx`), mesmo padrão de mock de módulo (sem MSW) já usado por `MyIssuesWidget.test.tsx`.
 - **Dependências**: Sprint 12.5 (mesma `features/dashboard/`).
-- **DoD**: DoD-base + aprovação explícita do usuário antes de iniciar.
+- **Critérios de aceite**: lint, type-check, testes (4 arquivos de teste novos entre 12.5/12.6) e build do frontend verdes; `DashboardPage` cresce de chunk (4.10 kB → 6.15 kB) sem afetar os demais chunks de rota.
+- **DoD**: DoD-base. Mesma ressalva de verificação visual em navegador real da Sprint 12.5 (Docker inacessível neste sandbox) — recomendado ao usuário validar via `docker compose up`/`npm run dev` antes de considerar M2 fase 2 pronta para revisão final (12.2–12.4 seguem pendentes).
 
 ## Sprint 13+ — Extensões futuras (pós-portfólio)
 

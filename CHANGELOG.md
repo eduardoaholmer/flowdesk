@@ -7,6 +7,21 @@ versionados — o desenvolvimento acontece diretamente em `main`, sprint a sprin
 
 ## [Unreleased]
 
+### Sprint 12.6 (M2 fase 2) — Dashboard: atividade recente e projetos ativos
+
+- Completa a Home com os dois widgets identificados na auditoria da ADR-022 mas não
+  implementados na 12.5.
+- `RecentActivityWidget` — últimas notificações do usuário (`useRecentNotifications`),
+  filtradas client-side pelo `workspace_id` do workspace ativo (o endpoint `GET /notifications`
+  não aceita esse filtro no servidor); reaproveita `NotificationItem`/`useMarkNotificationRead`,
+  os mesmos já usados por `TopbarNotifications`, sem duplicar lógica de descrição por tipo de
+  notificação.
+- `ActiveProjectsWidget` — projetos ativos (`useProjects(workspaceId, {status:"ACTIVE"})`),
+  nome + data-alvo, empty state reaproveitando `CreateProjectDialog`.
+- Ambos adicionados ao mesmo grid de `DashboardView` da 12.5, sem mudança estrutural.
+- `DashboardPage` cresce de 4.10 kB para 6.15 kB de chunk próprio (code-splitting por rota
+  inalterado, Sprint 8.6/ADR-015).
+
 ### Sprint 12.5 (M2 fase 2) — Dashboard/Home real: fundação, "Minhas issues" e atalhos
 
 - `HomePage` (`/`) deixava de ter qualquer conteúdo próprio — só redirecionava direto para
