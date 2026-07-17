@@ -40,3 +40,13 @@ Element.prototype.hasPointerCapture ??= () => false;
 Element.prototype.setPointerCapture ??= () => {};
 Element.prototype.releasePointerCapture ??= () => {};
 Element.prototype.scrollIntoView ??= () => {};
+
+// `cmdk` (command palette) observa o tamanho da lista via ResizeObserver, que
+// jsdom não implementa — sem isso, montar `CommandPalette` lança
+// `ResizeObserver is not defined`.
+class ResizeObserverStub {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+window.ResizeObserver ??= ResizeObserverStub as unknown as typeof ResizeObserver;

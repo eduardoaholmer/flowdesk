@@ -7,6 +7,19 @@ versionados — o desenvolvimento acontece diretamente em `main`, sprint a sprin
 
 ## [Unreleased]
 
+### Sprint 12.4 (M2 fase 2) — Polimento do command palette
+
+- `CommandPalette` ganha um indicador de carregamento ("Buscando…") enquanto a busca de
+  issues/projetos está em andamento — antes podia ler como busca morta entre o debounce e a
+  resposta, mostrando "Nenhum resultado encontrado." por um instante mesmo com resultados a
+  caminho.
+- Uma busca que falha agora mostra uma mensagem de erro com botão "Tentar novamente" em vez de
+  falhar silenciosamente como "nenhum resultado".
+- Corrige mais uma lacuna de infraestrutura de teste: `cmdk` usa `ResizeObserver`, que jsdom
+  não implementa — `tests/setup.ts` ganhou um stub mínimo.
+- Fecha M2 fase 2 (Sprints 12.1–12.4) — pendente aprovação explícita do usuário antes de
+  considerar o milestone encerrado.
+
 ### Sprint 12.3 (M2 fase 2) — Polimento da administração de workspace e navegação
 
 - Listas de membros/convites (`WorkspaceMembersSettings`/`WorkspaceInvitationsSettings`)

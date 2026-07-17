@@ -8,6 +8,7 @@ import { logout } from "@/features/auth/api";
 import { listIssues } from "@/features/issues/api";
 import { listProjects } from "@/features/projects/api";
 import { useWorkspace } from "@/features/workspaces/useWorkspace";
+import { Button } from "@/shared/components/ui/button";
 import {
   Command,
   CommandDialog,
@@ -17,6 +18,7 @@ import {
   CommandItem,
   CommandList,
 } from "@/shared/components/ui/command";
+import { Spinner } from "@/shared/components/ui/spinner";
 import { useCurrentUser } from "@/shared/hooks/useCurrentUser";
 import { useDebouncedValue } from "@/shared/hooks/useDebouncedValue";
 import { workspaceRoutes } from "@/shared/lib/routes";
@@ -134,7 +136,20 @@ export function CommandPalette() {
     searchEnabled &&
     ((issueResults.data && issueResults.data.data.length > 0) ||
       (projectResults.data && projectResults.data.data.length > 0));
-  const isEmpty = !showRecent && filteredStatic.length === 0 && !hasAsyncResults;
+  const isSearching = searchEnabled && (issueResults.isFetching || projectResults.isFetching);
+  const hasSearchError =
+    searchEnabled && !isSearching && (issueResults.isError || projectResults.isError);
+  const isEmpty =
+    !showRecent &&
+    !isSearching &&
+    !hasSearchError &&
+    filteredStatic.length === 0 &&
+    !hasAsyncResults;
+
+  function retrySearch() {
+    if (issueResults.isError) issueResults.refetch();
+    if (projectResults.isError) projectResults.refetch();
+  }
 
   return (
     <CommandDialog
@@ -151,6 +166,22 @@ export function CommandPalette() {
         />
         <CommandList>
           {isEmpty && <CommandEmpty>Nenhum resultado encontrado.</CommandEmpty>}
+
+          {isSearching && (
+            <div className="flex items-center justify-center gap-2 px-2 py-6 text-sm text-muted-foreground">
+              <Spinner />
+              Buscando…
+            </div>
+          )}
+
+          {hasSearchError && (
+            <div className="flex flex-col items-center gap-2 px-2 py-6 text-center text-sm">
+              <p className="text-muted-foreground">Não foi possível buscar issues/projetos.</p>
+              <Button variant="outline" size="sm" onClick={retrySearch}>
+                Tentar novamente
+              </Button>
+            </div>
+          )}
 
           {showRecent && (
             <CommandGroup heading="Recentes">

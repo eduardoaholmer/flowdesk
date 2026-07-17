@@ -244,12 +244,14 @@ Ao redefinir a ordem oficial de milestones, o usuário manteve M2 aberto (não m
 - **Critérios de aceite**: lint, type-check, testes (14 arquivos, 43 testes) e build do frontend verdes.
 - **DoD**: DoD-base. Mesma ressalva de verificação visual em navegador real das sub-sprints anteriores (Docker inacessível neste sandbox).
 
-### Sprint 12.4 — M2: polimento do command palette (planejada)
+### Sprint 12.4 — M2: polimento do command palette (concluída)
 
 - **Objetivo**: fechar os gaps de UX assíncrona do command palette encontrados na auditoria.
-- **Escopo previsto**: indicador de carregamento durante a busca de issues/projetos (hoje pode ler como busca morta entre o debounce e a resposta); estado de erro/retry quando a busca falha (hoje falha silenciosamente como "nenhum resultado").
+- **Entregue**: `CommandPalette.tsx` ganha três estados derivados novos — `isSearching` (`issueResults.isFetching || projectResults.isFetching`, cobre tanto a janela do debounce quanto o round-trip real) mostra "Buscando…" com `Spinner`; `hasSearchError` (`issueResults.isError || projectResults.isError`, só quando não está mais buscando) mostra uma mensagem de erro com botão "Tentar novamente" (`refetch()` de cada query que falhou); `isEmpty` passa a excluir os dois estados acima, então "Nenhum resultado encontrado." não pisca mais durante uma busca em andamento nem mascara uma falha real como se fosse "nada encontrado" (o bug original da auditoria). Dois testes de componente novos (`CommandPalette.test.tsx`) usando promises controláveis manualmente (`deferred()`) para exercitar o estado de carregamento e o de erro+retry sem depender de tempo real de rede.
+- **Achado durante a sprint**: mais uma lacuna de teste — `cmdk` (biblioteca por trás do `Command`/`CommandDialog`) usa `ResizeObserver`, que jsdom não implementa; `tests/setup.ts` ganhou um stub mínimo (`observe`/`unobserve`/`disconnect` no-op), mesmo padrão dos polyfills já adicionados nas Sprints 12.2/12.3 (`matchMedia`, APIs de ponteiro do Radix `Select`) — esta é a primeira sprint a montar o `CommandPalette` de fato em um teste.
 - **Dependências**: nenhuma — componente isolado (`shared/components/command-palette/`).
-- **DoD**: DoD-base + aprovação explícita do usuário antes de fechar M2 fase 2 e considerar o escopo ampliado de M3 (tipografia/app icon/microinterações/revisão visual completa).
+- **Critérios de aceite**: lint, type-check, testes (15 arquivos, 45 testes) e build do frontend verdes.
+- **DoD**: DoD-base. Mesma ressalva de verificação visual em navegador real das sub-sprints anteriores (Docker inacessível neste sandbox). **Fecha M2 fase 2** — pendente aprovação explícita do usuário antes de considerar o milestone encerrado e iniciar o escopo ampliado de M3 (tipografia/app icon/microinterações/revisão visual completa, ADR-021 Decisão 6).
 
 ### Sprint 12.5 — M2: Dashboard/Home real — fundação, "Minhas issues" e atalhos (concluída)
 
