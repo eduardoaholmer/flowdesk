@@ -7,6 +7,17 @@ versionados — o desenvolvimento acontece diretamente em `main`, sprint a sprin
 
 ## [Unreleased]
 
+### Sprint 12.1 (M2 fase 2) — Corrige redirecionamento pós-login
+
+- `RequireAuth` já gravava `state: { from: location }` ao redirecionar um usuário
+  desconectado para `/login`, mas nada lia esse estado — todo login caía sempre em
+  `/`, perdendo silenciosamente o destino original (ex.: um link de convite acessado
+  sem sessão ativa). `shared/lib/routes.ts::resolveLoginRedirect` (novo, testado
+  isoladamente) reconstrói o path+querystring original; `LoginPage`/`LoginForm`
+  passam a navegar para esse destino após login bem-sucedido.
+- Achado via uma auditoria de gap de M2 (ver ADR-021 em `docs/09-decision-log.md`) —
+  primeira de quatro sub-sprints (12.1–12.4) que fecham a fase 2 do milestone.
+
 ### Sprint 11 (M3) — Ring Gate Brand System completion
 
 - Paleta de cor: `src/index.css` deixa de ser o placeholder acromático do scaffold

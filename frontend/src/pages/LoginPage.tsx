@@ -1,15 +1,18 @@
-import { Navigate } from "react-router-dom";
+import { Navigate, useLocation } from "react-router-dom";
 
 import { LoginForm } from "@/features/auth/components/LoginForm";
 import { Logo } from "@/shared/components/brand/Logo";
 import { AuthLayout } from "@/shared/components/layout/AuthLayout";
+import { resolveLoginRedirect } from "@/shared/lib/routes";
 import { useAuthStore } from "@/shared/stores/authStore";
 
 export function LoginPage() {
   const accessToken = useAuthStore((state) => state.accessToken);
+  const location = useLocation();
+  const redirectTo = resolveLoginRedirect(location.state);
 
   if (accessToken) {
-    return <Navigate to="/" replace />;
+    return <Navigate to={redirectTo} replace />;
   }
 
   return (
@@ -19,7 +22,7 @@ export function LoginPage() {
           <Logo size="md" />
         </h1>
         <p className="mb-6 text-sm text-muted-foreground">Entre para gerenciar seus projetos.</p>
-        <LoginForm />
+        <LoginForm redirectTo={redirectTo} />
       </div>
     </AuthLayout>
   );

@@ -27,3 +27,19 @@ export const workspaceRoutes = {
 export function invitationAcceptRoute(token: string): string {
   return `/invitations/${token}/accept`;
 }
+
+interface LoginRedirectLocation {
+  pathname: string;
+  search: string;
+}
+
+/**
+ * `RequireAuth` grava `state: { from: location }` ao redirecionar para `/login`
+ * (ex.: alguém desconectado clica em um link de convite). Sem isso, todo login
+ * caía sempre em `/` e o destino original era perdido silenciosamente.
+ */
+export function resolveLoginRedirect(state: unknown): string {
+  const from = (state as { from?: LoginRedirectLocation } | null)?.from;
+  if (!from) return "/";
+  return `${from.pathname}${from.search}`;
+}

@@ -76,6 +76,7 @@ React Router v6, roteamento declarado centralmente em `src/routes/`, não espalh
 - Access token mantido **em memória** (variável de módulo/contexto React), nunca em `localStorage`/`sessionStorage` — mitiga exfiltração via XSS (ver `docs/07-security.md`). Perda de estado em refresh de página é resolvida chamando `POST /auth/refresh` (cookie HttpOnly) no bootstrap da aplicação para obter um novo access token antes de renderizar rotas protegidas.
 - `httpClient` intercepta resposta `401`, tenta `refresh` uma única vez de forma transparente, e só então propaga o erro (evita que toda tela precise tratar expiração de token manualmente).
 - Estado de "usuário atual" é uma query do TanStack Query (`['auth', 'me']`), não um store separado — é dado de servidor.
+- `RequireAuth` redireciona para `/login` gravando `state: { from: location }`; `LoginPage` lê isso via `shared/lib/routes.ts::resolveLoginRedirect` e devolve o usuário ao destino original após o login (ex.: um link de convite acessado desconectado) em vez de sempre cair em `/` (Sprint 12.1/M2 fase 2, ADR-021 — bug encontrado na auditoria de gap, `state.from` já existia desde a introdução de `RequireAuth` mas nunca era lido).
 
 ## 7. Organização das páginas
 

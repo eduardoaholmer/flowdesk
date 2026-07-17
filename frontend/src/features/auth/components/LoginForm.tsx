@@ -26,7 +26,7 @@ const registerSchema = z.object({
 type LoginValues = z.infer<typeof loginSchema>;
 type RegisterValues = z.infer<typeof registerSchema>;
 
-function LoginTab() {
+function LoginTab({ redirectTo }: { redirectTo: string }) {
   const navigate = useNavigate();
   const setAuth = useAuthStore((state) => state.setAuth);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -41,7 +41,7 @@ function LoginTab() {
     try {
       const result = await login(values);
       setAuth(result.access_token, result.user);
-      navigate("/", { replace: true });
+      navigate(redirectTo, { replace: true });
     } catch {
       toast.error("E-mail ou senha inválidos.");
     } finally {
@@ -126,7 +126,7 @@ function RegisterTab({ onRegistered }: { onRegistered: (email: string) => void }
   );
 }
 
-export function LoginForm() {
+export function LoginForm({ redirectTo = "/" }: { redirectTo?: string }) {
   const [mode, setMode] = useState<"login" | "register">("login");
 
   return (
@@ -151,7 +151,11 @@ export function LoginForm() {
           Criar conta
         </button>
       </div>
-      {mode === "login" ? <LoginTab /> : <RegisterTab onRegistered={() => setMode("login")} />}
+      {mode === "login" ? (
+        <LoginTab redirectTo={redirectTo} />
+      ) : (
+        <RegisterTab onRegistered={() => setMode("login")} />
+      )}
     </div>
   );
 }
