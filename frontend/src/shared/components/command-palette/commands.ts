@@ -1,6 +1,7 @@
 import {
   Building2,
   FolderKanban,
+  Home,
   ListTodo,
   LogOut,
   Moon,
@@ -40,6 +41,13 @@ export function buildNavigationCommands(
   workspaceSlug: string,
 ): PaletteCommand[] {
   return [
+    {
+      id: "nav:home",
+      label: "Ir para Início",
+      icon: Home,
+      to: workspaceRoutes.home(workspaceSlug),
+      perform: () => navigate(workspaceRoutes.home(workspaceSlug)),
+    },
     {
       id: "nav:issues",
       label: "Ir para Issues",

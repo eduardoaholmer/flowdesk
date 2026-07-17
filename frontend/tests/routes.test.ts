@@ -13,6 +13,12 @@ describe("workspaceRoutes.settings", () => {
   });
 });
 
+describe("workspaceRoutes.home", () => {
+  it("builds the workspace home path from a slug", () => {
+    expect(workspaceRoutes.home("acme")).toBe("/w/acme");
+  });
+});
+
 describe("invitationAcceptRoute", () => {
   it("builds the invitation accept path from a token", () => {
     expect(invitationAcceptRoute("abc123")).toBe("/invitations/abc123/accept");
@@ -23,6 +29,10 @@ describe("routePatterns", () => {
   it("declares matching patterns for settings and invitation accept", () => {
     expect(routePatterns.settings).toBe("/w/:workspaceSlug/settings");
     expect(routePatterns.invitationAccept).toBe("/invitations/:token/accept");
+  });
+
+  it("declares the workspace home pattern without a trailing segment", () => {
+    expect(routePatterns.workspaceHome).toBe("/w/:workspaceSlug");
   });
 });
 

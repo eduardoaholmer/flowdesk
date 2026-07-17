@@ -213,6 +213,8 @@ Ao redefinir a ordem oficial de milestones, o usuário manteve M2 aberto (não m
 - **Polimento de administração**: listas de membros/convites usam `per_page` fixo de 100 sem paginação real nem o filtro por papel que o backend já suporta; breadcrumb de páginas de detalhe (issue/projeto) mostra o texto literal "Detalhe" em vez do identificador real; `docs/04-api-design.md` diverge do código quanto a quem pode `PATCH` um workspace.
 - **Polimento do command palette**: sem indicador de carregamento durante a busca assíncrona, sem tratamento de erro de busca (falha silenciosa vira "nenhum resultado").
 
+> **Nota (ampliação de escopo, 2026-07-16, ADR-022)**: testando o produto como um usuário único, o usuário identificou que `HomePage` — sem nenhum conteúdo, só redirect — faz o produto parecer "vazio" demais para uma tela pós-login. Isso reverte deliberadamente a Decisão 1 da ADR-018 (Sprint 10), que removeu `features/dashboard/` por falta de requisito na época; agora há requisito. Duas sub-sprints novas (12.5/12.6, apendadas após 12.1–12.4 para não reabrir sub-sprints já documentadas — ver ADR-022 Decisão 6) cobrem uma Home/Dashboard real e pragmática, não uma tela de BI.
+
 ### Sprint 12.1 — M2: corrigir redirecionamento pós-login (concluída)
 
 - **Objetivo**: corrigir o bug real de maior impacto encontrado na auditoria — login sempre navegava para `/`, ignorando o destino original que `RequireAuth` já preservava em `location.state.from`.
@@ -241,6 +243,21 @@ Ao redefinir a ordem oficial de milestones, o usuário manteve M2 aberto (não m
 - **Escopo previsto**: indicador de carregamento durante a busca de issues/projetos (hoje pode ler como busca morta entre o debounce e a resposta); estado de erro/retry quando a busca falha (hoje falha silenciosamente como "nenhum resultado").
 - **Dependências**: nenhuma — componente isolado (`shared/components/command-palette/`).
 - **DoD**: DoD-base + aprovação explícita do usuário antes de fechar M2 fase 2 e considerar o escopo ampliado de M3 (tipografia/app icon/microinterações/revisão visual completa).
+
+### Sprint 12.5 — M2: Dashboard/Home real — fundação, "Minhas issues" e atalhos (concluída)
+
+- **Objetivo**: dar a `HomePage` um destino real em vez de um redirect direto para `/projects` — uma Home pragmática para 1 usuário testando o sistema (issues atribuídas a mim, atalhos rápidos), não uma tela de BI/analytics. Reverte a Decisão 1 da ADR-018 (Sprint 10, dashboard removido por falta de requisito) sob um requisito novo — ver ADR-022 para a análise completa (o que já existia reutilizável, o que faltava, por que a numeração 12.5/12.6 em vez de renumerar 12.2–12.4).
+- **Entregue**: rota `/w/:workspaceSlug` nova (`routePatterns.workspaceHome`/`workspaceRoutes.home`, `shared/lib/routes.ts`) — `HomePage` (`/`) passa a redirecionar para ela em vez de `/projects` direto; `features/dashboard/` recriada só com `components/` (`DashboardView`, `MyIssuesWidget`, `QuickActions`), sem `api.ts`/`hooks.ts` próprio — composição pura sobre `useIssues`/`CreateIssueDialog`/`CreateProjectDialog` já existentes, nenhum endpoint novo; widget "Minhas issues" (5 mais recentes atribuídas ao usuário, `useIssues(workspaceId, {assignee_id, sort:"-updated_at", per_page:5})`, com loading/erro/vazio reaproveitando `ListSkeleton`/`ErrorState`/`EmptyState`); atalhos rápidos reaproveitando `CreateIssueDialog`/`CreateProjectDialog` sem nenhum formulário novo; entrada "Início" no `Sidebar` (primeiro item do grupo Workspace) e no command palette (`buildNavigationCommands`); primeiro uso real de `Card`/`CardHeader`/`CardAction`/`CardContent` (shadcn, instalado desde a Sprint 8.5, zero consumidor até agora).
+- **Dependências**: nenhuma — não depende de 12.2–12.4 (áreas de código distintas), ortogonal a elas.
+- **Critérios de aceite**: lint, type-check, testes (incluindo dois testes de componente novos para `MyIssuesWidget`) e build do frontend verdes; `DashboardPage` com seu próprio chunk via code-splitting (Sprint 8.6/ADR-015).
+- **DoD**: DoD-base. **Ressalva**: verificação em navegador real (fluxo autenticado completo) não foi possível nesta sessão — Docker não acessível no sandbox (mesma limitação da ADR-019 para Chromium headless). Recomendado ao usuário validar visualmente via `docker compose up`/`npm run dev` antes de iniciar a Sprint 12.6.
+
+### Sprint 12.6 — M2: Dashboard — atividade recente e projetos ativos (planejada)
+
+- **Objetivo**: completar a Home com os dois widgets identificados na auditoria mas não implementados na 12.5 — atividade recente e projetos ativos.
+- **Escopo previsto**: widget "Atividade recente" (últimas notificações do usuário, `useRecentNotifications`, filtradas client-side pelo `workspace_id` do workspace ativo — o endpoint `GET /notifications` não aceita esse filtro no servidor, ver ADR-022 Decisão 7); widget "Projetos ativos" (`useProjects(workspaceId, {status:"ACTIVE", per_page:5})`, contagem + lista curta). Mesmo esqueleto de página (`DashboardView`) da 12.5, sem mudança estrutural.
+- **Dependências**: Sprint 12.5 (mesma `features/dashboard/`).
+- **DoD**: DoD-base + aprovação explícita do usuário antes de iniciar.
 
 ## Sprint 13+ — Extensões futuras (pós-portfólio)
 

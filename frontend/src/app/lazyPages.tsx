@@ -1,5 +1,8 @@
 import { lazy } from "react";
 
+export const DashboardPage = lazy(() =>
+  import("@/pages/DashboardPage").then((module) => ({ default: module.DashboardPage })),
+);
 export const IssuesPage = lazy(() =>
   import("@/pages/IssuesPage").then((module) => ({ default: module.IssuesPage })),
 );

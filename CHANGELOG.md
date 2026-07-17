@@ -7,6 +7,26 @@ versionados — o desenvolvimento acontece diretamente em `main`, sprint a sprin
 
 ## [Unreleased]
 
+### Sprint 12.5 (M2 fase 2) — Dashboard/Home real: fundação, "Minhas issues" e atalhos
+
+- `HomePage` (`/`) deixava de ter qualquer conteúdo próprio — só redirecionava direto para
+  `/w/:slug/projects` (ou mostrava "crie seu primeiro workspace"). Testando o produto como um
+  usuário único, isso fazia o app parecer vazio demais logo após o login. Reverte
+  deliberadamente a remoção de `features/dashboard/` da Sprint 10 (ADR-018) sob um requisito
+  novo — ver ADR-022 em `docs/09-decision-log.md`.
+- Nova rota `/w/:workspaceSlug` (`routePatterns.workspaceHome`/`workspaceRoutes.home`);
+  `HomePage` agora redireciona para ela em vez de `/projects` direto.
+- `features/dashboard/` recriada só com `components/` (`DashboardView`, `MyIssuesWidget`,
+  `QuickActions`) — composição pura sobre hooks já existentes de issues/projects, sem
+  `api.ts`/`hooks.ts` próprio e sem nenhum endpoint novo.
+- Widget "Minhas issues" (5 mais recentes atribuídas ao usuário) e atalhos rápidos
+  (`CreateIssueDialog`/`CreateProjectDialog` reaproveitados, nenhum formulário novo).
+- Entrada "Início" nova no `Sidebar` e no command palette.
+- Primeiro uso real de `Card`/`CardHeader`/`CardAction`/`CardContent` (shadcn, instalado desde
+  a Sprint 8.5, zero consumidor até agora).
+- Sprint 12.6 (atividade recente + projetos ativos) fica planejada para uma próxima etapa,
+  não implementada nesta sessão.
+
 ### Sprint 12.1 (M2 fase 2) — Corrige redirecionamento pós-login
 
 - `RequireAuth` já gravava `state: { from: location }` ao redirecionar um usuário

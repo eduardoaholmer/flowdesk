@@ -2,6 +2,7 @@ import { Suspense, type ReactNode } from "react";
 import { createBrowserRouter } from "react-router-dom";
 
 import {
+  DashboardPage,
   InvitationAcceptPage,
   IssueDetailPage,
   IssuesPage,
@@ -32,6 +33,7 @@ export const router = createBrowserRouter([
         element: <AppLayout />,
         children: [
           { index: true, path: "/", element: <HomePage /> },
+          { path: routePatterns.workspaceHome, element: withPageSuspense(<DashboardPage />) },
           {
             path: routePatterns.invitationAccept,
             element: withPageSuspense(<InvitationAcceptPage />),

@@ -5,6 +5,7 @@
  * lados eram template literals soltos e independentes em ~12 arquivos.
  */
 export const routePatterns = {
+  workspaceHome: "/w/:workspaceSlug",
   issues: "/w/:workspaceSlug/issues",
   issueDetail: "/w/:workspaceSlug/issues/:issueId",
   projects: "/w/:workspaceSlug/projects",
@@ -15,6 +16,7 @@ export const routePatterns = {
 } as const;
 
 export const workspaceRoutes = {
+  home: (workspaceSlug: string) => `/w/${workspaceSlug}`,
   issues: (workspaceSlug: string) => `/w/${workspaceSlug}/issues`,
   issueDetail: (workspaceSlug: string, issueId: string) => `/w/${workspaceSlug}/issues/${issueId}`,
   projects: (workspaceSlug: string) => `/w/${workspaceSlug}/projects`,

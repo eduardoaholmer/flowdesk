@@ -1,6 +1,7 @@
 import {
   ChevronsUpDown,
   FolderKanban,
+  Home,
   ListTodo,
   PanelLeftClose,
   PanelLeftOpen,
@@ -33,6 +34,8 @@ interface NavItem {
   label: string;
   to: string;
   icon: LucideIcon;
+  /** Só o item de Início precisa de correspondência exata — os demais são prefixos únicos entre si. */
+  end?: boolean;
 }
 
 interface NavGroup {
@@ -45,6 +48,7 @@ function getNavGroups(workspaceSlug: string): NavGroup[] {
     {
       label: "Workspace",
       items: [
+        { label: "Início", to: workspaceRoutes.home(workspaceSlug), icon: Home, end: true },
         { label: "Issues", to: workspaceRoutes.issues(workspaceSlug), icon: ListTodo },
         { label: "Projetos", to: workspaceRoutes.projects(workspaceSlug), icon: FolderKanban },
         { label: "Labels", to: workspaceRoutes.labels(workspaceSlug), icon: Tags },
@@ -71,7 +75,7 @@ function SidebarNav({ workspaceSlug, collapsed }: { workspaceSlug: string; colla
           )}
           {group.items.map((item) => {
             const link = (
-              <NavLink key={item.to} to={item.to} className={linkClassName}>
+              <NavLink key={item.to} to={item.to} end={item.end} className={linkClassName}>
                 <item.icon className="size-4 shrink-0" />
                 {!collapsed && item.label}
               </NavLink>

@@ -20,7 +20,7 @@ export function HomePage() {
 
   const firstWorkspace = profile?.workspaces[0];
   if (firstWorkspace) {
-    return <Navigate to={workspaceRoutes.projects(firstWorkspace.slug)} replace />;
+    return <Navigate to={workspaceRoutes.home(firstWorkspace.slug)} replace />;
   }
 
   return (

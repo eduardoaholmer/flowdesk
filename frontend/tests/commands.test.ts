@@ -22,6 +22,7 @@ describe("buildNavigationCommands", () => {
   it("includes a command for every core workspace section", () => {
     const commands = buildNavigationCommands(vi.fn(), "acme");
     expect(commands.map((command) => command.id)).toEqual([
+      "nav:home",
       "nav:issues",
       "nav:projects",
       "nav:labels",
