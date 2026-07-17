@@ -6,8 +6,10 @@ import type {
   Invitation,
   InvitationCreatedResult,
   InvitationCreateInput,
+  InvitationListParams,
   Workspace,
   WorkspaceMember,
+  WorkspaceMemberListParams,
   WorkspaceUpdateInput,
 } from "./types";
 
@@ -44,6 +46,23 @@ export async function listWorkspaceMembers(workspaceId: string): Promise<Workspa
   return data.data;
 }
 
+/**
+ * Versão paginada/filtrável de `listWorkspaceMembers`, usada pela tela de
+ * administração (`WorkspaceMembersSettings`) — as demais features só precisam
+ * resolver "todos os membros" para um lookup por id (atribuir issue, exibir
+ * autor de comentário/anexo), sem paginação real nem filtro por papel.
+ */
+export async function listWorkspaceMembersPage(
+  workspaceId: string,
+  params: WorkspaceMemberListParams,
+): Promise<CollectionEnvelope<WorkspaceMember>> {
+  const { data } = await httpClient.get<CollectionEnvelope<WorkspaceMember>>(
+    `/workspaces/${workspaceId}/members`,
+    { params },
+  );
+  return data;
+}
+
 export async function updateMemberRole(
   workspaceId: string,
   memberId: string,
@@ -64,12 +83,15 @@ export async function leaveWorkspace(workspaceId: string): Promise<void> {
   await httpClient.delete(`/workspaces/${workspaceId}/members/me`);
 }
 
-export async function listInvitations(workspaceId: string): Promise<Invitation[]> {
+export async function listInvitations(
+  workspaceId: string,
+  params: InvitationListParams,
+): Promise<CollectionEnvelope<Invitation>> {
   const { data } = await httpClient.get<CollectionEnvelope<Invitation>>(
     `/workspaces/${workspaceId}/invitations`,
-    { params: { per_page: MAX_PICKER_PAGE_SIZE } },
+    { params },
   );
-  return data.data;
+  return data;
 }
 
 export async function createInvitation(

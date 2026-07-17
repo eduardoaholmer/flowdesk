@@ -60,10 +60,12 @@ Implementado na Sprint 4 (`docs/09-decision-log.md` ADR-009 tem o racional de ca
 | Criar | `POST /workspaces` | Qualquer usuário autenticado | `{ name, slug?, description? }` | `{ data: { workspace } }`, criador vira `OWNER`. `slug` omitido é gerado a partir de `name` | 201, 409 (`slug_taken`), 422 |
 | Listar minhas | `GET /workspaces?page=&per_page=` | Autenticado | — | `{ data: [workspace], meta }` | 200 |
 | Detalhe | `GET /workspaces/{workspace_id}` | Membro do workspace | — | `{ data: { workspace } }` | 200, 404 |
-| Atualizar | `PATCH /workspaces/{workspace_id}` | `OWNER` | `{ name?, slug?, description? }` | `{ data: { workspace } }` | 200, 403, 404, 409 (`slug_taken`) |
-| Excluir | `DELETE /workspaces/{workspace_id}` | `OWNER` | — | 204 (soft delete) | 204, 403, 404 |
+| Atualizar | `PATCH /workspaces/{workspace_id}` | `workspace.update` (`OWNER`/`ADMIN`) | `{ name?, slug?, description? }` | `{ data: { workspace } }` | 200, 403, 404, 409 (`slug_taken`) |
+| Excluir | `DELETE /workspaces/{workspace_id}` | `workspace.delete` (só `OWNER`) | — | 204 (soft delete) | 204, 403, 404 |
 
 Não-membro em `workspace_id` existente recebe **404**, nunca **403** — mesmo racional anti-enumeration do resto da API (§1: "existe, mas fora do workspace do usuário — nunca vazamos a distinção"). `403` só ocorre quando o chamador **é** membro mas não tem o papel exigido pela ação.
+
+`Atualizar` corrigido para `OWNER`/`ADMIN` (Sprint 12.3, M2 fase 2) — a matriz de permissões (`core/authorization.py`) sempre concedeu `ADMIN` todas as permissões exceto `WORKSPACE_DELETE`; esta tabela documentava `OWNER` como único papel autorizado a atualizar desde a redação original, uma divergência nunca corrigida (código e frontend — `WorkspaceGeneralSettings.tsx`'s `canEdit` — sempre concordaram entre si, só esta tabela estava errada).
 
 ### Membros (`/workspaces/{workspace_id}/members`)
 

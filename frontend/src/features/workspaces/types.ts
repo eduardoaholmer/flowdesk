@@ -30,6 +30,12 @@ export interface WorkspaceUpdateInput {
   description?: string;
 }
 
+export interface WorkspaceMemberListParams {
+  page: number;
+  per_page: number;
+  role?: WorkspaceRole;
+}
+
 export type InvitationStatus = "PENDING" | "ACCEPTED" | "EXPIRED";
 
 export interface Invitation {
@@ -50,4 +56,9 @@ export interface InvitationCreatedResult extends Invitation {
 export interface InvitationCreateInput {
   email: string;
   role: Exclude<WorkspaceRole, "OWNER">;
+}
+
+export interface InvitationListParams {
+  page: number;
+  per_page: number;
 }

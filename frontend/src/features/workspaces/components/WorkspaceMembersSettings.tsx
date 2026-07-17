@@ -1,7 +1,9 @@
 import { Users } from "lucide-react";
+import { useState } from "react";
 
 import { EmptyState } from "@/shared/components/feedback/EmptyState";
 import { ErrorState } from "@/shared/components/feedback/ErrorState";
+import { Pagination } from "@/shared/components/navigation/Pagination";
 import { ConfirmActionDialog } from "@/shared/components/overlay/ConfirmActionDialog";
 import { Avatar, AvatarFallback } from "@/shared/components/ui/avatar";
 import { Badge } from "@/shared/components/ui/badge";
@@ -17,17 +19,20 @@ import { TableSkeleton } from "@/shared/components/skeletons/TableSkeleton";
 import { useCurrentUser } from "@/shared/hooks/useCurrentUser";
 import { formatDate } from "@/shared/lib/date";
 import { getInitials } from "@/shared/lib/string";
+import { cn } from "@/shared/lib/utils";
 
 import {
   useLeaveWorkspace,
   useRemoveMember,
   useUpdateMemberRole,
-  useWorkspaceMembers,
+  useWorkspaceMembersPage,
 } from "../hooks";
 import type { WorkspaceMember, WorkspaceRole } from "../types";
 import { InviteMemberDialog } from "./InviteMemberDialog";
 
 const MANAGEABLE_ROLES: Exclude<WorkspaceRole, "OWNER">[] = ["ADMIN", "MEMBER", "GUEST"];
+const ROLE_FILTER_OPTIONS: WorkspaceRole[] = ["OWNER", "ADMIN", "MEMBER", "GUEST"];
+const PER_PAGE = 20;
 
 function MemberRow({
   member,
@@ -126,7 +131,24 @@ export function WorkspaceMembersSettings({
   canManage: boolean;
 }) {
   const { data: profile } = useCurrentUser();
-  const { data: members, isLoading, isError, refetch } = useWorkspaceMembers(workspaceId);
+  const [page, setPage] = useState(1);
+  const [roleFilter, setRoleFilter] = useState<WorkspaceRole | "ALL">("ALL");
+  const {
+    data: members,
+    isLoading,
+    isError,
+    refetch,
+    isPlaceholderData,
+  } = useWorkspaceMembersPage(workspaceId, {
+    page,
+    per_page: PER_PAGE,
+    role: roleFilter === "ALL" ? undefined : roleFilter,
+  });
+
+  function handleRoleFilterChange(value: WorkspaceRole | "ALL") {
+    setRoleFilter(value);
+    setPage(1);
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -140,27 +162,51 @@ export function WorkspaceMembersSettings({
         {canManage && <InviteMemberDialog workspaceId={workspaceId} />}
       </div>
 
+      <Select
+        value={roleFilter}
+        onValueChange={(value) => handleRoleFilterChange(value as WorkspaceRole | "ALL")}
+      >
+        <SelectTrigger size="sm" className="w-40">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="ALL">Todos os papéis</SelectItem>
+          {ROLE_FILTER_OPTIONS.map((role) => (
+            <SelectItem key={role} value={role}>
+              {role}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
       {isLoading ? (
         <TableSkeleton rows={4} />
       ) : isError ? (
         <ErrorState message="Não foi possível carregar os membros." onRetry={() => refetch()} />
-      ) : members && members.length > 0 ? (
-        <div className="rounded-lg border px-4">
-          {members.map((member) => (
-            <MemberRow
-              key={member.id}
-              member={member}
-              workspaceId={workspaceId}
-              isSelf={member.user.id === profile?.id}
-              canManage={canManage}
-            />
-          ))}
+      ) : members && members.data.length > 0 ? (
+        <div className={cn("flex flex-col gap-4", isPlaceholderData && "opacity-60")}>
+          <div className="rounded-lg border px-4">
+            {members.data.map((member) => (
+              <MemberRow
+                key={member.id}
+                member={member}
+                workspaceId={workspaceId}
+                isSelf={member.user.id === profile?.id}
+                canManage={canManage}
+              />
+            ))}
+          </div>
+          <Pagination meta={members.meta} itemLabel="membro" onPageChange={setPage} />
         </div>
       ) : (
         <EmptyState
           icon={Users}
           title="Nenhum membro"
-          description="Este workspace não tem membros."
+          description={
+            roleFilter === "ALL"
+              ? "Este workspace não tem membros."
+              : "Nenhum membro com este papel."
+          }
         />
       )}
     </div>

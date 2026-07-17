@@ -31,3 +31,12 @@ window.matchMedia ??= (query: string) =>
     removeEventListener: () => {},
     dispatchEvent: () => false,
   }) as unknown as MediaQueryList;
+
+// Radix `Select` (usado por filtros de papel/status/prioridade em toda a UI de
+// administração/toolbars) chama essas APIs de ponteiro ao abrir/fechar via clique
+// — jsdom não as implementa, e sem isso qualquer teste que clique um `Select`
+// lança `target.hasPointerCapture is not a function`.
+Element.prototype.hasPointerCapture ??= () => false;
+Element.prototype.setPointerCapture ??= () => {};
+Element.prototype.releasePointerCapture ??= () => {};
+Element.prototype.scrollIntoView ??= () => {};

@@ -7,6 +7,24 @@ versionados — o desenvolvimento acontece diretamente em `main`, sprint a sprin
 
 ## [Unreleased]
 
+### Sprint 12.3 (M2 fase 2) — Polimento da administração de workspace e navegação
+
+- Listas de membros/convites (`WorkspaceMembersSettings`/`WorkspaceInvitationsSettings`)
+  deixam de buscar `per_page` fixo (100) descartando `meta` — agora usam paginação real
+  (`Pagination`, o mesmo componente das listas de issues/projetos) e a lista de membros ganha
+  um filtro por papel (`OWNER`/`ADMIN`/`MEMBER`/`GUEST`), já suportado pelo backend.
+  `useWorkspaceMembers` (usado por 4 outros lugares para resolver "todos os membros" como
+  lookup) foi mantido intocado; `useWorkspaceMembersPage` é um hook novo e separado para a
+  tela paginada.
+- Breadcrumb de página de detalhe (`Topbar.tsx`) mostra o identificador real da issue/projeto
+  (`FD-42`, nome do projeto) em vez do texto literal "Detalhe".
+- `docs/04-api-design.md` corrigido: `PATCH /workspaces/{workspace_id}` documentava `OWNER`
+  como único papel autorizado, mas a matriz real sempre concedeu `ADMIN` todas as permissões
+  exceto excluir o workspace — código e frontend já concordavam, só a doc divergia.
+- Corrige mais uma lacuna de infraestrutura de teste encontrada ao escrever os testes desta
+  sprint: jsdom não implementa as APIs de ponteiro que o Radix `Select` usa ao abrir/fechar
+  via clique — `tests/setup.ts` ganhou os polyfills necessários.
+
 ### Sprint 12.2 (M2 fase 2) — Recuperação de senha no frontend
 
 - O backend de recuperação de senha (RF-AUTH-06, Sprint 9 fase 1/ADR-017) não tinha nenhuma

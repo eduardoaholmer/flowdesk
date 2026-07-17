@@ -1,16 +1,21 @@
 import { Mail } from "lucide-react";
+import { useState } from "react";
 
 import { EmptyState } from "@/shared/components/feedback/EmptyState";
 import { ErrorState } from "@/shared/components/feedback/ErrorState";
+import { Pagination } from "@/shared/components/navigation/Pagination";
 import { ConfirmActionDialog } from "@/shared/components/overlay/ConfirmActionDialog";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { TableSkeleton } from "@/shared/components/skeletons/TableSkeleton";
 import { formatDate } from "@/shared/lib/date";
+import { cn } from "@/shared/lib/utils";
 
 import { useCancelInvitation, useInvitations } from "../hooks";
 import type { Invitation } from "../types";
 import { InviteMemberDialog } from "./InviteMemberDialog";
+
+const PER_PAGE = 20;
 
 function statusVariant(status: Invitation["status"]) {
   if (status === "PENDING") return "outline" as const;
@@ -57,7 +62,14 @@ function InvitationRow({
 }
 
 export function WorkspaceInvitationsSettings({ workspaceId }: { workspaceId: string }) {
-  const { data: invitations, isLoading, isError, refetch } = useInvitations(workspaceId);
+  const [page, setPage] = useState(1);
+  const {
+    data: invitations,
+    isLoading,
+    isError,
+    refetch,
+    isPlaceholderData,
+  } = useInvitations(workspaceId, { page, per_page: PER_PAGE });
 
   return (
     <div className="flex flex-col gap-4">
@@ -75,11 +87,18 @@ export function WorkspaceInvitationsSettings({ workspaceId }: { workspaceId: str
         <TableSkeleton rows={3} />
       ) : isError ? (
         <ErrorState message="Não foi possível carregar os convites." onRetry={() => refetch()} />
-      ) : invitations && invitations.length > 0 ? (
-        <div className="rounded-lg border px-4">
-          {invitations.map((invitation) => (
-            <InvitationRow key={invitation.id} invitation={invitation} workspaceId={workspaceId} />
-          ))}
+      ) : invitations && invitations.data.length > 0 ? (
+        <div className={cn("flex flex-col gap-4", isPlaceholderData && "opacity-60")}>
+          <div className="rounded-lg border px-4">
+            {invitations.data.map((invitation) => (
+              <InvitationRow
+                key={invitation.id}
+                invitation={invitation}
+                workspaceId={workspaceId}
+              />
+            ))}
+          </div>
+          <Pagination meta={invitations.meta} itemLabel="convite" onPageChange={setPage} />
         </div>
       ) : (
         <EmptyState

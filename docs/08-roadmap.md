@@ -232,12 +232,17 @@ Ao redefinir a ordem oficial de milestones, o usuário manteve M2 aberto (não m
 - **Critérios de aceite**: lint, type-check, testes (11 arquivos, 35 testes) e build do frontend verdes; `ForgotPasswordPage`/`ResetPasswordPage` com chunk próprio via code-splitting.
 - **DoD**: DoD-base. Mesma ressalva de verificação visual em navegador real das Sprints 12.5/12.6 (Docker inacessível neste sandbox).
 
-### Sprint 12.3 — M2: polimento da administração de workspace e navegação (planejada)
+### Sprint 12.3 — M2: polimento da administração de workspace e navegação (concluída)
 
 - **Objetivo**: fechar os gaps de polimento encontrados na administração de workspace e corrigir a inconsistência de navegação achada na revisão.
-- **Escopo previsto**: paginação real (ou "carregar mais") nas listas de membros/convites em vez de `per_page` fixo, com o filtro por papel já suportado pelo backend exposto na UI; breadcrumb de página de detalhe (`Topbar.tsx`) mostrando o identificador real da issue/projeto em vez do texto literal "Detalhe"; correção de `docs/04-api-design.md` quanto à permissão real de `PATCH /workspaces/{id}` (código e frontend já concordam entre si — só a doc diverge).
-- **Dependências**: nenhuma nova — usa a base de `features/workspaces/` e `shared/components/layout/` já existente.
-- **DoD**: DoD-base.
+- **Entregue**:
+  - **Paginação real + filtro por papel nas listas de membros/convites**: `WorkspaceMembersSettings`/`WorkspaceInvitationsSettings` deixam de buscar `per_page` fixo (100) descartando `meta` — agora usam `Pagination` (o mesmo componente de `IssuesListPage`/`ProjectsListPage`) e um `Select` de papel (`OWNER`/`ADMIN`/`MEMBER`/`GUEST`/"Todos") para membros. `useWorkspaceMembers(workspaceId)` (sem parâmetros, retorna array simples) foi **mantido intocado** — é usado por 4 outros call sites (`IssuesTable`, `IssueFormFields`, `IssueDetailView`, `AttachmentList`, `CommentList`) só para resolver "todos os membros" como lookup por id, não para a tela paginada; `useWorkspaceMembersPage(workspaceId, params)` é um hook novo e separado, evitando alterar a assinatura usada por esses 4 call sites por uma necessidade que não é deles. `useInvitations` (um único call site) foi alterado in-place para aceitar `params`.
+  - **Breadcrumb com identificador real**: `Topbar.tsx::TopbarBreadcrumb` busca a issue/projeto em detalhe (`useIssue`/`useProject`, mesma query key da página de detalhe — cache hit na prática, sem round-trip extra) e mostra `identifier`/`name` em vez do texto literal "Detalhe"; um estado de carregamento (`…`) aparece só durante o instante em que o cache ainda não resolveu.
+  - **`docs/04-api-design.md` corrigido**: `PATCH /workspaces/{workspace_id}` documentava `OWNER` como único papel autorizado — a matriz real (`core/authorization.py`) sempre concedeu `ADMIN` todas as permissões exceto `WORKSPACE_DELETE`. Código e frontend (`WorkspaceGeneralSettings`) já concordavam entre si; só a tabela divergia. Corrigido para `OWNER`/`ADMIN`, com nota explicando a divergência histórica.
+  - **Achado durante a sprint**: dois testes novos (filtro de papel, clique em Select) expuseram outra lacuna de teste — jsdom não implementa `hasPointerCapture`/`setPointerCapture`/`releasePointerCapture`/`scrollIntoView`, que o Radix `Select` chama ao abrir/fechar via clique. `tests/setup.ts` ganhou os polyfills (mesmo padrão já usado ali para `matchMedia`) — sem isso, qualquer teste que interaja com um `Select` via clique falha com `target.hasPointerCapture is not a function`, algo que nenhum teste anterior tinha exercitado.
+- **Dependências**: nenhuma nova — usou a base de `features/workspaces/` e `shared/components/layout/` já existente.
+- **Critérios de aceite**: lint, type-check, testes (14 arquivos, 43 testes) e build do frontend verdes.
+- **DoD**: DoD-base. Mesma ressalva de verificação visual em navegador real das sub-sprints anteriores (Docker inacessível neste sandbox).
 
 ### Sprint 12.4 — M2: polimento do command palette (planejada)
 

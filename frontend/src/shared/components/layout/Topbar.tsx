@@ -2,6 +2,7 @@ import { Bell, LogOut, Menu, Search } from "lucide-react";
 import { Link, useLocation, useParams } from "react-router-dom";
 
 import { logout } from "@/features/auth/api";
+import { useIssue } from "@/features/issues/hooks";
 import { NotificationItem } from "@/features/notifications/components/NotificationItem";
 import {
   useMarkAllNotificationsRead,
@@ -10,6 +11,7 @@ import {
   useUnreadNotificationsCount,
 } from "@/features/notifications/hooks";
 import type { Notification } from "@/features/notifications/types";
+import { useProject } from "@/features/projects/hooks";
 import { Logo } from "@/shared/components/brand/Logo";
 import { ThemeToggle } from "@/shared/components/ThemeToggle";
 import {
@@ -44,7 +46,11 @@ const SECTION_LABELS: Record<string, string> = {
   settings: "Configurações",
 };
 
-function useBreadcrumbItems(workspaceSlug: string, workspaceName: string) {
+function useBreadcrumbItems(
+  workspaceSlug: string,
+  workspaceName: string,
+  detailLabel: string | undefined,
+) {
   const { pathname } = useLocation();
   const [, , section, detail] = pathname.split("/").filter(Boolean);
 
@@ -63,7 +69,7 @@ function useBreadcrumbItems(workspaceSlug: string, workspaceName: string) {
   }
 
   if (detail) {
-    items.push({ label: "Detalhe" });
+    items.push({ label: detailLabel ?? "…" });
   }
 
   return items;
@@ -71,9 +77,27 @@ function useBreadcrumbItems(workspaceSlug: string, workspaceName: string) {
 
 function TopbarBreadcrumb() {
   const { workspaceSlug } = useParams<{ workspaceSlug: string }>();
+  const { pathname } = useLocation();
   const { data: profile } = useCurrentUser();
   const workspace = profile?.workspaces.find((w) => w.slug === workspaceSlug);
-  const items = useBreadcrumbItems(workspaceSlug ?? "", workspace?.name ?? "FlowDesk");
+
+  const [, , section, detail] = pathname.split("/").filter(Boolean);
+  const isIssueDetail = section === "issues" && Boolean(detail);
+  const isProjectDetail = section === "projects" && Boolean(detail);
+
+  // Busca o identificador real da issue/projeto em detalhe — mesma query key da
+  // página de detalhe (Sprint 6/7), então normalmente é um cache hit, sem round-trip
+  // extra. `enabled` fica implícito: `issueId`/`projectId` vazio desliga a query.
+  const { data: issue } = useIssue(workspace?.id ?? "", isIssueDetail ? (detail ?? "") : "");
+  const { data: project } = useProject(workspace?.id ?? "", isProjectDetail ? (detail ?? "") : "");
+
+  const detailLabel = isIssueDetail
+    ? issue?.identifier
+    : isProjectDetail
+      ? project?.name
+      : undefined;
+
+  const items = useBreadcrumbItems(workspaceSlug ?? "", workspace?.name ?? "FlowDesk", detailLabel);
 
   if (!workspaceSlug) {
     return <Logo size="sm" />;

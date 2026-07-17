@@ -1,10 +1,16 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { getApiErrorMessage } from "@/shared/lib/errors";
 
 import * as api from "./api";
-import type { InvitationCreateInput, WorkspaceMember, WorkspaceUpdateInput } from "./types";
+import type {
+  InvitationCreateInput,
+  InvitationListParams,
+  WorkspaceMember,
+  WorkspaceMemberListParams,
+  WorkspaceUpdateInput,
+} from "./types";
 
 function workspaceKey(workspaceId: string) {
   return ["workspaces", workspaceId] as const;
@@ -14,8 +20,12 @@ function membersKey(workspaceId: string) {
   return ["workspaces", workspaceId, "members"] as const;
 }
 
-function invitationsKey(workspaceId: string) {
-  return ["workspaces", workspaceId, "invitations"] as const;
+function membersPageKey(workspaceId: string, params: WorkspaceMemberListParams) {
+  return ["workspaces", workspaceId, "members", "page", params] as const;
+}
+
+function invitationsKey(workspaceId: string, params: InvitationListParams) {
+  return ["workspaces", workspaceId, "invitations", params] as const;
 }
 
 /** Busca o recurso completo (inclui `description`, ausente de `WorkspaceMembershipSummary`
@@ -39,12 +49,23 @@ export function useWorkspaceMembers(workspaceId: string) {
   });
 }
 
-export function useInvitations(workspaceId: string) {
+/** Versão paginada/filtrável por papel de `useWorkspaceMembers`, usada pela
+ * tela de administração — ver `api.listWorkspaceMembersPage`. */
+export function useWorkspaceMembersPage(workspaceId: string, params: WorkspaceMemberListParams) {
   return useQuery({
-    queryKey: invitationsKey(workspaceId),
-    queryFn: () => api.listInvitations(workspaceId),
+    queryKey: membersPageKey(workspaceId, params),
+    queryFn: () => api.listWorkspaceMembersPage(workspaceId, params),
     enabled: Boolean(workspaceId),
-    staleTime: 30_000,
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useInvitations(workspaceId: string, params: InvitationListParams) {
+  return useQuery({
+    queryKey: invitationsKey(workspaceId, params),
+    queryFn: () => api.listInvitations(workspaceId, params),
+    enabled: Boolean(workspaceId),
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -119,7 +140,7 @@ export function useCreateInvitation(workspaceId: string) {
   return useMutation({
     mutationFn: (input: InvitationCreateInput) => api.createInvitation(workspaceId, input),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: invitationsKey(workspaceId) });
+      queryClient.invalidateQueries({ queryKey: ["workspaces", workspaceId, "invitations"] });
       toast.success("Convite criado.");
     },
     onError: (error) => toast.error(getApiErrorMessage(error)),
@@ -131,7 +152,7 @@ export function useCancelInvitation(workspaceId: string) {
   return useMutation({
     mutationFn: (invitationId: string) => api.cancelInvitation(workspaceId, invitationId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: invitationsKey(workspaceId) });
+      queryClient.invalidateQueries({ queryKey: ["workspaces", workspaceId, "invitations"] });
       toast.success("Convite cancelado.");
     },
     onError: (error) => toast.error(getApiErrorMessage(error)),
