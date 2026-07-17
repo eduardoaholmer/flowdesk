@@ -4,12 +4,14 @@
 
 A partir da conclusão do Milestone 1, o roadmap passa a ser acompanhado em dois níveis: **Milestone** (agrupamento executivo de várias sprints em torno de um objetivo de produto) e **Sprint** (unidade de execução, detalhada seção a seção abaixo). Esta camada não substitui as sprints já registradas — apenas as agrupa retroativamente e ordena o que vem a seguir. A ordem abaixo é uma decisão explícita do usuário que **inverte a prioridade original** de `docs/00-product-vision.md` (que tratava board/Kanban como MVP): o Kanban deixou de ser considerado MVP e passa a ser um milestone grande por si só, só depois de uma base de produto completa e polida.
 
-- ✅ **M1 — Stabilization** (concluído): Sprints 0–9 fase 1. Notificações, recuperação de senha, hardening de rate limit e estabilização da suíte de testes (ADR-017).
-- ✅ **M2 — Frontend Product Completeness** (concluído): Sprint 10. Administração de workspace, command palette funcional, remoção do placeholder de dashboard, notificações no frontend (ADR-018).
-- ✅ **M3 — Ring Gate Brand System completion** (concluído, pendente QA visual humana): Sprint 11. Rampa de cor derivada da tinta/papel travados da marca aplicada em toda superfície semântica, motion system CSS-only, `PageContainer` integrado (ADR-019).
-- ➡️ **M4 — Engineering Quality** (atual): fechar a lacuna real de cobertura de teste do frontend (Playwright, MSW, testes de componente e de hook, testes de integração), auditoria completa de RBAC, revisão do checklist de segurança de `docs/07-security.md`, observabilidade básica (5xx por rota, latência p95) e polimento de CI (`tsc` em `lint-staged`, limpeza de worktree, demais débitos de engenharia identificados ao longo do projeto). Ver ADR-020.
-- **M5 — Kanban Board**: `Team`/`WorkflowState` (schema dormente desde a Sprint 2/ADR-007, nunca removido) mais board com drag-and-drop — o antigo "Núcleo de Issues" original da Sprint 0/4/6 nunca executado nessa forma. Deixou de ser considerado feature inicial de produto (`docs/00-product-vision.md` §5 original) — é agora um milestone dedicado, só depois da base de engenharia (M4) estar fechada. Ao chegar neste milestone, o trabalho será quebrado em múltiplas fases de implementação (schema → board read-only → drag-and-drop → workflow configurável por time, por exemplo) em vez de uma entrega única — mesmo padrão incremental já usado pelos milestones anteriores.
-- **M6 — Production Hardening**: deploy real, `MailSender`/`StorageProvider` com implementação real (hoje só `LoggingMailSender`/`LocalStorageProvider`), transferência de propriedade de workspace (nunca implementada, ver ADR-009/ADR-018).
+> **Nota (pós-auditoria de gap, ADR-021)**: o Kanban **não foi removido do produto** — só deixou de fazer parte do MVP/corte inicial. `M5 — Kanban` continua no roadmap como uma feature "premium" construída sobre uma base de produto e de engenharia madura, não descartada. Nenhum trabalho de Kanban começa antes de M4 estar concluído.
+
+- ✅ **M1 — Estabilização** (concluído): Sprints 0–9 fase 1. Notificações, recuperação de senha, hardening de rate limit e estabilização da suíte de testes (ADR-017).
+- 🔄 **M2 — Product Completeness** (em andamento, fase 2): transformar o FlowDesk em um produto realmente utilizável antes do Kanban. Fase 1 (Sprint 10, ADR-018) entregou administração de workspace, command palette e a decisão do dashboard (removido). Fase 2 (Sprints 12.1–12.4, ADR-021), aberta após uma auditoria de gap de 2026-07-16, cobre o que a fase 1 não tocou: correção de UX e revisão de navegação — ver detalhamento abaixo.
+- ✅ **M3 — Ring Gate Brand** (concluído fase 1, escopo ampliado pendente): Sprint 11 (ADR-019) entregou a rampa de cor semântica e o motion system CSS-only. O usuário ampliou o escopo do milestone para incluir tipografia, app icon, microinterações e uma revisão visual completa de todo componente — esse escopo ampliado só será detalhado/planejado quando M2 fechar (mesma disciplina de "não pular etapas" usada para M2), não nesta ADR.
+- **M4 — Quality**: Playwright, testes de componente, testes de integração de frontend, MSW, observabilidade, métricas, revisão completa de documentação, auditoria de segurança. Ver ADR-020/ADR-021 para o detalhamento de escopo herdado da versão anterior deste milestone ("Engineering Quality").
+- **M5 — Kanban**: `Team`/`WorkflowState` (schema dormente desde a Sprint 2/ADR-007, nunca removido) mais board com drag-and-drop — o antigo "Núcleo de Issues" original da Sprint 0/4/6 nunca executado nessa forma. Deixou de ser considerado feature inicial de produto (`docs/00-product-vision.md` §5 original) — é agora uma feature premium construída só depois que o sistema inteiro estiver sólido (M2–M4 fechados). Ao chegar neste milestone, o trabalho será quebrado em múltiplas fases de implementação (schema → board read-only → drag-and-drop → workflow configurável por time, por exemplo) em vez de uma entrega única. **Não implementar nada relacionado a Kanban antes da conclusão de M4.**
+- **M6 — Production**: deploy real, backups, TLS, secrets, CI/CD, infraestrutura, escalabilidade — inclui `MailSender`/`StorageProvider` com implementação real (hoje só `LoggingMailSender`/`LocalStorageProvider`) e transferência de propriedade de workspace (nunca implementada, ver ADR-009/ADR-018).
 
 ---
 
@@ -202,6 +204,44 @@ Cada sprint tem Definition of Done (DoD) própria, mas todas herdam a DoD-base a
 - **Critérios de aceite**: nenhuma cor nova inventada (só a mesma tinta/papel já aprovados); contraste de todo par texto/fundo verificado computacionalmente (WCAG 2.1, OKLCH→sRGB→luminância) e documentado em `colors.md`; lint, type-check, testes e build do frontend verdes.
 - **DoD**: DoD-base + `docs/09-decision-log.md` (ADR-019) atualizado no mesmo conjunto de mudanças. **Ressalva**: QA visual em navegador real não foi possível nesta sessão (ambiente sandbox sem as bibliotecas de sistema que o Chromium headless exige, sem acesso a `sudo`) — verificação de contraste feita computacionalmente, não visualmente. Recomendado ao usuário revisar visualmente via `npm run dev` antes de considerar a Fase 7 (QA visual) do milestone definitivamente fechada. Aprovação explícita do usuário necessária antes de iniciar o Milestone 4.
 
-## Sprint 12+ — Extensões futuras (pós-portfólio)
+## M2 fase 2 — gap-analysis e quebra em sub-sprints (2026-07-16, ADR-021)
 
-Não planejadas em detalhe agora (evita over-engineering especulativo, `CLAUDE.md` §1.6); candidatas registradas para não serem esquecidas: integrações externas (GitHub, Slack), colaboração em tempo real via WebSocket, papel `GUEST` completo, anexos de arquivo em UI (schema de `Attachment` já existe desde a Sprint 2, falta a feature), refinamento avançado da command palette (ex.: paginação de resultados, busca por label), app mobile. Command palette em sua forma funcional básica deixou de estar nesta lista — entregue na Sprint 10/M2. Playwright/regressão visual automatizada (M4, ver ressalva da Sprint 11 acima) também deixa de ser "futuro distante" para virar candidato concreto do próximo milestone.
+Ao redefinir a ordem oficial de milestones, o usuário manteve M2 aberto (não mais "concluído") e ampliou seu escopo para incluir dois itens que a Sprint 10 não cobriu: correção de pequenos problemas de UX encontrados na implementação, e revisão de toda a navegação do sistema. Antes de qualquer código, uma auditoria de gap (agente read-only, sem edição) revisou administração de workspace, command palette e navegação contra o que de fato existe. Achados completos e a decisão de nomeação (por que "Sprint 12.x" e não "Sprint 2.x") estão em ADR-021. Resumo dos achados que viraram as sub-sprints abaixo:
+
+- **Bug real**: `RequireAuth` já gravava `state:{from:location}` ao redirecionar para `/login`, mas nada lia esse estado — todo login caía sempre em `/`, quebrando silenciosamente o fluxo de "desconectado clica em link de convite → loga → deveria voltar para `/invitations/:token/accept`".
+- **Capacidade inacessível**: o backend tem recuperação de senha completa (`POST /auth/password-reset/{request,confirm}`, Sprint 9 fase 1/ADR-017) sem nenhuma rota, página ou link no frontend.
+- **Polimento de administração**: listas de membros/convites usam `per_page` fixo de 100 sem paginação real nem o filtro por papel que o backend já suporta; breadcrumb de páginas de detalhe (issue/projeto) mostra o texto literal "Detalhe" em vez do identificador real; `docs/04-api-design.md` diverge do código quanto a quem pode `PATCH` um workspace.
+- **Polimento do command palette**: sem indicador de carregamento durante a busca assíncrona, sem tratamento de erro de busca (falha silenciosa vira "nenhum resultado").
+
+### Sprint 12.1 — M2: corrigir redirecionamento pós-login (concluída)
+
+- **Objetivo**: corrigir o bug real de maior impacto encontrado na auditoria — login sempre navegava para `/`, ignorando o destino original que `RequireAuth` já preservava em `location.state.from`.
+- **Entregue**: `shared/lib/routes.ts::resolveLoginRedirect` (função pura, testada em isolamento) reconstrói o path+querystring do `from` gravado por `RequireAuth`; `LoginPage`/`LoginForm`/`LoginTab` passam a navegar para esse destino após login bem-sucedido (ou permanecem em `/` quando não há um `from`, ex.: acesso direto a `/login`). Testes: unitário de `resolveLoginRedirect` (com/sem `from`, com querystring) e de componente de `LoginForm` (mock do módulo `features/auth/api`, sem rede real — MSW é item de M4, ainda não instalado) cobrindo os dois caminhos de redirecionamento.
+- **Dependências**: nenhuma — bug isolado, sem relação com as demais sub-sprints de M2 fase 2.
+- **Critérios de aceite**: lint, type-check, testes e build do frontend verdes; login a partir de um link de convite expirado por sessão volta para a página de convite, não para o workspace home.
+- **DoD**: DoD-base.
+
+### Sprint 12.2 — M2: recuperação de senha no frontend (planejada)
+
+- **Objetivo**: dar UI ao backend de recuperação de senha (RF-AUTH-06, Sprint 9 fase 1/ADR-017) — hoje uma capacidade de servidor inteiramente inacessível pela interface.
+- **Escopo previsto**: `ForgotPasswordPage` (formulário de e-mail, sempre trata como sucesso — anti-enumeration, mesma semântica do `202` do backend) e `ResetPasswordPage` (formulário de nova senha a partir do token, tratamento de token inválido/expirado); link "Esqueci minha senha" em `LoginForm`; rotas novas em `router.tsx`/`shared/lib/routes.ts`; reaproveita `AuthLayout` e o padrão React Hook Form + Zod já usado em `LoginForm`.
+- **Dependências**: Sprint 12.1 (mesma área de código, `features/auth/`).
+- **DoD**: DoD-base.
+
+### Sprint 12.3 — M2: polimento da administração de workspace e navegação (planejada)
+
+- **Objetivo**: fechar os gaps de polimento encontrados na administração de workspace e corrigir a inconsistência de navegação achada na revisão.
+- **Escopo previsto**: paginação real (ou "carregar mais") nas listas de membros/convites em vez de `per_page` fixo, com o filtro por papel já suportado pelo backend exposto na UI; breadcrumb de página de detalhe (`Topbar.tsx`) mostrando o identificador real da issue/projeto em vez do texto literal "Detalhe"; correção de `docs/04-api-design.md` quanto à permissão real de `PATCH /workspaces/{id}` (código e frontend já concordam entre si — só a doc diverge).
+- **Dependências**: nenhuma nova — usa a base de `features/workspaces/` e `shared/components/layout/` já existente.
+- **DoD**: DoD-base.
+
+### Sprint 12.4 — M2: polimento do command palette (planejada)
+
+- **Objetivo**: fechar os gaps de UX assíncrona do command palette encontrados na auditoria.
+- **Escopo previsto**: indicador de carregamento durante a busca de issues/projetos (hoje pode ler como busca morta entre o debounce e a resposta); estado de erro/retry quando a busca falha (hoje falha silenciosamente como "nenhum resultado").
+- **Dependências**: nenhuma — componente isolado (`shared/components/command-palette/`).
+- **DoD**: DoD-base + aprovação explícita do usuário antes de fechar M2 fase 2 e considerar o escopo ampliado de M3 (tipografia/app icon/microinterações/revisão visual completa).
+
+## Sprint 13+ — Extensões futuras (pós-portfólio)
+
+Não planejadas em detalhe agora (evita over-engineering especulativo, `CLAUDE.md` §1.6); candidatas registradas para não serem esquecidas: integrações externas (GitHub, Slack), colaboração em tempo real via WebSocket, papel `GUEST` completo, anexos de arquivo em UI (schema de `Attachment` já existe desde a Sprint 2, falta a feature), refinamento avançado da command palette (ex.: paginação de resultados, busca por label), página dedicada de notificações (hoje o popover do Topbar trunca nas 10 mais recentes, achado na auditoria de M2 fase 2 mas fora do escopo redefinido do milestone), app mobile. Command palette em sua forma funcional básica deixou de estar nesta lista — entregue na Sprint 10/M2. Playwright/regressão visual automatizada (M4, ver ressalva da Sprint 11 acima) também deixa de ser "futuro distante" para virar candidato concreto do próximo milestone.
