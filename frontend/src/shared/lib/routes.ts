@@ -13,6 +13,7 @@ export const routePatterns = {
   labels: "/w/:workspaceSlug/labels",
   settings: "/w/:workspaceSlug/settings",
   invitationAccept: "/invitations/:token/accept",
+  resetPassword: "/reset-password/:token",
 } as const;
 
 export const workspaceRoutes = {
@@ -28,6 +29,10 @@ export const workspaceRoutes = {
 
 export function invitationAcceptRoute(token: string): string {
   return `/invitations/${token}/accept`;
+}
+
+export function resetPasswordRoute(token: string): string {
+  return `/reset-password/${token}`;
 }
 
 interface LoginRedirectLocation {

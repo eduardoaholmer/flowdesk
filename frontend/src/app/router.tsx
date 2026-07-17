@@ -3,12 +3,14 @@ import { createBrowserRouter } from "react-router-dom";
 
 import {
   DashboardPage,
+  ForgotPasswordPage,
   InvitationAcceptPage,
   IssueDetailPage,
   IssuesPage,
   LabelsPage,
   ProjectDetailPage,
   ProjectsPage,
+  ResetPasswordPage,
   WorkspaceSettingsPage,
 } from "@/app/lazyPages";
 import { AppLayout } from "@/shared/components/layout/AppLayout";
@@ -26,6 +28,8 @@ function withPageSuspense(element: ReactNode) {
 
 export const router = createBrowserRouter([
   { path: "/login", element: <LoginPage /> },
+  { path: "/forgot-password", element: withPageSuspense(<ForgotPasswordPage />) },
+  { path: routePatterns.resetPassword, element: withPageSuspense(<ResetPasswordPage />) },
   {
     element: <RequireAuth />,
     children: [

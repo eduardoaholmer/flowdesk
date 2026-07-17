@@ -1,7 +1,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { z } from "zod";
 
@@ -57,7 +57,12 @@ function LoginTab({ redirectTo }: { redirectTo: string }) {
         {errors.email && <p className="text-xs text-destructive">{errors.email.message}</p>}
       </div>
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="login-password">Senha</Label>
+        <div className="flex items-center justify-between">
+          <Label htmlFor="login-password">Senha</Label>
+          <Link to="/forgot-password" className="text-xs text-muted-foreground hover:underline">
+            Esqueci minha senha
+          </Link>
+        </div>
         <Input
           id="login-password"
           type="password"

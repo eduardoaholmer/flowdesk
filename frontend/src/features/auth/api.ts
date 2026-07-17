@@ -32,3 +32,14 @@ export async function register(payload: RegisterPayload): Promise<AuthUser> {
 export async function logout(): Promise<void> {
   await httpClient.post("/auth/logout");
 }
+
+export async function requestPasswordReset(email: string): Promise<void> {
+  await httpClient.post("/auth/password-reset/request", { email });
+}
+
+export async function confirmPasswordReset(payload: {
+  token: string;
+  new_password: string;
+}): Promise<void> {
+  await httpClient.post("/auth/password-reset/confirm", payload);
+}

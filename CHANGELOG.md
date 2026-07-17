@@ -7,6 +7,24 @@ versionados — o desenvolvimento acontece diretamente em `main`, sprint a sprin
 
 ## [Unreleased]
 
+### Sprint 12.2 (M2 fase 2) — Recuperação de senha no frontend
+
+- O backend de recuperação de senha (RF-AUTH-06, Sprint 9 fase 1/ADR-017) não tinha nenhuma
+  UI — capacidade de servidor inteiramente inacessível.
+- `ForgotPasswordPage`/`ForgotPasswordForm` (`/forgot-password`) — formulário de e-mail; após
+  um `202` sempre mostra a tela de sucesso, nunca revelando se o e-mail existe ou não
+  (anti-enumeration).
+- `ResetPasswordPage`/`ResetPasswordForm` (`/reset-password/:token`) — formulário de nova
+  senha; token inválido/expirado (`401`) mostra um atalho para solicitar um novo link em vez
+  de deixar o usuário reenviar o mesmo formulário.
+- Link "Esqueci minha senha" novo em `LoginForm`.
+- `requestPasswordReset`/`confirmPasswordReset` novos em `features/auth/api.ts`.
+- Corrige uma lacuna de infraestrutura de teste encontrada ao escrever os testes desta sprint:
+  `tests/setup.ts` não tinha cleanup nem reset de mocks entre testes do mesmo arquivo (o
+  auto-cleanup do Testing Library nunca era ativado, já que depende de `afterEach` em
+  `globalThis` e `test.globals` não está ligado). Sem isso, um teste que não navega para longe
+  do próprio formulário deixava elementos presos no DOM para o próximo teste do arquivo.
+
 ### Sprint 12.6 (M2 fase 2) — Dashboard: atividade recente e projetos ativos
 
 - Completa a Home com os dois widgets identificados na auditoria da ADR-022 mas não

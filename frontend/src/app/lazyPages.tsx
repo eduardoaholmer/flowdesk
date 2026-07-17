@@ -28,3 +28,11 @@ export const InvitationAcceptPage = lazy(() =>
     default: module.InvitationAcceptPage,
   })),
 );
+export const ForgotPasswordPage = lazy(() =>
+  import("@/pages/ForgotPasswordPage").then((module) => ({
+    default: module.ForgotPasswordPage,
+  })),
+);
+export const ResetPasswordPage = lazy(() =>
+  import("@/pages/ResetPasswordPage").then((module) => ({ default: module.ResetPasswordPage })),
+);

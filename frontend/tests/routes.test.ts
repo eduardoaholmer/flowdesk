@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   invitationAcceptRoute,
+  resetPasswordRoute,
   resolveLoginRedirect,
   routePatterns,
   workspaceRoutes,
@@ -25,6 +26,12 @@ describe("invitationAcceptRoute", () => {
   });
 });
 
+describe("resetPasswordRoute", () => {
+  it("builds the reset password path from a token", () => {
+    expect(resetPasswordRoute("abc123")).toBe("/reset-password/abc123");
+  });
+});
+
 describe("routePatterns", () => {
   it("declares matching patterns for settings and invitation accept", () => {
     expect(routePatterns.settings).toBe("/w/:workspaceSlug/settings");
@@ -33,6 +40,10 @@ describe("routePatterns", () => {
 
   it("declares the workspace home pattern without a trailing segment", () => {
     expect(routePatterns.workspaceHome).toBe("/w/:workspaceSlug");
+  });
+
+  it("declares the reset password pattern with a token param", () => {
+    expect(routePatterns.resetPassword).toBe("/reset-password/:token");
   });
 });
 
