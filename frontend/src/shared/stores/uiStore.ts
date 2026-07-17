@@ -12,6 +12,8 @@ interface UiState {
   setSidebarCollapsed: (collapsed: boolean) => void;
   isMobileNavOpen: boolean;
   setMobileNavOpen: (open: boolean) => void;
+  isCommandPaletteOpen: boolean;
+  setCommandPaletteOpen: (open: boolean) => void;
 }
 
 export const useUiStore = create<UiState>((set) => ({
@@ -20,4 +22,6 @@ export const useUiStore = create<UiState>((set) => ({
   setSidebarCollapsed: (collapsed) => set({ isSidebarCollapsed: collapsed }),
   isMobileNavOpen: false,
   setMobileNavOpen: (open) => set({ isMobileNavOpen: open }),
+  isCommandPaletteOpen: false,
+  setCommandPaletteOpen: (open) => set({ isCommandPaletteOpen: open }),
 }));

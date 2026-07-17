@@ -1,18 +1,12 @@
 import type { ReactNode } from "react";
 
+import { pageContainerWidths, type PageContainerWidth } from "@/shared/theme/tokens/containers";
 import { cn } from "@/shared/lib/utils";
-
-const MAX_WIDTHS = {
-  md: "max-w-3xl",
-  lg: "max-w-5xl",
-  xl: "max-w-7xl",
-  full: "max-w-none",
-} as const;
 
 interface PageContainerProps {
   children: ReactNode;
   /** Largura máxima do conteúdo — `xl` (padrão) para listas/tabelas, `md`/`lg` para conteúdo de leitura mais estreito. */
-  maxWidth?: keyof typeof MAX_WIDTHS;
+  maxWidth?: PageContainerWidth;
   className?: string;
 }
 
@@ -26,7 +20,11 @@ interface PageContainerProps {
 export function PageContainer({ children, maxWidth = "xl", className }: PageContainerProps) {
   return (
     <div
-      className={cn("mx-auto w-full px-4 py-6 sm:px-6 lg:px-8", MAX_WIDTHS[maxWidth], className)}
+      className={cn(
+        "mx-auto w-full px-4 py-6 sm:px-6 lg:px-8",
+        pageContainerWidths[maxWidth],
+        className,
+      )}
     >
       {children}
     </div>

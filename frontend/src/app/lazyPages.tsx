@@ -15,3 +15,13 @@ export const ProjectDetailPage = lazy(() =>
 export const LabelsPage = lazy(() =>
   import("@/pages/LabelsPage").then((module) => ({ default: module.LabelsPage })),
 );
+export const WorkspaceSettingsPage = lazy(() =>
+  import("@/pages/WorkspaceSettingsPage").then((module) => ({
+    default: module.WorkspaceSettingsPage,
+  })),
+);
+export const InvitationAcceptPage = lazy(() =>
+  import("@/pages/InvitationAcceptPage").then((module) => ({
+    default: module.InvitationAcceptPage,
+  })),
+);

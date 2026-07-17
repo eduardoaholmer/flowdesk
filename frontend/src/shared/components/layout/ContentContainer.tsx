@@ -1,11 +1,15 @@
 import type { ReactNode } from "react";
 
+import {
+  contentContainerWidths,
+  type ContentContainerWidth,
+} from "@/shared/theme/tokens/containers";
 import { cn } from "@/shared/lib/utils";
 
 interface ContentContainerProps {
   children: ReactNode;
   /** Largura de leitura — `sm` para formulário/diálogo, `md` (padrão) para conteúdo de detalhe. */
-  size?: "sm" | "md";
+  size?: ContentContainerWidth;
   className?: string;
 }
 
@@ -18,8 +22,6 @@ interface ContentContainerProps {
  */
 export function ContentContainer({ children, size = "md", className }: ContentContainerProps) {
   return (
-    <div className={cn("mx-auto w-full", size === "sm" ? "max-w-md" : "max-w-2xl", className)}>
-      {children}
-    </div>
+    <div className={cn("mx-auto w-full", contentContainerWidths[size], className)}>{children}</div>
   );
 }

@@ -1,8 +1,10 @@
 /**
  * Nomes dos tokens de cor semânticos definidos em `src/index.css` (`:root`/`.dark`).
- * Não redefine valores — a paleta é placeholder em tons de cinza (achromatic) até a
- * identidade visual definitiva ser aplicada; trocar a marca troca só os valores CSS,
- * nunca esta lista de nomes nem nenhum componente que a consome.
+ * Não redefine valores. Desde o Milestone 3 (`docs/09-decision-log.md` ADR-019), os
+ * valores são a rampa de neutros quentes derivada dos dois pontos travados da marca
+ * Ring Gate (`--brand-ink`/`--brand-paper`) — não mais o placeholder acromático do
+ * scaffold shadcn. `destructive` é a única exceção: cor funcional (erro/perigo), não
+ * expressão de marca, inalterada nos dois temas.
  */
 export const colorTokens = [
   "background",

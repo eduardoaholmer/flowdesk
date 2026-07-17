@@ -4,6 +4,7 @@ import {
   ListTodo,
   PanelLeftClose,
   PanelLeftOpen,
+  Settings,
   Tags,
   type LucideIcon,
 } from "lucide-react";
@@ -47,6 +48,7 @@ function getNavGroups(workspaceSlug: string): NavGroup[] {
         { label: "Issues", to: workspaceRoutes.issues(workspaceSlug), icon: ListTodo },
         { label: "Projetos", to: workspaceRoutes.projects(workspaceSlug), icon: FolderKanban },
         { label: "Labels", to: workspaceRoutes.labels(workspaceSlug), icon: Tags },
+        { label: "Configurações", to: workspaceRoutes.settings(workspaceSlug), icon: Settings },
       ],
     },
   ];

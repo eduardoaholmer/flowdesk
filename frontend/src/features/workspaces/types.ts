@@ -23,3 +23,31 @@ export interface WorkspaceMember {
     avatar_url: string | null;
   };
 }
+
+export interface WorkspaceUpdateInput {
+  name?: string;
+  slug?: string;
+  description?: string;
+}
+
+export type InvitationStatus = "PENDING" | "ACCEPTED" | "EXPIRED";
+
+export interface Invitation {
+  id: string;
+  workspace_id: string;
+  email: string;
+  role: WorkspaceRole;
+  status: InvitationStatus;
+  invited_by_id: string;
+  expires_at: string;
+  created_at: string;
+}
+
+export interface InvitationCreatedResult extends Invitation {
+  token: string;
+}
+
+export interface InvitationCreateInput {
+  email: string;
+  role: Exclude<WorkspaceRole, "OWNER">;
+}

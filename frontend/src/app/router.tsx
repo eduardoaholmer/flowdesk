@@ -2,11 +2,13 @@ import { Suspense, type ReactNode } from "react";
 import { createBrowserRouter } from "react-router-dom";
 
 import {
+  InvitationAcceptPage,
   IssueDetailPage,
   IssuesPage,
   LabelsPage,
   ProjectDetailPage,
   ProjectsPage,
+  WorkspaceSettingsPage,
 } from "@/app/lazyPages";
 import { AppLayout } from "@/shared/components/layout/AppLayout";
 import { RequireAuth } from "@/shared/components/RequireAuth";
@@ -30,6 +32,10 @@ export const router = createBrowserRouter([
         element: <AppLayout />,
         children: [
           { index: true, path: "/", element: <HomePage /> },
+          {
+            path: routePatterns.invitationAccept,
+            element: withPageSuspense(<InvitationAcceptPage />),
+          },
           { path: routePatterns.projects, element: withPageSuspense(<ProjectsPage />) },
           {
             path: routePatterns.projectDetail,
@@ -38,6 +44,7 @@ export const router = createBrowserRouter([
           { path: routePatterns.issues, element: withPageSuspense(<IssuesPage />) },
           { path: routePatterns.issueDetail, element: withPageSuspense(<IssueDetailPage />) },
           { path: routePatterns.labels, element: withPageSuspense(<LabelsPage />) },
+          { path: routePatterns.settings, element: withPageSuspense(<WorkspaceSettingsPage />) },
         ],
       },
     ],

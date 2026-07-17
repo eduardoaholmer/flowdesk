@@ -10,6 +10,8 @@ export const routePatterns = {
   projects: "/w/:workspaceSlug/projects",
   projectDetail: "/w/:workspaceSlug/projects/:projectId",
   labels: "/w/:workspaceSlug/labels",
+  settings: "/w/:workspaceSlug/settings",
+  invitationAccept: "/invitations/:token/accept",
 } as const;
 
 export const workspaceRoutes = {
@@ -19,4 +21,9 @@ export const workspaceRoutes = {
   projectDetail: (workspaceSlug: string, projectId: string) =>
     `/w/${workspaceSlug}/projects/${projectId}`,
   labels: (workspaceSlug: string) => `/w/${workspaceSlug}/labels`,
+  settings: (workspaceSlug: string) => `/w/${workspaceSlug}/settings`,
 } as const;
+
+export function invitationAcceptRoute(token: string): string {
+  return `/invitations/${token}/accept`;
+}

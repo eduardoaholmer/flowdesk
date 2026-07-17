@@ -1,12 +1,13 @@
 # FlowDesk Product Design System
 
 Documentação interna para quem constrói UI neste projeto — não um produto documentado
-para usuário final. Escrita na Sprint 8.5 (`docs/08-roadmap.md`), antes da identidade
-visual definitiva existir: **toda cor aqui é placeholder** (grayscale, `src/index.css`)
-e o objetivo explícito é que trocar a marca real só troque valores de cor, nunca a
-estrutura documentada abaixo. A marca real (`brand/Logo.tsx`, "Ring Gate") já foi
-integrada como o primeiro caso concreto disso — só trocou a cor de tinta usada pela
-marca, não a estrutura de componentes.
+para usuário final. A fundação (Sprint 8.5) previu uma paleta placeholder até a
+identidade visual definitiva existir; o Milestone 3 (`docs/09-decision-log.md`
+ADR-019) cumpriu essa promessa: `src/index.css` agora carrega a rampa de neutros
+quentes derivada dos dois pontos travados da marca Ring Gate (`--brand-ink`/
+`--brand-paper`, os mesmos usados desde sempre por `brand/Logo.tsx`) — a estrutura de
+componentes documentada abaixo não mudou, exatamente como planejado: só os valores de
+cor trocaram.
 
 ## Como isto se relaciona com o resto do repositório
 
@@ -27,6 +28,7 @@ navigation, typography, data-display, forms, overlay, feedback, motion, brand}/`
 
 ## Índice
 
+- [Colors](./colors.md)
 - [Spacing](./spacing.md)
 - [Typography](./typography.md)
 - [Radius](./radius.md)

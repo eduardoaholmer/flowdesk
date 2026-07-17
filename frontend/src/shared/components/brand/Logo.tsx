@@ -15,8 +15,12 @@ const WORDMARK_SIZE: Record<LogoSize, string> = {
   lg: "text-2xl",
 };
 
-/** Ring Gate mark ink — the identity spec's own #14130F/#FAF8F3, not `--foreground`: this is a locked brand asset, independent of the app's neutral UI palette. */
-const INK = "text-[#14130F] dark:text-[#FAF8F3]";
+/** Ring Gate mark ink — `--brand-ink`/`--brand-paper` (src/index.css), the same two
+ * locked values the rest of the semantic palette is now derived from (Milestone 3,
+ * ADR-019). Kept as its own token rather than `--foreground` because the mark must
+ * stay the exact brand ink/paper pair even if `--foreground` is ever retuned
+ * independently for contrast reasons. */
+const INK = "text-brand-ink dark:text-brand-paper";
 
 function RingGateSymbol({ className }: { className?: string }) {
   return (

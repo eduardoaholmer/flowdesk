@@ -7,6 +7,64 @@ versionados — o desenvolvimento acontece diretamente em `main`, sprint a sprin
 
 ## [Unreleased]
 
+### Sprint 11 (M3) — Ring Gate Brand System completion
+
+- Paleta de cor: `src/index.css` deixa de ser o placeholder acromático do scaffold
+  shadcn — `background`/`foreground`/`primary`/`card`/`popover`/`border`/`ring`/
+  `sidebar-*` (dois temas) agora são uma rampa de neutros quentes derivada dos dois
+  pontos travados da marca Ring Gate (`--brand-ink` `#14130F` / `--brand-paper`
+  `#FAF8F3`, os mesmos já usados por `Logo`/favicon). Nenhuma cor nova — só a
+  identidade já aprovada, estendida a toda superfície semântica. `--destructive`
+  permanece vermelho puro (funcional, não marca), escurecido em modo claro para
+  corrigir um contraste que ficava abaixo do mínimo AA (4.49:1 → 5.3:1).
+- `Logo.tsx` passa a consumir `text-brand-ink dark:text-brand-paper` (tokens reais)
+  em vez de hex inline.
+- `PageContainer` passa a envolver `<Outlet/>` em `AppLayout` — toda rota autenticada
+  ganha largura máxima/padding responsivo consistente de uma vez (antes: `p-6` sem
+  limite de largura, zero página adotando o componente que deveria resolver isso).
+- Removidos `framer-motion` (dependência) e os 10 componentes de
+  `shared/components/motion/` (`FadeIn`/`FadeUp`/`MotionCard`/etc.) — zero call site
+  real em qualquer tela do produto. Motion system do projeto agora é inteiramente
+  CSS: os tokens `--duration-fast`/`--duration-base` passam a ser de fato consumidos
+  pelos 8 primitivos Radix (`Dialog`/`Sheet`/`DropdownMenu`/`Popover`/`ContextMenu`/
+  `HoverCard`/`Select`/`AlertDialog`) que antes hardcodavam `duration-100`/`200`.
+- `prefers-reduced-motion` (novo): uma única regra CSS global zera duração de
+  animação/transição em todo o projeto.
+- `opacity.ts`/`containers.ts` (novos tokens) documentam convenções já em uso —
+  nenhum valor novo.
+- Ver ADR-019 em `docs/09-decision-log.md` para o racional completo, incluindo o que
+  foi deliberadamente mantido (não removido) apesar de zero consumidor real hoje
+  (`sidebar-*`/`chart-*`, `ContentContainer`).
+- **Ressalva**: QA visual em navegador real não foi possível neste ambiente (faltam
+  bibliotecas de sistema do Chromium headless, sem `sudo`) — contraste verificado
+  computacionalmente (WCAG 2.1), não visualmente.
+
+### Sprint 10 (M2) — Frontend Product Completeness
+
+- Administração de workspace (`features/workspaces/`): nova `WorkspaceSettingsPage`
+  (`/w/:workspaceSlug/settings`, abas Geral/Membros/Convites) — renomear/mudar
+  slug/descrição e excluir workspace, convidar membro por e-mail com link de aceite
+  copiável (`/invitations/:token/accept`, nova rota), cancelar convite pendente,
+  alterar papel e remover membro, sair do workspace. Todos os endpoints já existiam
+  desde as Sprints 4/5; esta sprint é a primeira UI real sobre eles. Controles de
+  mutação gated client-side por papel, sempre reforçado pela autorização real do
+  servidor.
+- Command palette funcional (`shared/components/command-palette/`): atalho global
+  `Cmd/Ctrl+K`, navegação por seção do workspace, troca de workspace, tema, logout,
+  busca assíncrona debounced de issues/projetos (reaproveita endpoints de listagem
+  existentes — não há endpoint de busca dedicado), comandos recentes persistidos em
+  `localStorage`. Substitui a casca estática da Sprint 8.5 (`Topbar::TopbarSearch`
+  não integrada).
+- Notificações no frontend (`features/notifications/`): `Topbar::TopbarNotifications`
+  deixa de ser um estado vazio fixo — consome `GET /notifications`,
+  `PATCH /notifications/{id}`, `POST /notifications/mark-all-read` (todos da Sprint 9
+  fase 1), com polling de 30s, badge de não lidas e link direto para a issue
+  relacionada.
+- `features/dashboard/` (placeholder vazio desde a Sprint 8.5, nunca agendado no
+  roadmap) removido. Ver ADR-018 em `docs/09-decision-log.md`.
+- Transferência de propriedade de workspace explicitamente fora de escopo — nenhum
+  endpoint de backend existe para isso ainda (candidata a Milestone 6).
+
 ### Sprint 9 (fase 1) — Notificações, Recuperação de Senha, Rate Limiting
 
 - Corrigidos 31 testes que estavam quebrados na árvore de trabalho: `IssueService`/

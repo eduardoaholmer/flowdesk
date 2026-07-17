@@ -2,6 +2,14 @@ import { Bell, LogOut, Menu, Search } from "lucide-react";
 import { Link, useLocation, useParams } from "react-router-dom";
 
 import { logout } from "@/features/auth/api";
+import { NotificationItem } from "@/features/notifications/components/NotificationItem";
+import {
+  useMarkAllNotificationsRead,
+  useMarkNotificationRead,
+  useRecentNotifications,
+  useUnreadNotificationsCount,
+} from "@/features/notifications/hooks";
+import type { Notification } from "@/features/notifications/types";
 import { Logo } from "@/shared/components/brand/Logo";
 import { ThemeToggle } from "@/shared/components/ThemeToggle";
 import {
@@ -14,12 +22,7 @@ import {
 } from "@/shared/components/ui/breadcrumb";
 import { Avatar, AvatarFallback } from "@/shared/components/ui/avatar";
 import { Button } from "@/shared/components/ui/button";
-import {
-  CommandDialog,
-  CommandEmpty,
-  CommandInput,
-  CommandList,
-} from "@/shared/components/ui/command";
+import { Kbd } from "@/shared/components/ui/kbd";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -29,7 +32,6 @@ import {
 import { Empty, EmptyDescription, EmptyMedia, EmptyTitle } from "@/shared/components/ui/empty";
 import { Popover, PopoverContent, PopoverTrigger } from "@/shared/components/ui/popover";
 import { useCurrentUser } from "@/shared/hooks/useCurrentUser";
-import { useDisclosure } from "@/shared/hooks/useDisclosure";
 import { workspaceRoutes } from "@/shared/lib/routes";
 import { getInitials } from "@/shared/lib/string";
 import { useAuthStore } from "@/shared/stores/authStore";
@@ -39,6 +41,7 @@ const SECTION_LABELS: Record<string, string> = {
   issues: "Issues",
   projects: "Projetos",
   labels: "Labels",
+  settings: "Configurações",
 };
 
 function useBreadcrumbItems(workspaceSlug: string, workspaceName: string) {
@@ -98,9 +101,10 @@ function TopbarBreadcrumb() {
   );
 }
 
-/** Sem integração — ponto de extensão para busca cross-workspace de uma sprint futura. */
+/** Abre a paleta de comandos global (`shared/components/command-palette/`, montada
+ * em `AppLayout`) — este botão é só um segundo ponto de entrada além de Cmd/Ctrl+K. */
 function TopbarSearch() {
-  const dialog = useDisclosure();
+  const setCommandPaletteOpen = useUiStore((state) => state.setCommandPaletteOpen);
 
   return (
     <>
@@ -108,54 +112,95 @@ function TopbarSearch() {
         variant="outline"
         size="sm"
         className="hidden gap-2 text-muted-foreground sm:flex"
-        onClick={dialog.open}
+        onClick={() => setCommandPaletteOpen(true)}
       >
         <Search className="size-4" />
         Buscar…
+        <Kbd className="ml-2">⌘K</Kbd>
       </Button>
       <Button
         variant="ghost"
         size="icon"
         className="sm:hidden"
         aria-label="Buscar"
-        onClick={dialog.open}
+        onClick={() => setCommandPaletteOpen(true)}
       >
         <Search className="size-4" />
       </Button>
-      <CommandDialog
-        open={dialog.isOpen}
-        onOpenChange={dialog.close}
-        title="Buscar"
-        description="Busca"
-      >
-        <CommandInput placeholder="Buscar issues, projetos, labels…" />
-        <CommandList>
-          <CommandEmpty>Busca ainda não disponível nesta versão.</CommandEmpty>
-        </CommandList>
-      </CommandDialog>
     </>
   );
 }
 
-/** Sem integração — não existe feature de notificações ainda (docs/08-roadmap.md, Sprint 9). */
 function TopbarNotifications() {
+  const { data: profile } = useCurrentUser();
+  const { data: notifications, isLoading } = useRecentNotifications();
+  const { data: unreadCount } = useUnreadNotificationsCount();
+  const markRead = useMarkNotificationRead();
+  const markAllRead = useMarkAllNotificationsRead();
+
+  function slugFor(workspaceId: string) {
+    return profile?.workspaces.find((w) => w.id === workspaceId)?.slug ?? null;
+  }
+
+  function handleOpen(notification: Notification) {
+    if (notification.read_at === null) {
+      markRead.mutate(notification.id);
+    }
+  }
+
+  const hasUnread = Boolean(unreadCount && unreadCount > 0);
+
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button variant="ghost" size="icon" aria-label="Notificações">
+        <Button variant="ghost" size="icon" className="relative" aria-label="Notificações">
           <Bell className="size-4" />
+          {hasUnread && (
+            <span className="absolute right-1.5 top-1.5 size-2 rounded-full bg-primary" />
+          )}
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-80">
-        <Empty className="border-none p-2 py-6">
-          <EmptyMedia>
-            <Bell className="size-6 text-muted-foreground" />
-          </EmptyMedia>
-          <EmptyTitle>Nenhuma notificação</EmptyTitle>
-          <EmptyDescription>
-            Você será avisado aqui sobre menções e mudanças de status.
-          </EmptyDescription>
-        </Empty>
+      <PopoverContent align="end" className="w-80 p-2">
+        <div className="flex items-center justify-between px-1 pb-1">
+          <span className="text-sm font-medium">Notificações</span>
+          {hasUnread && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-auto p-1 text-xs"
+              onClick={() => markAllRead.mutate()}
+            >
+              Marcar todas como lidas
+            </Button>
+          )}
+        </div>
+        {isLoading ? (
+          <div className="flex flex-col gap-2 p-2">
+            <div className="h-10 animate-pulse rounded-md bg-muted" />
+            <div className="h-10 animate-pulse rounded-md bg-muted" />
+          </div>
+        ) : notifications && notifications.data.length > 0 ? (
+          <div className="flex max-h-80 flex-col gap-0.5 overflow-y-auto">
+            {notifications.data.map((notification) => (
+              <NotificationItem
+                key={notification.id}
+                notification={notification}
+                workspaceSlug={slugFor(notification.workspace_id)}
+                onOpen={handleOpen}
+              />
+            ))}
+          </div>
+        ) : (
+          <Empty className="border-none p-2 py-6">
+            <EmptyMedia>
+              <Bell className="size-6 text-muted-foreground" />
+            </EmptyMedia>
+            <EmptyTitle>Nenhuma notificação</EmptyTitle>
+            <EmptyDescription>
+              Você será avisado aqui sobre menções e mudanças de status.
+            </EmptyDescription>
+          </Empty>
+        )}
       </PopoverContent>
     </Popover>
   );
