@@ -275,6 +275,43 @@ Com as Sprints 12.1–12.6 concluídas, o usuário aprovou explicitamente o ence
 
 Isso desbloqueia o planejamento do escopo ampliado de M3 (tipografia, app icon, microinterações, revisão visual completa de todo componente — ADR-021 Decisão 6), que ainda não foi detalhado: mesma disciplina de "não pular etapas" já usada para M2 — o *como* de M3 só é planejado quando o usuário pedir explicitamente para iniciá-lo, não como consequência automática de fechar M2.
 
-## Sprint 13+ — Extensões futuras (pós-portfólio)
+## M3 fase 2 — gap-analysis e quebra em sub-sprints (2026-07-18, ADR-024)
+
+Com M2 fechado e a QA visual pendente resolvida, o usuário pediu explicitamente o planejamento do escopo ampliado de M3. Uma auditoria de gap (agente read-only, sem edição) revisou as quatro áreas do escopo — tipografia, app icon, microinterações, revisão visual completa de todo componente — contra o que de fato existe. Achados completos e as decisões de escopo (display font escolhida, app icon fechado sem código) estão em ADR-024. Resumo:
+
+- **Tipografia**: fundação já existe (`Geist Variable`, type scale documentado) — único gap é `--font-heading` ser alias de `--font-sans`. Fraunces (`@fontsource-variable/fraunces`) escolhida como display font para headings.
+- **App icon**: `favicon.svg` com a marca Ring Gate já existe, tema-aware — fechado sem código novo (não há requisito de PWA/ícone instalável no roadmap).
+- **Microinterações**: o gap mais concreto — zero `hover:scale`/`hover:-translate`/`hover:shadow`/`group-hover` em todo `frontend/src`, cards/linhas de tabela sem nenhum feedback de hover além de cor.
+- **Revisão visual completa**: sem Storybook, só viável como passe manual pelas páginas reais do app — a "Fase 7" que a Sprint 11/ADR-019 nunca executou com um humano.
+
+### Sprint 13.1 — M3: display font para headings (concluída)
+
+- **Objetivo**: aplicar `Fraunces` (`@fontsource-variable/fraunces`) como `--font-heading`, resolvendo o placeholder documentado em `design-system/typography.md` (hoje um alias literal de `--font-sans`), mantendo `Geist Variable` como `--font-sans` do corpo.
+- **Entregue**: `@fontsource-variable/fraunces` adicionado (`frontend/package.json`); `index.css` importa o pacote e redefine `--font-heading: "Fraunces Variable", serif` (`--font-sans` inalterado); nenhum dos ~10 arquivos que já consomem `font-heading` precisou de ajuste — todos já usavam `font-medium`/`font-semibold`, que mapeiam direto no eixo de peso variável (100–900) do Fraunces; `design-system/typography.md` atualizado removendo a nota de placeholder.
+- **Achado durante a sprint**: o container do frontend usa um volume anônimo para `node_modules` (`docker-compose.yml`, isolado do bind mount do código-fonte) — instalar o pacote no host não bastou, foi necessário `docker exec ... npm install` dentro do container. Além disso, o watcher do Vite não detectou a mudança em `index.css` via bind mount no Docker Desktop/Windows (limitação conhecida de propagação de eventos de arquivo em volumes montados), exigindo `docker compose restart frontend` para servir o CSS atualizado — nenhum dos dois é uma mudança de código, só uma nota operacional para as próximas sub-sprints de M3 que também mexerem em assets estáticos.
+- **Dependências**: nenhuma — decisão de fonte já registrada na ADR-024, item isolado (`index.css` + import do pacote).
+- **Critérios de aceite**: lint, type-check, testes (15 arquivos, 45 testes) e build do frontend verdes; verificação visual em navegador real confirmou Fraunces renderizando em `CardTitle` ("Minhas issues", "Atividade recente") e `DialogTitle` ("Nova issue"), sem erro de console.
+- **DoD**: DoD-base + `design-system/typography.md` atualizado.
+
+### Sprint 13.2 — M3: app icon (fechada sem código, ADR-024 Decisão 2)
+
+- **Objetivo**: confirmar formalmente que o favicon Ring Gate já entregue (`favicon.svg`, tema-aware) satisfaz o item "app icon" do escopo ampliado de M3 — sem PWA/manifest, por não haver esse requisito no roadmap.
+- **DoD**: só documentação (esta entrada + ADR-024) — nenhuma mudança de código.
+
+### Sprint 13.3 — M3: microinterações (planejada)
+
+- **Objetivo**: adicionar feedback sutil de profundidade/escala/sombra em superfícies interativas (cards, linhas de tabela/lista, itens de navegação) usando os tokens `--duration-*`/`--ease-*` já existentes desde a ADR-019 — sem reintroduzir `framer-motion` (removido na Sprint 11 por zero consumidor real).
+- **Dependências**: nenhuma — usa tokens já existentes, não depende de 13.1/13.2.
+- **Critérios de aceite**: `card.tsx` e linhas de `table.tsx`/listas ganham transição visível em hover (não só troca de cor); `prefers-reduced-motion` continua respeitado (regra global já existente, ADR-019); lint, type-check, testes e build verdes.
+- **DoD**: DoD-base + `design-system/motion.md` atualizado com os novos padrões de hover.
+
+### Sprint 13.4 — M3: revisão visual completa (planejada)
+
+- **Objetivo**: passe manual por todas as páginas reais do app (a "Fase 7" nunca executada da Sprint 11/ADR-019), documentando as categorias de componente ainda sem doc em `design-system/README.md` (Dialogs, Dropdowns, Badges, Empty/Error/Loading States) e produzindo uma lista de achados.
+- **Dependências**: 13.1/13.3 (revisa o resultado de ambas).
+- **Critérios de aceite**: cada página autenticada revisada via `npm run dev` em navegador real; achados documentados; sub-sprints adicionais (13.5+) abertas se necessário, mesmo padrão de apêndice da ADR-022 Decisão 6.
+- **DoD**: DoD-base + `design-system/README.md` atualizado.
+
+## Sprint 14+ — Extensões futuras (pós-portfólio)
 
 Não planejadas em detalhe agora (evita over-engineering especulativo, `CLAUDE.md` §1.6); candidatas registradas para não serem esquecidas: integrações externas (GitHub, Slack), colaboração em tempo real via WebSocket, papel `GUEST` completo, anexos de arquivo em UI (schema de `Attachment` já existe desde a Sprint 2, falta a feature), refinamento avançado da command palette (ex.: paginação de resultados, busca por label), página dedicada de notificações (hoje o popover do Topbar trunca nas 10 mais recentes, achado na auditoria de M2 fase 2 mas fora do escopo redefinido do milestone), app mobile. Command palette em sua forma funcional básica deixou de estar nesta lista — entregue na Sprint 10/M2. Playwright/regressão visual automatizada (M4, ver ressalva da Sprint 11 acima) também deixa de ser "futuro distante" para virar candidato concreto do próximo milestone.

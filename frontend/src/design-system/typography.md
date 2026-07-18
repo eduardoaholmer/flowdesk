@@ -5,19 +5,25 @@ Fonte de verdade: `src/shared/theme/tokens/typography.ts` (`typographyScale`) e
 
 ## Famílias de fonte
 
-Uma única fonte variável (Geist Variable, `@fontsource-variable/geist`) para as duas
-categorias semânticas:
+Duas fontes variáveis, cada uma self-hosted via `@fontsource-variable/*` (sem
+requisição a CDN de terceiro, mesmo padrão para as duas):
 
 ```css
 --font-sans: "Geist Variable", sans-serif; /* corpo de texto */
---font-heading: "Geist Variable", sans-serif; /* títulos — mesma fonte hoje, nomes
-                                                  diferentes para o dia em que a marca
-                                                  definitiva trouxer uma display font */
+--font-heading: "Fraunces Variable", serif; /* títulos — serif de exibição,
+                                                combina com a rampa de neutros
+                                                quentes derivada de --brand-ink/
+                                                --brand-paper (ADR-019); ver
+                                                ADR-024 para o racional completo
+                                                da escolha */
 ```
 
-`font-heading` já é usado em `CardTitle` (`ui/card.tsx`) e em `PageHeader`
-(`shared/components/typography/`) — todo `<h1>`/`<h2>` de página/seção deveria usar
-`font-heading`, não `font-sans` implícito.
+`font-heading` já é usado em `CardTitle` (`ui/card.tsx`), `PageHeader`
+(`shared/components/typography/`), `StatCard`, e nos títulos de `Dialog`/
+`AlertDialog`/`Sheet`/`Empty` — todo `<h1>`/`<h2>` de página/seção deveria usar
+`font-heading`, não `font-sans` implícito. Fraunces expõe um eixo de peso
+variável completo (100–900), então `font-medium`/`font-semibold` já em uso em
+todos esses consumidores funcionam sem ajuste por componente.
 
 ## Escala de tamanho
 
