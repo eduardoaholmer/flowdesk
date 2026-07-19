@@ -9,6 +9,7 @@ from starlette.responses import Response
 from src.core.config import get_settings
 from src.core.exceptions import InvalidTokenError, error_response
 from src.core.logging import get_logger, request_id_ctx, user_id_ctx
+from src.core.metrics import record_request
 from src.core.rate_limit import check_rate_limit
 from src.core.security import decode_access_token, hash_refresh_token
 
@@ -92,6 +93,18 @@ class AccessLogMiddleware(BaseHTTPMiddleware):
             "http_request",
             method=request.method,
             path=request.url.path,
+            status_code=response.status_code,
+            duration_ms=duration_ms,
+        )
+
+        # `scope["route"]` só existe depois que o roteamento (dentro de `call_next`)
+        # casou uma rota — é o template (`/workspaces/{workspace_id}/issues`), não o
+        # path com IDs reais, o agrupamento certo para métricas por endpoint.
+        route = request.scope.get("route")
+        route_template = getattr(route, "path", None) if route is not None else None
+        await record_request(
+            method=request.method,
+            route_template=route_template,
             status_code=response.status_code,
             duration_ms=duration_ms,
         )

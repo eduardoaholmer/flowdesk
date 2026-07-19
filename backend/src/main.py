@@ -18,6 +18,7 @@ from src.core.exceptions import (
 )
 from src.core.health import run_health_checks
 from src.core.logging import configure_logging, get_logger
+from src.core.metrics import get_metrics_snapshot
 from src.core.middleware import (
     AccessLogMiddleware,
     RateLimitMiddleware,
@@ -120,6 +121,29 @@ async def health_ready(response: Response) -> dict[str, object]:
             }
             for check in report.checks
         },
+    }
+
+
+@app.get("/metrics", tags=["system"])
+async def metrics() -> dict[str, object]:
+    """Contagem de requisições/erros 5xx e latência p95 por endpoint (Sprint 14.5,
+    docs/09-decision-log.md ADR-031) — agregação sobre contadores/amostras já
+    mantidos no Redis por `AccessLogMiddleware`, não um exportador Prometheus
+    (fora de escopo, ver ADR-016). Não autenticado nem sob `/api/v1`, mesmo
+    precedente de `/health`/`/health/ready`: quem consome isto é
+    infraestrutura de observabilidade, não um cliente de domínio."""
+    snapshot = await get_metrics_snapshot()
+    return {
+        "endpoints": [
+            {
+                "method": entry.method,
+                "route": entry.route,
+                "request_count": entry.request_count,
+                "error_5xx_count": entry.error_5xx_count,
+                "latency_p95_ms": entry.latency_p95_ms,
+            }
+            for entry in snapshot
+        ]
     }
 
 

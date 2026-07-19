@@ -367,9 +367,10 @@ Com M3 fechado, o usuário pediu explicitamente o início do M4 — Quality. Uma
 - **Dependências**: nenhuma obrigatória, mas executada depois de 14.2/14.3 por afinidade de assunto (infraestrutura de teste).
 - **DoD**: DoD-base.
 
-### Sprint 14.5 — M4: observabilidade e métricas backend
+### Sprint 14.5 — M4: observabilidade e métricas backend (concluída)
 
 - **Objetivo**: fechar a pendência da Sprint 9 fase 2 — contagem de erro 5xx por rota e latência p95 por endpoint, decidindo a abordagem técnica (endpoint `/metrics` vs. agregação sobre o log estruturado já existente) na própria sub-sprint.
+- **Entregue**: `GET /metrics` (não autenticado, fora de `/api/v1`, mesmo precedente de `/health`/`/health/ready`) — decisão técnica: agregação via contadores/amostras no Redis já usado pelo rate limiting (`core/redis_client.py`, extraído de `core/rate_limit.py`), não um exportador Prometheus (mantém a exclusão de escopo já registrada na ADR-016, não a reverte). `AccessLogMiddleware` chama `core/metrics.py::record_request` reaproveitando `duration_ms`/`status_code` já calculados, agrupando por rota-template (`request.scope["route"].path`, ex. `/workspaces/{workspace_id}/issues`) — rotas não casadas (404 genuíno) caem sob um rótulo único para não crescer sem limite com sondagem externa. `p95` calculado em leitura sobre até 1000 amostras recentes por endpoint (janela móvel aproximada, sem estrutura de histograma). Detalhes completos em ADR-031.
 - **Dependências**: nenhuma.
 - **DoD**: DoD-base.
 
