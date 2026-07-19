@@ -609,3 +609,30 @@ Hardening de rate limit por rota (mesma sprint, gap independente encontrado ao r
 **Desvantagens aceitas**: nenhuma — lint, type-check, suíte de testes (45 testes, nenhum quebrado pela migração) e build verdes; verificação visual real cobriu as três larguras relevantes.
 
 **Impacto futuro**: M3 fechado. Próximo milestone candidato é M4 — Quality (Playwright, testes de integração de frontend, MSW, observabilidade — ver ADR-020/ADR-021), sujeito a aprovação explícita do usuário antes de iniciar, mesma disciplina de toda transição de milestone deste projeto.
+
+---
+
+## ADR-027 — Planejamento do M4 — Quality (gap-analysis e quebra em Sprint 14.1–14.6)
+
+**Contexto**: o usuário pediu explicitamente para iniciar o M4. Mesmo processo já usado para M2 fase 2 (ADR-021) e para o escopo ampliado de M3 (ADR-024): antes de qualquer código, uma auditoria read-only (agente dedicado, sem edição) confirmou o estado real de cada item do escopo declarado em `docs/08-roadmap.md`/ADR-020 — Playwright, testes de componente/integração de frontend, MSW, observabilidade/métricas, revisão completa de documentação, auditoria de segurança.
+
+**Achados da auditoria (resumo — detalhe completo na sessão de auditoria, não persistido em arquivo à parte por não ser um artefato de longa duração)**:
+- **Playwright/E2E**: gap total. Nenhuma config, nenhum teste, `@playwright/test` não instalado. Decisão fundacional de `CLAUDE.md` §16 nunca executada em nenhuma sprint até aqui.
+- **MSW**: gap total. Não instalado, nenhum `src/mocks/`. Os 15 arquivos de teste de componente hoje (`frontend/tests/*.test.tsx`, ~45 testes) usam 100% `vi.mock()` de módulo (`api.ts`), nunca interceptação de rede real — confirmando o que a ADR-018 já registrava como dívida.
+- **Testes de integração de frontend**: inexistentes como camada distinta — sem MSW, "unitário" e "integração" são hoje indistinguíveis (`CLAUDE.md` §16 declara uma pirâmide de 4 camadas; o frontend só exercita a camada 1).
+- **Observabilidade/métricas**: `structlog` + `AccessLogMiddleware` (`core/middleware.py`) já emitem uma linha `http_request` por requisição com `duration_ms`/`status_code`, e `GET /health/ready` já checa DB/Redis/storage (Sprint 8.7/ADR-016) — mas não existe nenhuma agregação (contagem de erro 5xx por rota, p95 por endpoint) nem endpoint `/metrics`. Pendência confirmada desde a Sprint 9 fase 1 (nunca teve uma fase 2).
+- **Revisão de documentação**: uma divergência real e não corrigida encontrada em `docs/04-api-design.md` §10 (Notificações) — documenta paginação cursor-based (`cursor`/`limit`) enquanto o código real (`features/notifications/router.py`) usa offset-based (`page`/`per_page`, mesmo padrão de members/projects); `POST /notifications/mark-all-read` não aparece na tabela; `notification_not_found` ausente do catálogo de códigos §11; cabeçalho da seção ainda rotulado "pós-MVP" apesar de implementado ponta a ponta desde a Sprint 9/10. Password reset e Dashboard/Home conferidos sem divergência.
+- **Auditoria de segurança**: seis itens em aberto documentados em `docs/07-security.md`, o mais relevante sendo a blocklist de `jti` em Redis (nunca implementada, trade-off aceito desde a ADR-008/ADR-009) — nenhum é uma vulnerabilidade silenciosa (todos já documentados como trade-off consciente), mas nenhum foi reavaliado desde que foi aceito, e a revisão completa do checklist (item de DoD da Sprint 9 desde a fase 1) nunca foi de fato executada.
+- **Gap de tooling adicional encontrado**: `lint-staged` (`frontend/package.json`) roda `eslint --fix`/`prettier --write` mas não `tsc` — um erro de tipo pode ser commitado sem o hook pegar (só é pego depois, em CI).
+
+**Decisão 1 — M4 quebrado em seis sub-sprints (Sprint 14.1–14.6), ordenadas por menor risco/maior independência → infraestrutura de teste → auditorias que dependem de julgamento**:
+1. **14.1 — Hardening rápido**: correção da divergência de documentação de notifications (`docs/04-api-design.md` §10/§11) + `tsc` no `lint-staged`. Sem dependência nova, sem risco, sem decisão de arquitetura — mesmo espírito das sprints "X.5" de hardening já usadas no projeto (1.5, 8.5–8.7).
+2. **14.2 — MSW**: instalação e infraestrutura de mock de rede (handlers para os endpoints já cobertos pelos testes atuais), sem ainda migrar os 15 arquivos existentes.
+3. **14.3 — Testes de integração de frontend via MSW**: migra/expande um subconjunto representativo dos testes de componente para exercitar via MSW em vez de `vi.mock()` de módulo, estabelecendo o padrão de "camada 2" da pirâmide de `CLAUDE.md` §16 para os próximos testes escreverem contra.
+4. **14.4 — Playwright**: setup + os fluxos críticos já descritos em `CLAUDE.md` §16 (signup → criar workspace → criar issue → mudar status), primeira execução real da camada E2E do projeto.
+5. **14.5 — Observabilidade/métricas backend**: fecha a pendência da Sprint 9 fase 2 — contagem de erro 5xx por rota e latência p95 por endpoint, decidindo a abordagem técnica (endpoint `/metrics` vs. agregação sobre o log estruturado já existente) na própria sub-sprint.
+6. **14.6 — Auditoria de segurança completa**: revisão linha a linha do checklist de `docs/07-security.md`, conferência da matriz RBAC documentada contra `core/authorization.py` real, e decisão explícita sobre cada um dos seis itens em aberto (reafirmar o trade-off ou fechar).
+
+**Decisão 2 — Numeração "Sprint 14.x", mesma sequência cronológica linear das ADR-021/024**: a seção "Sprint 14+ — Extensões futuras" que ocupava esse número informalmente é renumerada para "Sprint 15+" nesta atualização do roadmap.
+
+**Impacto futuro**: nenhuma sub-sprint foi implementada além da 14.1 nesta sessão (ver DoD da própria Sprint 14.1 no roadmap). 14.2 em diante seguem sujeitas a aprovação explícita antes de iniciar, mesma disciplina de incremento-e-confirmação de toda transição deste projeto — em particular, 14.2/14.4 introduzem dependências novas (`msw`, `@playwright/test`) e 14.6 pode levar a uma decisão de implementar a blocklist de `jti`, ambos merecendo check-in explícito antes de avançar.

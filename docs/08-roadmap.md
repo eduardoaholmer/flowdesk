@@ -9,7 +9,7 @@ A partir da conclusão do Milestone 1, o roadmap passa a ser acompanhado em dois
 - ✅ **M1 — Estabilização** (concluído): Sprints 0–9 fase 1. Notificações, recuperação de senha, hardening de rate limit e estabilização da suíte de testes (ADR-017).
 - ✅ **M2 — Product Completeness** (concluído, fase 2 fechada 2026-07-17, ADR-023): transformar o FlowDesk em um produto realmente utilizável antes do Kanban. Fase 1 (Sprint 10, ADR-018) entregou administração de workspace, command palette e a decisão do dashboard (removido). Fase 2 (Sprints 12.1–12.6, ADR-021/ADR-022), aberta após uma auditoria de gap de 2026-07-16, cobriu o que a fase 1 não tocou: correção de UX, revisão de navegação, e — ampliando o escopo original da fase 2 — uma Home/Dashboard real (ADR-022, reverte a Decisão 1 da ADR-018 sob um requisito novo).
 - ✅ **M3 — Ring Gate Brand** (concluído, escopo ampliado fechado 2026-07-19, ADR-026): Sprint 11 (ADR-019) entregou a rampa de cor semântica e o motion system CSS-only. O escopo ampliado (Sprint 13.1–13.5, ADR-024/025/026) entregou display font para headings, microinterações de hover, a primeira QA visual em navegador real do projeto e quatro docs de design system novas (Dialogs/Dropdowns/Badges/Empty-Error-Loading States).
-- **M4 — Quality**: Playwright, testes de componente, testes de integração de frontend, MSW, observabilidade, métricas, revisão completa de documentação, auditoria de segurança. Ver ADR-020/ADR-021 para o detalhamento de escopo herdado da versão anterior deste milestone ("Engineering Quality").
+- 🚧 **M4 — Quality** (em andamento, aberto 2026-07-19, ADR-027): Playwright, testes de componente, testes de integração de frontend, MSW, observabilidade, métricas, revisão completa de documentação, auditoria de segurança. Ver ADR-020/ADR-021 para o detalhamento de escopo herdado da versão anterior deste milestone ("Engineering Quality"); quebra em Sprint 14.1–14.6 e achados da auditoria de gap em ADR-027.
 - **M5 — Kanban**: `Team`/`WorkflowState` (schema dormente desde a Sprint 2/ADR-007, nunca removido) mais board com drag-and-drop — o antigo "Núcleo de Issues" original da Sprint 0/4/6 nunca executado nessa forma. Deixou de ser considerado feature inicial de produto (`docs/00-product-vision.md` §5 original) — é agora uma feature premium construída só depois que o sistema inteiro estiver sólido (M2–M4 fechados). Ao chegar neste milestone, o trabalho será quebrado em múltiplas fases de implementação (schema → board read-only → drag-and-drop → workflow configurável por time, por exemplo) em vez de uma entrega única. **Não implementar nada relacionado a Kanban antes da conclusão de M4.**
 - **M6 — Production**: deploy real, backups, TLS, secrets, CI/CD, infraestrutura, escalabilidade — inclui `MailSender`/`StorageProvider` com implementação real (hoje só `LoggingMailSender`/`LocalStorageProvider`) e transferência de propriedade de workspace (nunca implementada, ver ADR-009/ADR-018).
 
@@ -310,7 +310,7 @@ Com M2 fechado e a QA visual pendente resolvida, o usuário pediu explicitamente
 
 - **Objetivo**: passe manual por todas as páginas reais do app (a "Fase 7" nunca executada da Sprint 11/ADR-019), documentando as categorias de componente ainda sem doc em `design-system/README.md` (Dialogs, Dropdowns, Badges, Empty/Error/Loading States) e produzindo uma lista de achados.
 - **Entregue**: primeira QA visual em navegador real (Chromium headless) do projeto — conta de teste + workspace/labels/projects/issues de exemplo criados via UI real contra um backend já em execução no host; todas as páginas autenticadas revisadas em tema claro e escuro (Dashboard, Issues lista/detalhe, Projects lista/detalhe, Labels, Configurações, diálogos de criação/edição, dropdown de workspace, `AlertDialog` de exclusão, `Select` dentro de `Dialog`, viewport mobile). Quatro docs novas: `design-system/{badges,dialogs,dropdowns,empty-error-loading}.md`, indexadas em `design-system/README.md`. Detalhes completos, incluindo a suspeita de bug investigada e descartada (Select dentro de Dialog — falso alarme, ver ADR-025 Decisão 2), em ADR-025.
-- **Achados**: (a) `shared/components/forms/FilterBar.tsx` não reflui de forma previsível em mobile (~390px) — botão de ação primária pode ficar espremido ao lado de um filtro; abre Sprint 13.5. (b) `ProjectDetailPage` não lista as issues do próprio projeto (só metadados) — gap de funcionalidade, não de polimento visual; registrado em "Sprint 14+" abaixo, fora do escopo de M3.
+- **Achados**: (a) `shared/components/forms/FilterBar.tsx` não reflui de forma previsível em mobile (~390px) — botão de ação primária pode ficar espremido ao lado de um filtro; abre Sprint 13.5. (b) `ProjectDetailPage` não lista as issues do próprio projeto (só metadados) — gap de funcionalidade, não de polimento visual; registrado em "Sprint 15+" abaixo, fora do escopo de M3.
 - **Dependências**: 13.1/13.3 (revisa o resultado de ambas).
 - **Critérios de aceite**: cada página autenticada revisada via `npm run dev` em navegador real; achados documentados; sub-sprints adicionais (13.5+) abertas se necessário, mesmo padrão de apêndice da ADR-022 Decisão 6.
 - **DoD**: DoD-base + `design-system/README.md` atualizado.
@@ -325,6 +325,55 @@ Com M2 fechado e a QA visual pendente resolvida, o usuário pediu explicitamente
 
 ## M3 — Escopo ampliado: fechado (Sprint 13.1–13.5)
 
-## Sprint 14+ — Extensões futuras (pós-portfólio)
+## M4 fase 1 — gap-analysis e quebra em sub-sprints (2026-07-19, ADR-027)
+
+Com M3 fechado, o usuário pediu explicitamente o início do M4 — Quality. Uma auditoria de gap (agente read-only, sem edição) confirmou o estado real de cada item do escopo declarado nas ADR-020/021: Playwright, testes de componente/integração de frontend, MSW, observabilidade/métricas, revisão completa de documentação, auditoria de segurança. Achados completos e a quebra em sub-sprints estão em ADR-027. Resumo:
+
+- **Playwright/E2E**: gap total — nenhuma config, nenhum teste, dependência não instalada.
+- **MSW**: gap total — não instalado; os 15 arquivos de teste de componente existentes (~45 testes) usam só `vi.mock()` de módulo.
+- **Testes de integração de frontend**: inexistentes como camada distinta da unitária, por depender de MSW.
+- **Observabilidade/métricas**: log estruturado por requisição já existe (`AccessLogMiddleware`), mas sem agregação (5xx por rota, p95 por endpoint) nem endpoint `/metrics` — pendência da Sprint 9 fase 2, nunca fechada.
+- **Revisão de documentação**: divergência real encontrada em `docs/04-api-design.md` §10/§11 (Notificações) — paginação documentada como cursor-based, implementação real é offset-based; endpoint `mark-all-read` e código `notification_not_found` ausentes da doc; seção ainda rotulada "pós-MVP".
+- **Auditoria de segurança**: seis itens em aberto em `docs/07-security.md` (blocklist de `jti` é o mais relevante), todos já trade-offs documentados, nenhum reavaliado desde que foi aceito.
+- **Gap de tooling**: `lint-staged` do frontend não roda `tsc`.
+
+### Sprint 14.1 — M4: hardening rápido (documentação + tooling)
+
+- **Objetivo**: fechar os gaps de menor esforço e zero risco encontrados na auditoria antes de qualquer sub-sprint que introduza dependência nova — corrigir a divergência de documentação de notifications e adicionar `tsc` ao `lint-staged`.
+- **Dependências**: nenhuma — itens isolados e sem relação entre si além de ambos serem "hardening" de baixo risco.
+- **Critérios de aceite**: `docs/04-api-design.md` §10/§11 batendo com `features/notifications/router.py`/`exceptions.py` real; `lint-staged` recusa commit com erro de tipo.
+- **DoD**: DoD-base.
+
+### Sprint 14.2 — M4: MSW (infraestrutura de mock de rede)
+
+- **Objetivo**: instalar e configurar MSW (`msw`, handlers para os endpoints já cobertos pelos testes atuais), sem ainda migrar os 15 arquivos de teste existentes.
+- **Dependências**: nenhuma — fundação isolada.
+- **DoD**: DoD-base.
+
+### Sprint 14.3 — M4: testes de integração de frontend via MSW
+
+- **Objetivo**: migrar/expandir um subconjunto representativo dos testes de componente para exercitar via MSW em vez de `vi.mock()` de módulo, estabelecendo o padrão da camada de integração de `CLAUDE.md` §16.
+- **Dependências**: Sprint 14.2.
+- **DoD**: DoD-base.
+
+### Sprint 14.4 — M4: Playwright (setup + fluxos críticos)
+
+- **Objetivo**: primeira execução real da camada E2E do projeto — setup do Playwright e os fluxos críticos já descritos em `CLAUDE.md` §16 (signup → criar workspace → criar issue → mudar status).
+- **Dependências**: nenhuma obrigatória, mas executada depois de 14.2/14.3 por afinidade de assunto (infraestrutura de teste).
+- **DoD**: DoD-base.
+
+### Sprint 14.5 — M4: observabilidade e métricas backend
+
+- **Objetivo**: fechar a pendência da Sprint 9 fase 2 — contagem de erro 5xx por rota e latência p95 por endpoint, decidindo a abordagem técnica (endpoint `/metrics` vs. agregação sobre o log estruturado já existente) na própria sub-sprint.
+- **Dependências**: nenhuma.
+- **DoD**: DoD-base.
+
+### Sprint 14.6 — M4: auditoria de segurança completa
+
+- **Objetivo**: revisão linha a linha do checklist de `docs/07-security.md`, conferência da matriz RBAC documentada contra `core/authorization.py` real, e decisão explícita sobre cada um dos seis itens em aberto (reafirmar o trade-off ou fechar) — incluindo a blocklist de `jti` em Redis.
+- **Dependências**: nenhuma — pode ser feita a qualquer momento, posicionada por último por ser a mais dependente de julgamento/decisão do usuário.
+- **DoD**: DoD-base + revisão de segurança completa do checklist de `docs/07-security.md` (item de DoD da Sprint 9 nunca cumprido até aqui).
+
+## Sprint 15+ — Extensões futuras (pós-portfólio)
 
 Não planejadas em detalhe agora (evita over-engineering especulativo, `CLAUDE.md` §1.6); candidatas registradas para não serem esquecidas: integrações externas (GitHub, Slack), colaboração em tempo real via WebSocket, papel `GUEST` completo, anexos de arquivo em UI (schema de `Attachment` já existe desde a Sprint 2, falta a feature), refinamento avançado da command palette (ex.: paginação de resultados, busca por label), página dedicada de notificações (hoje o popover do Topbar trunca nas 10 mais recentes, achado na auditoria de M2 fase 2 mas fora do escopo redefinido do milestone), app mobile, `ProjectDetailPage` listar/filtrar as issues do próprio projeto (achado (b) da Sprint 13.4 — `Issue.project_id` já existe no schema, falta a UI), migrar `LabelsToolbar`/demais toolbars futuras para `SearchInput` (`shared/components/forms/SearchInput.tsx`, fundação da Sprint 8.5 ainda sem call site — fora do escopo da Sprint 13.5, que só corrigiu o reflow, não substituiu o markup de busca). Command palette em sua forma funcional básica deixou de estar nesta lista — entregue na Sprint 10/M2. Playwright/regressão visual automatizada (M4, ver ressalva da Sprint 11 acima) também deixa de ser "futuro distante" para virar candidato concreto do próximo milestone.

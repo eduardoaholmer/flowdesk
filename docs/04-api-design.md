@@ -398,16 +398,21 @@ stateDiagram-v2
 
 `DELETE` é bloqueado enquanto o projeto tiver Issues ativas (não soft-deletadas) apontando para ele via `project_id` — espelha, na camada de service, a mesma política já declarada na FK `issues.project_id → projects.id` (`ON DELETE RESTRICT`), que soft delete não aciona (`docs/09-decision-log.md` ADR-011).
 
-## 10. Notificações — pós-MVP (`/notifications`)
+## 10. Notificações (`/notifications`)
+
+Implementado na Sprint 9 fase 1 (`docs/09-decision-log.md` ADR-017) e consumido pelo frontend desde a Sprint 10 (`TopbarNotifications`) e Sprint 12.6 (`RecentActivityWidget` do Dashboard) — o rótulo "pós-MVP" que este título carregava foi removido por não refletir mais o estado real da feature.
 
 | Ação | Endpoint | Autorização | Response | Códigos |
 |---|---|---|---|---|
-| Listar | `GET /notifications?read=&cursor=&limit=` | Dono do recurso (usuário autenticado, implícito) | `{ data: [notification], meta }` | 200 |
-| Marcar como lida | `PATCH /notifications/{id}` | Dono do recurso | `{ data: { notification } }` | 200, 403 |
+| Listar | `GET /notifications?read=&page=&per_page=` | Dono do recurso (usuário autenticado, implícito) | `{ data: [notification], meta }` | 200 |
+| Marcar como lida | `PATCH /notifications/{id}` | Dono do recurso | `{ data: { notification } }` | 200, 403, 404 |
+| Marcar todas como lidas | `POST /notifications/mark-all-read` | Dono do recurso (usuário autenticado, implícito) | — | 204 |
+
+Paginação **offset-based** (`{ page, per_page, total, total_pages }`, mesmo envelope de Projects/Members/Teams) — a implementação real (`features/notifications/router.py`) nunca seguiu a regra geral de §1 (que classifica `notifications` como candidata a cursor-based por volume); divergência não percebida até a auditoria de gap do M4 (ADR-027) porque nenhuma sprint revisitou esta seção desde a criação. Documentado aqui como o contrato real e definitivo — migrar para cursor-based fica como candidato futuro (`docs/08-roadmap.md`, "Sprint 15+") caso o volume por usuário algum dia justifique, não antecipado sem esse gatilho (`CLAUDE.md` §1.6).
 
 ## 11. Erros — catálogo de `code` (não exaustivo, cresce por feature)
 
-`invalid_credentials`, `email_already_registered`, `invalid_refresh_token`, `invalid_password_reset_token`, `invalid_token`, `workspace_not_found`, `slug_taken`, `already_member`, `invitation_already_pending`, `invitation_not_found`, `invitation_expired`, `invitation_email_mismatch`, `sole_owner_cannot_leave`, `member_not_found`, `cannot_manage_own_membership`, `cannot_manage_owner`, `key_taken`, `name_taken`, `team_not_found`, `issue_not_found`, `version_conflict`, `permission_denied`, `rate_limited`, `validation_error`, `project_not_found`, `project_slug_taken`, `project_name_taken`, `project_already_archived`, `project_not_archived`, `project_has_active_issues`, `comment_not_found`, `label_not_found`, `label_name_taken`, `attachment_not_found`, `attachment_too_large`, `attachment_type_not_allowed`.
+`invalid_credentials`, `email_already_registered`, `invalid_refresh_token`, `invalid_password_reset_token`, `invalid_token`, `workspace_not_found`, `slug_taken`, `already_member`, `invitation_already_pending`, `invitation_not_found`, `invitation_expired`, `invitation_email_mismatch`, `sole_owner_cannot_leave`, `member_not_found`, `cannot_manage_own_membership`, `cannot_manage_owner`, `key_taken`, `name_taken`, `team_not_found`, `issue_not_found`, `version_conflict`, `permission_denied`, `rate_limited`, `validation_error`, `project_not_found`, `project_slug_taken`, `project_name_taken`, `project_already_archived`, `project_not_archived`, `project_has_active_issues`, `comment_not_found`, `label_not_found`, `label_name_taken`, `attachment_not_found`, `attachment_too_large`, `attachment_type_not_allowed`, `notification_not_found`.
 
 `comment_not_found` (404), `label_not_found` (404), `label_name_taken` (409, unicidade por workspace), `attachment_not_found` (404), `attachment_too_large`/`attachment_type_not_allowed` (422, validados antes da persistência) são novos na Sprint 8 (§6–8, ADR-013). O esboço original deste catálogo já reservava `name_taken` genérico para labels; `label_name_taken` o substitui com um `code` específico por feature, mesmo padrão já usado por `project_name_taken` na Sprint 6 (evita que o cliente precise inferir o recurso a partir só do `code` genérico).
 
@@ -416,6 +421,8 @@ stateDiagram-v2
 `issue_not_found` (404) e `version_conflict` (409, `If-Match` divergente) são efetivamente implementados na Sprint 7 (§5) — ambos já estavam reservados neste catálogo desde o esboço original da Sprint 0/2, sem uso até agora. `team_not_found` permanece reservado, sem uso: seria acionado por uma futura feature de Team (ainda sem service/router, ver ADR-012), não por Issues, que não depende mais de `team_id`. `invalid_status_transition` (também reservado desde o esboço original) **não** foi implementado nesta sprint e foi removido deste catálogo — `Issue.status` é um enum fixo sem grafo de transição configurável (nenhuma regra de negócio bloqueia uma mudança de status para outra), ver ADR-012 Decisão 1; o código volta ao catálogo se/quando um workflow configurável for implementado.
 
 `member_not_found` (404), `cannot_manage_own_membership` (409) e `cannot_manage_owner` (403) são novos na Sprint 5 (`PATCH`/`DELETE .../members/{member_id}`) — ver `docs/07-security.md` §8.4.
+
+`notification_not_found` (404) é implementado desde a Sprint 9 fase 1 (`features/notifications/exceptions.py`) mas nunca havia sido adicionado a este catálogo nem à tabela de §10 — corrigido na auditoria de gap do M4 (ADR-027).
 
 `invalid_token` (401) cobre qualquer falha de validação do access token Bearer em rota protegida — ausente, malformado, expirado, ou apontando para um usuário que não existe mais (inclusive soft-deleted). Deliberadamente um único código para todo esse espectro, mesmo racional anti-enumeration do `invalid_credentials` — ver `docs/07-security.md` §10 e ADR-008.
 
