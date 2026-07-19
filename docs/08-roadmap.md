@@ -337,16 +337,18 @@ Com M3 fechado, o usuário pediu explicitamente o início do M4 — Quality. Uma
 - **Auditoria de segurança**: seis itens em aberto em `docs/07-security.md` (blocklist de `jti` é o mais relevante), todos já trade-offs documentados, nenhum reavaliado desde que foi aceito.
 - **Gap de tooling**: `lint-staged` do frontend não roda `tsc`.
 
-### Sprint 14.1 — M4: hardening rápido (documentação + tooling)
+### Sprint 14.1 — M4: hardening rápido (documentação + tooling) (concluída)
 
 - **Objetivo**: fechar os gaps de menor esforço e zero risco encontrados na auditoria antes de qualquer sub-sprint que introduza dependência nova — corrigir a divergência de documentação de notifications e adicionar `tsc` ao `lint-staged`.
+- **Entregue**: `docs/04-api-design.md` §10/§11 corrigida (pagination offset-based, `mark-all-read`, `notification_not_found` documentados); `frontend/lint-staged.config.js` extraído de `package.json` com um passo `tsc -b --noEmit` adicionado à checagem de `*.{ts,tsx}`.
 - **Dependências**: nenhuma — itens isolados e sem relação entre si além de ambos serem "hardening" de baixo risco.
 - **Critérios de aceite**: `docs/04-api-design.md` §10/§11 batendo com `features/notifications/router.py`/`exceptions.py` real; `lint-staged` recusa commit com erro de tipo.
 - **DoD**: DoD-base.
 
-### Sprint 14.2 — M4: MSW (infraestrutura de mock de rede)
+### Sprint 14.2 — M4: MSW (infraestrutura de mock de rede) (concluída)
 
 - **Objetivo**: instalar e configurar MSW (`msw`, handlers para os endpoints já cobertos pelos testes atuais), sem ainda migrar os 15 arquivos de teste existentes.
+- **Entregue**: `msw@2.15.0` instalado como devDependency; `frontend/tests/mocks/` com handlers Node (`msw/node`, `setupServer`) para os 15 endpoints já exercitados pelos 15 arquivos de teste de componente atuais (auth: login/register/logout/password-reset; projects/issues: listagem; notifications: listagem/marcar lida/marcar todas lidas; workspaces: membros/convites) organizados por feature (`handlers/auth.ts`, `handlers/projects.ts`, `handlers/issues.ts`, `handlers/notifications.ts`, `handlers/workspaces.ts`) mais fixtures compartilhadas (`fixtures.ts`); `tests/setup.ts` sobe o server global (`onUnhandledRequest: "error"`) e reseta handlers por teste. Nenhum dos 45 testes existentes migrado — todos continuam via `vi.mock()` de módulo e passam inalterados (infraestrutura inerte até a Sprint 14.3 migrar o primeiro caso).
 - **Dependências**: nenhuma — fundação isolada.
 - **DoD**: DoD-base.
 

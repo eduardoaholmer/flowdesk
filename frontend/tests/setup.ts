@@ -1,7 +1,21 @@
 import "@testing-library/jest-dom/vitest";
 
 import { cleanup } from "@testing-library/react";
-import { afterEach, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, vi } from "vitest";
+
+import { server } from "./mocks/server";
+
+/**
+ * Nenhum teste hoje bate na rede de verdade (todos usam `vi.mock()` de módulo
+ * sobre o `api.ts` de cada feature — Sprint 14.3 migra um subconjunto para
+ * exercitar via MSW). O server já sobe aqui porque a infraestrutura precisa existir e
+ * estar ativa antes da primeira migração, não porque algum teste atual dependa
+ * dela. `onUnhandledRequest: "error"` garante que uma chamada real não mockada
+ * (bug de teste, não gap de handler) quebre alto em vez de acertar localhost.
+ */
+beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
+afterEach(() => server.resetHandlers());
+afterAll(() => server.close());
 
 /**
  * `test.globals` não está ligado em `vite.config.ts` — o registro automático de

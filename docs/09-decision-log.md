@@ -635,4 +635,24 @@ Hardening de rate limit por rota (mesma sprint, gap independente encontrado ao r
 
 **Decisão 2 — Numeração "Sprint 14.x", mesma sequência cronológica linear das ADR-021/024**: a seção "Sprint 14+ — Extensões futuras" que ocupava esse número informalmente é renumerada para "Sprint 15+" nesta atualização do roadmap.
 
-**Impacto futuro**: nenhuma sub-sprint foi implementada além da 14.1 nesta sessão (ver DoD da própria Sprint 14.1 no roadmap). 14.2 em diante seguem sujeitas a aprovação explícita antes de iniciar, mesma disciplina de incremento-e-confirmação de toda transição deste projeto — em particular, 14.2/14.4 introduzem dependências novas (`msw`, `@playwright/test`) e 14.6 pode levar a uma decisão de implementar a blocklist de `jti`, ambos merecendo check-in explícito antes de avançar.
+**Impacto futuro**: nenhuma sub-sprint foi implementada além da 14.1 nesta sessão (ver DoD da própria Sprint 14.1 no roadmap). 14.2 em diante seguem sujeitas a aprovação explícita antes de iniciar, mesma disciplina de incremento-e-confirmação de toda transição deste projeto — em particular, 14.2/14.4 introduzem dependências novas (`msw`, `@playwright/test`) e 14.6 pode levar a uma decisão de implementar a blocklist de `jti`, ambos merecendo check-in explícito antes de avançar. **Atualização**: 14.2 foi aprovada e concluída em sessão seguinte — ver ADR-028.
+
+---
+
+## ADR-028 — Sprint 14.2: MSW (infraestrutura de mock de rede)
+
+**Contexto**: com aprovação explícita do usuário (exigida pela ADR-027 por introduzir `msw` como dependência nova), instalado `msw@2.15.0` como devDependency do frontend e criada a infraestrutura de mock de rede para a camada de integração planejada em `CLAUDE.md` §16, sem migrar nenhum dos 15 arquivos de teste de componente existentes (isso é escopo da Sprint 14.3).
+
+**Decisão 1 — Localização em `frontend/tests/mocks/`, não em `frontend/src/mocks/`**: MSW aqui só serve à suíte de testes (Vitest/jsdom via `msw/node`), não a um cenário de mock em navegador real (Storybook, dev server) — colocar em `tests/` (ao lado de `tests/setup.ts`) mantém `src/` livre de código que só existe para o ambiente de teste, mesmo princípio de fronteira explícita do `CLAUDE.md` §1.3. Se uma necessidade futura de mock em navegador aparecer (ex.: Storybook), reavaliar então — não antecipado sem esse gatilho (`CLAUDE.md` §1.6).
+
+**Decisão 2 — Handlers organizados por feature (`handlers/auth.ts`, `handlers/projects.ts`, `handlers/issues.ts`, `handlers/notifications.ts`, `handlers/workspaces.ts`), agregados em `handlers/index.ts`**: espelha a organização feature-based do `CLAUDE.md` §12 em vez de um único arquivo `handlers.ts` monolítico — com os 15 endpoints já cobertos, um arquivo por feature já paga o custo da divisão e escala melhor para a Sprint 14.3 adicionar mais casos por endpoint (`server.use()` por teste) sem inflar um arquivo único.
+
+**Decisão 3 — Fixtures únicas e simples por recurso (`fixtures.ts`: `demoUser`, `demoProject`, `demoIssue`, `demoNotification`, `demoMember`, `demoInvitation`) em vez de builders/factories parametrizáveis**: a infraestrutura ainda não tem consumidor real (nenhum teste migrado), então builders elaborados seriam generalidade especulativa (`CLAUDE.md` §1.6) — a Sprint 14.3 revela a real necessidade de variação por teste (`server.use()` sobrescreve o handler default caso a caso) e pode evoluir esta fixture então.
+
+**Decisão 4 — `onUnhandledRequest: "error"` no `server.listen()` em `tests/setup.ts`**: com o server global ativo mas nenhum teste ainda migrado, nenhuma requisição real deveria bater no MSW hoje — `"error"` (em vez de `"warn"` ou `"bypass"`) faz uma migração futura malfeita (rota sem handler) falhar alto no próprio teste, não silenciosamente.
+
+**Verificação**: `npx vitest run` (45/45 testes, os mesmos de antes, inalterados — infraestrutura comprovadamente inerte), `npx tsc -b --noEmit` e `npx eslint .` limpos, `npx prettier --check` aplicado.
+
+**Desvantagens aceitas**: nenhuma — MSW instalado sem o script de postinstall do pacote aprovado (`npm approve-scripts`), que só gera o service worker de navegador (`mockServiceWorker.js`); irrelevante para o uso via `msw/node` desta sprint, reavaliar apenas se um cenário de mock em navegador for adotado.
+
+**Impacto futuro**: Sprint 14.3 (testes de integração via MSW) pode começar mediante aprovação explícita — introduz o primeiro caso real de migração de `vi.mock()` para `server.use()`, o que deve confirmar ou revisar a Decisão 3 acima.
