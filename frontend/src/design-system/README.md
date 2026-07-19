@@ -40,7 +40,10 @@ navigation, typography, data-display, forms, overlay, feedback, motion, brand}/`
 - [Buttons](./buttons.md)
 - [Cards](./cards.md)
 - [Tables](./tables.md)
+- [Badges](./badges.md)
+- [Dialogs](./dialogs.md)
+- [Dropdowns](./dropdowns.md)
+- [Empty / Error / Loading States](./empty-error-loading.md)
 
 **Sem doc dedicada ainda** (categoria existe como componente, mas não foi documentada
-neste índice — trabalho futuro, não desta sprint): Kanban (feature ainda não existe),
-Dialogs, Dropdowns, Badges, Empty/Error/Loading States.
+neste índice — trabalho futuro, não desta sprint): Kanban (feature ainda não existe).
