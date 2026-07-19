@@ -19,5 +19,15 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     setupFiles: ["./tests/setup.ts"],
+    // `exclude` explícito substitui o default do Vitest inteiro (não soma) — por
+    // isso repete os defaults (node_modules/dist/.git/configs) e acrescenta `e2e/`,
+    // que tem specs do Playwright (`*.spec.ts`) que o Vitest tentaria rodar sozinho.
+    exclude: [
+      "**/node_modules/**",
+      "**/dist/**",
+      "**/e2e/**",
+      "**/.{idea,git,cache,output,temp}/**",
+      "**/{karma,rollup,webpack,vite,vitest,jest,ava,babel,nyc,cjs,mocha,eslint,prettier}.config.*",
+    ],
   },
 });
