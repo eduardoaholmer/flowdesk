@@ -3,7 +3,7 @@
 ## 1. JWT (Access Token)
 
 - Algoritmo `RS256` (par de chaves assimétrico), vida útil **15 minutos**. Curto de propósito: se um access token vazar (XSS, log acidental), a janela de exploração é pequena; a curta duração é o motivo pelo qual o refresh token existe (renovar sem forçar login a cada 15 min).
-- Claims: `sub` (user_id), `iat`, `exp`, `jti` (identificador único do token, usado para blocklist pontual em Redis no caso raro de precisar revogar um access token específico antes da expiração — ex.: usuário reporta comprometimento). O `jti` já é gerado e está presente em todo token emitido (Sprint 3); a checagem ativa contra uma blocklist em Redis **não** está implementada ainda — logout hoje revoga a sessão/refresh token, e o access token remanescente expira sozinho em até 15 min, trade-off aceito explicitamente (ver ADR-008). Adicionar a blocklist é melhoria futura, não bloqueio desta sprint.
+- Claims: `sub` (user_id), `iat`, `exp`, `jti` (identificador único do token, usado para blocklist pontual em Redis no caso raro de precisar revogar um access token específico antes da expiração — ex.: usuário reporta comprometimento). O `jti` já é gerado e está presente em todo token emitido (Sprint 3); a checagem ativa contra uma blocklist em Redis **não** está implementada ainda — logout hoje revoga a sessão/refresh token, e o access token remanescente expira sozinho em até 15 min, trade-off aceito explicitamente (ver ADR-008; **reafirmado** na auditoria completa da Sprint 14.6, ADR-032 — decisão explícita do usuário de manter, não implementar).
 - Nunca embute papel/permissão (ver `docs/06-backend.md` §7) — permissão é sempre revalidada contra o banco a cada requisição.
 - Transportado via header `Authorization: Bearer`, nunca em query string (evita vazamento via log de acesso/proxy).
 
@@ -18,7 +18,7 @@
 
 Decisão deliberada: o **access token** vive em memória no frontend (variável de módulo), não em cookie. Se estivesse em cookie (mesmo `HttpOnly`), toda requisição à API o enviaria automaticamente, tornando a aplicação vulnerável a CSRF em **todas** as rotas mutáveis, não apenas em `/auth/refresh`. Mantendo o access token fora de cookie, CSRF só precisa ser mitigado no único endpoint que de fato depende de cookie de autenticação (`/auth/refresh`) — superfície de proteção mínima necessária, não máxima por precaução genérica.
 
-Trade-off aceito: em caso de XSS bem-sucedido, o atacante pode ler o access token em memória (mas não o refresh token, que é `HttpOnly`) — limita o dano à janela de 15 minutos do access token comprometido, não a 30 dias.
+Trade-off aceito: em caso de XSS bem-sucedido, o atacante pode ler o access token em memória (mas não o refresh token, que é `HttpOnly`) — limita o dano à janela de 15 minutos do access token comprometido, não a 30 dias. **Reafirmado** na auditoria completa da Sprint 14.6 (ADR-032) — decisão arquitetural, não incremental; fechar exigiria redesenhar autenticação, não ajustar um parâmetro.
 
 ## 4. CSRF
 
