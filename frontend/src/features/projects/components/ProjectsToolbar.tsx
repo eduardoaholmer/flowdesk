@@ -1,5 +1,6 @@
 import { Search } from "lucide-react";
 
+import { FilterBar } from "@/shared/components/forms/FilterBar";
 import { Input } from "@/shared/components/ui/input";
 import {
   Select,
@@ -26,8 +27,8 @@ export function ProjectsToolbar({
   onStatusChange: (value: ProjectStatus | "ALL") => void;
 }) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3">
-      <div className="flex flex-1 items-center gap-2">
+    <FilterBar
+      search={
         <div className="relative w-full max-w-xs">
           <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -37,6 +38,8 @@ export function ProjectsToolbar({
             className="pl-8"
           />
         </div>
+      }
+      filters={
         <Select
           value={status}
           onValueChange={(value) => onStatusChange(value as ProjectStatus | "ALL")}
@@ -50,8 +53,8 @@ export function ProjectsToolbar({
             <SelectItem value="ARCHIVED">Arquivados</SelectItem>
           </SelectContent>
         </Select>
-      </div>
-      <CreateProjectDialog workspaceId={workspaceId} />
-    </div>
+      }
+      actions={<CreateProjectDialog workspaceId={workspaceId} />}
+    />
   );
 }
