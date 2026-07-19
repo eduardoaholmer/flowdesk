@@ -28,6 +28,19 @@ const schema = z.object({
   due_date: z.string().optional(),
 });
 
+function issueToFormValues(issue: Issue): IssueFormValues {
+  return {
+    title: issue.title,
+    description: issue.description ?? "",
+    project_id: issue.project_id ?? undefined,
+    status: issue.status,
+    priority: issue.priority,
+    assignee_id: issue.assignee_id ?? undefined,
+    estimate: issue.estimate !== null ? String(issue.estimate) : "",
+    due_date: issue.due_date ?? "",
+  };
+}
+
 export function EditIssueDialog({
   workspaceId,
   issue,
@@ -46,22 +59,21 @@ export function EditIssueDialog({
     formState: { errors },
   } = useForm<IssueFormValues>({
     resolver: zodResolver(schema),
-    values: {
-      title: issue.title,
-      description: issue.description ?? "",
-      project_id: issue.project_id ?? undefined,
-      status: issue.status,
-      priority: issue.priority,
-      assignee_id: issue.assignee_id ?? undefined,
-      estimate: issue.estimate !== null ? String(issue.estimate) : "",
-      due_date: issue.due_date ?? "",
-    },
+    defaultValues: issueToFormValues(issue),
   });
   const updateIssue = useUpdateIssue(workspaceId, issue.id);
 
+  /**
+   * Reset só ao ABRIR (não a cada render): `values` reativo do react-hook-form
+   * recriava o objeto de sync a cada render de `IssueRowActions` (novo literal a
+   * cada chamada), disparando um reset em loop que fechava o Dialog sozinho no
+   * primeiro clique após a issue carregar (bug real, achado pela Sprint 14.4/E2E).
+   * `defaultValues` + reset explícito só na transição `open` evita o objeto
+   * recriado a cada render disparar o efeito.
+   */
   useEffect(() => {
-    if (!open) reset();
-  }, [open, reset]);
+    if (open) reset(issueToFormValues(issue));
+  }, [open, issue, reset]);
 
   async function onSubmit(values: IssueFormValues) {
     await updateIssue.mutateAsync({

@@ -25,6 +25,11 @@ dist-ssr/
 *.tsbuildinfo
 .vite/
 
+# --- Playwright (frontend/e2e) ---
+frontend/test-results/
+frontend/playwright-report/
+frontend/blob-report/
+
 # --- Editores/SO ---
 .vscode/*
 !.vscode/extensions.json

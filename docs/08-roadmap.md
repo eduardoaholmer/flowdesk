@@ -360,9 +360,10 @@ Com M3 fechado, o usuário pediu explicitamente o início do M4 — Quality. Uma
 - **Critérios de aceite**: suíte completa (45 testes) passando após a migração; lint/type-check limpos.
 - **DoD**: DoD-base.
 
-### Sprint 14.4 — M4: Playwright (setup + fluxos críticos)
+### Sprint 14.4 — M4: Playwright (setup + fluxos críticos) (concluída)
 
 - **Objetivo**: primeira execução real da camada E2E do projeto — setup do Playwright e os fluxos críticos já descritos em `CLAUDE.md` §16 (signup → criar workspace → criar issue → mudar status).
+- **Entregue**: `@playwright/test` instalado; `frontend/playwright.config.ts` (Chromium, `webServer` reaproveitando o dev server local); `frontend/e2e/critical-flow.spec.ts` cobrindo o fluxo completo via UI real (cadastro pela aba "Criar conta" de `/login` — não havia gap de UI, achado inicial da sessão estava errado, ver ADR-030) contra um backend real. **Bug de produto real encontrado e corrigido pela primeira execução**: `EditIssueDialog` abria e fechava sozinho no primeiro clique de "Editar issue" após a issue carregar — causa raiz em `useForm({ values: {...} })` (react-hook-form) recriando o objeto de sincronização a cada render e dessincronizando o Dialog; corrigido trocando para `defaultValues` + `reset()` explícito só na transição de abertura. Detalhes completos da investigação (incluindo um beco sem saída de diagnóstico causado por um erro de configuração próprio) em ADR-030.
 - **Dependências**: nenhuma obrigatória, mas executada depois de 14.2/14.3 por afinidade de assunto (infraestrutura de teste).
 - **DoD**: DoD-base.
 
