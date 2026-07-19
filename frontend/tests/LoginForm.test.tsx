@@ -1,25 +1,17 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { LoginForm } from "@/features/auth/components/LoginForm";
 import { useAuthStore } from "@/shared/stores/authStore";
 
-vi.mock("@/features/auth/api", () => ({
-  login: vi.fn(async () => ({
-    access_token: "token",
-    user: {
-      id: "1",
-      name: "Ada Lovelace",
-      email: "ada@example.com",
-      avatar_url: null,
-      created_at: "2026-01-01T00:00:00Z",
-    },
-  })),
-  register: vi.fn(),
-}));
-
+/**
+ * Sem `server.use()` aqui de propósito: o handler default de
+ * `mocks/handlers/auth.ts` já resolve `POST /auth/login` com sucesso, o que
+ * basta para os dois fluxos abaixo — nenhum deles depende do conteúdo do
+ * usuário retornado, só de o login ter sido bem-sucedido.
+ */
 afterEach(() => {
   useAuthStore.getState().clear();
 });

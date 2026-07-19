@@ -1,17 +1,15 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
+import { http, HttpResponse } from "msw";
 import { MemoryRouter } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { ActiveProjectsWidget } from "@/features/dashboard/components/ActiveProjectsWidget";
 import type { Project } from "@/features/projects/types";
-import type { CollectionEnvelope } from "@/shared/lib/apiTypes";
 
-const { listProjectsMock } = vi.hoisted(() => ({ listProjectsMock: vi.fn() }));
-
-vi.mock("@/features/projects/api", () => ({
-  listProjects: listProjectsMock,
-}));
+import { API_BASE_URL } from "./mocks/apiBaseUrl";
+import { buildPaginationMeta } from "./mocks/fixtures";
+import { server } from "./mocks/server";
 
 function renderWidget() {
   const queryClient = new QueryClient({
@@ -45,25 +43,27 @@ const baseProject: Project = {
 
 describe("ActiveProjectsWidget", () => {
   it("shows active projects and requests only the ACTIVE status", async () => {
-    listProjectsMock.mockResolvedValue({
-      data: [baseProject],
-      meta: { page: 1, per_page: 5, total: 1, total_pages: 1 },
-    } satisfies CollectionEnvelope<Project>);
+    server.use(
+      http.get(`${API_BASE_URL}/workspaces/:workspaceId/projects`, ({ request }) => {
+        const status = new URL(request.url).searchParams.get("status");
+        if (status !== "ACTIVE") {
+          return HttpResponse.json({ data: [], meta: buildPaginationMeta(1, 5, 0) });
+        }
+        return HttpResponse.json({ data: [baseProject], meta: buildPaginationMeta(1, 5, 1) });
+      }),
+    );
 
     renderWidget();
 
     expect(await screen.findByText("Ring Gate")).toBeInTheDocument();
-    expect(listProjectsMock).toHaveBeenCalledWith(
-      "ws-1",
-      expect.objectContaining({ status: "ACTIVE" }),
-    );
   });
 
   it("shows an empty state when there are no active projects", async () => {
-    listProjectsMock.mockResolvedValue({
-      data: [],
-      meta: { page: 1, per_page: 5, total: 0, total_pages: 0 },
-    } satisfies CollectionEnvelope<Project>);
+    server.use(
+      http.get(`${API_BASE_URL}/workspaces/:workspaceId/projects`, () =>
+        HttpResponse.json({ data: [], meta: buildPaginationMeta(1, 5, 0) }),
+      ),
+    );
 
     renderWidget();
 

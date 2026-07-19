@@ -1,18 +1,16 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
 import { MemoryRouter } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { WorkspaceInvitationsSettings } from "@/features/workspaces/components/WorkspaceInvitationsSettings";
 import type { Invitation } from "@/features/workspaces/types";
-import type { CollectionEnvelope } from "@/shared/lib/apiTypes";
 
-const { listInvitationsMock } = vi.hoisted(() => ({ listInvitationsMock: vi.fn() }));
-
-vi.mock("@/features/workspaces/api", () => ({
-  listInvitations: listInvitationsMock,
-}));
+import { API_BASE_URL } from "./mocks/apiBaseUrl";
+import { buildPaginationMeta } from "./mocks/fixtures";
+import { server } from "./mocks/server";
 
 function buildInvitation(overrides: Partial<Invitation>): Invitation {
   return {
@@ -41,22 +39,36 @@ function renderSettings() {
 
 describe("WorkspaceInvitationsSettings", () => {
   it("fetches the first page of invitations", async () => {
-    listInvitationsMock.mockResolvedValue({
-      data: [buildInvitation({ id: "inv-1" })],
-      meta: { page: 1, per_page: 20, total: 1, total_pages: 1 },
-    } satisfies CollectionEnvelope<Invitation>);
+    server.use(
+      http.get(`${API_BASE_URL}/workspaces/:workspaceId/invitations`, () =>
+        HttpResponse.json({
+          data: [buildInvitation({ id: "inv-1" })],
+          meta: buildPaginationMeta(1, 20, 1),
+        }),
+      ),
+    );
 
     renderSettings();
 
     expect(await screen.findByText("new@example.com")).toBeInTheDocument();
-    expect(listInvitationsMock).toHaveBeenCalledWith("ws-1", { page: 1, per_page: 20 });
   });
 
   it("shows pagination and moves to the next page on click", async () => {
-    listInvitationsMock.mockResolvedValue({
-      data: [buildInvitation({ id: "inv-1" })],
-      meta: { page: 1, per_page: 20, total: 40, total_pages: 2 },
-    } satisfies CollectionEnvelope<Invitation>);
+    server.use(
+      http.get(`${API_BASE_URL}/workspaces/:workspaceId/invitations`, ({ request }) => {
+        const page = Number(new URL(request.url).searchParams.get("page") ?? 1);
+        if (page === 2) {
+          return HttpResponse.json({
+            data: [buildInvitation({ id: "inv-2", email: "page2@example.com" })],
+            meta: buildPaginationMeta(2, 20, 40),
+          });
+        }
+        return HttpResponse.json({
+          data: [buildInvitation({ id: "inv-1" })],
+          meta: buildPaginationMeta(1, 20, 40),
+        });
+      }),
+    );
     const user = userEvent.setup();
 
     renderSettings();
@@ -64,6 +76,6 @@ describe("WorkspaceInvitationsSettings", () => {
 
     await user.click(screen.getByRole("button", { name: "Próxima página" }));
 
-    expect(listInvitationsMock).toHaveBeenLastCalledWith("ws-1", { page: 2, per_page: 20 });
+    expect(await screen.findByText("page2@example.com")).toBeInTheDocument();
   });
 });

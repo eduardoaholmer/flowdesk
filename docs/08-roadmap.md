@@ -352,10 +352,12 @@ Com M3 fechado, o usuário pediu explicitamente o início do M4 — Quality. Uma
 - **Dependências**: nenhuma — fundação isolada.
 - **DoD**: DoD-base.
 
-### Sprint 14.3 — M4: testes de integração de frontend via MSW
+### Sprint 14.3 — M4: testes de integração de frontend via MSW (concluída)
 
 - **Objetivo**: migrar/expandir um subconjunto representativo dos testes de componente para exercitar via MSW em vez de `vi.mock()` de módulo, estabelecendo o padrão da camada de integração de `CLAUDE.md` §16.
+- **Entregue**: 5 dos 15 arquivos de teste de componente migrados de `vi.mock()` de módulo para `server.use()`/handlers reais via MSW (`LoginForm`, `ForgotPasswordForm`, `ActiveProjectsWidget`, `RecentActivityWidget`, `WorkspaceInvitationsSettings`), cobrindo os padrões que os 10 restantes vão repetir: sucesso sem override (handler default já basta), GET com filtro por query param, GET com paginação, GET com filtragem client-side, e o caso antes não testável via `vi.mock()` — uma resposta de erro real da rede (`429`) percorrendo o interceptor de `httpClient` de verdade. As asserções que antes inspecionavam argumentos de chamada do mock (`toHaveBeenCalledWith`) viraram asserções de comportamento (o dado certo aparece porque o request certo foi feito), documentado na ADR-029. Os 10 arquivos restantes ficam para migração futura, mesmo espírito incremental do projeto — não é um requisito de bloqueio para 14.4+.
 - **Dependências**: Sprint 14.2.
+- **Critérios de aceite**: suíte completa (45 testes) passando após a migração; lint/type-check limpos.
 - **DoD**: DoD-base.
 
 ### Sprint 14.4 — M4: Playwright (setup + fluxos críticos)

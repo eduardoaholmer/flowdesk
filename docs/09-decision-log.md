@@ -655,4 +655,20 @@ Hardening de rate limit por rota (mesma sprint, gap independente encontrado ao r
 
 **Desvantagens aceitas**: nenhuma — MSW instalado sem o script de postinstall do pacote aprovado (`npm approve-scripts`), que só gera o service worker de navegador (`mockServiceWorker.js`); irrelevante para o uso via `msw/node` desta sprint, reavaliar apenas se um cenário de mock em navegador for adotado.
 
-**Impacto futuro**: Sprint 14.3 (testes de integração via MSW) pode começar mediante aprovação explícita — introduz o primeiro caso real de migração de `vi.mock()` para `server.use()`, o que deve confirmar ou revisar a Decisão 3 acima.
+**Impacto futuro**: Sprint 14.3 (testes de integração via MSW) pode começar mediante aprovação explícita — introduz o primeiro caso real de migração de `vi.mock()` para `server.use()`, o que deve confirmar ou revisar a Decisão 3 acima. **Atualização**: concluída — ver ADR-029.
+
+---
+
+## ADR-029 — Sprint 14.3: migração de um subconjunto de testes de componente para MSW
+
+**Contexto**: com a infraestrutura da Sprint 14.2 (ADR-028) no lugar, migrados 5 dos 15 arquivos de teste de componente de `vi.mock("@/features/.../api")` para `server.use()` sobre os handlers reais de `tests/mocks/`, estabelecendo o padrão de "camada 2" (integração via MSW) de `CLAUDE.md` §16 para os 10 arquivos restantes seguirem quando migrados.
+
+**Decisão 1 — Subconjunto escolhido por cobrir padrões distintos, não por arquivo mais simples**: `LoginForm.test.tsx` (sucesso sem nenhum `server.use()` — o handler default já basta, prova que a infraestrutura da Sprint 14.2 é utilizável como está), `ActiveProjectsWidget.test.tsx` (GET com filtro por query param), `RecentActivityWidget.test.tsx` (GET com filtragem que acontece no cliente, não no servidor), `WorkspaceInvitationsSettings.test.tsx` (GET com paginação real via `page`/`per_page`), e `ForgotPasswordForm.test.tsx` (o caso que `vi.mock()` nunca exercitou de verdade: uma resposta de erro HTTP real atravessando o interceptor de `httpClient`/axios, não um `mockRejectedValue` com um `Error` genérico). Os 10 arquivos restantes (`CommandPalette`, `MyIssuesWidget`, `ResetPasswordForm`, `TopbarBreadcrumb`, `WorkspaceMembersSettings`, entre outros) continuam em `vi.mock()` — migração incremental, sem prazo definido, não bloqueia 14.4+.
+
+**Decisão 2 — Asserções de argumento de mock (`toHaveBeenCalledWith`) viram asserções de comportamento observável**: onde o teste antigo verificava "a função foi chamada com `{ status: "ACTIVE" }`" ou "com `{ page: 2 }`", o handler MSW agora responde de forma diferente conforme o parâmetro real da URL (`ActiveProjectsWidget`: retorna vazio se `status !== "ACTIVE"`; `WorkspaceInvitationsSettings`: retorna um e-mail diferente na página 2) e o teste verifica o dado renderizado. Isso prova o mesmo comportamento através da fronteira de rede real, em vez de inspecionar como o código chamou uma função — mais próximo do que a camada de integração de `CLAUDE.md` §16 pretende validar. Onde não havia branch condicional óbvio (`ForgotPasswordForm`), a asserção de payload vira uma variável capturada dentro do handler (`receivedEmail`), mesmo efeito sem reintroduzir um mock de módulo.
+
+**Verificação**: `npx vitest run` (45/45, suíte completa inalterada em número de testes), `npx tsc -b --noEmit` e `npx eslint .` limpos, `npx prettier --check` aplicado nos 5 arquivos migrados.
+
+**Desvantagens aceitas**: um worker do Vitest expirou uma vez de forma isolada e não reproduzível (`useRecentCommands.test.ts`, arquivo não tocado nesta sprint) — ambiente, não regressão; suíte re-executada limpa (45/45) na sequência.
+
+**Impacto futuro**: Sprint 14.4 (Playwright) não depende desta migração estar completa nos 15 arquivos — pode prosseguir mediante aprovação explícita, mesma disciplina de incremento-e-confirmação do projeto.

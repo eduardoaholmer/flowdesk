@@ -1,19 +1,15 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
+import { http, HttpResponse } from "msw";
 import { MemoryRouter } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { RecentActivityWidget } from "@/features/dashboard/components/RecentActivityWidget";
 import type { Notification } from "@/features/notifications/types";
-import type { CollectionEnvelope } from "@/shared/lib/apiTypes";
 
-const { listNotificationsMock } = vi.hoisted(() => ({ listNotificationsMock: vi.fn() }));
-
-vi.mock("@/features/notifications/api", () => ({
-  listNotifications: listNotificationsMock,
-  markNotificationRead: vi.fn(),
-  markAllNotificationsRead: vi.fn(),
-}));
+import { API_BASE_URL } from "./mocks/apiBaseUrl";
+import { buildPaginationMeta } from "./mocks/fixtures";
+import { server } from "./mocks/server";
 
 function renderWidget() {
   const queryClient = new QueryClient({
@@ -43,10 +39,14 @@ function buildNotification(overrides: Partial<Notification>): Notification {
 
 describe("RecentActivityWidget", () => {
   it("shows notifications belonging to the active workspace", async () => {
-    listNotificationsMock.mockResolvedValue({
-      data: [buildNotification({ id: "notif-1" })],
-      meta: { page: 1, per_page: 10, total: 1, total_pages: 1 },
-    } satisfies CollectionEnvelope<Notification>);
+    server.use(
+      http.get(`${API_BASE_URL}/notifications`, () =>
+        HttpResponse.json({
+          data: [buildNotification({ id: "notif-1" })],
+          meta: buildPaginationMeta(1, 10, 1),
+        }),
+      ),
+    );
 
     renderWidget();
 
@@ -54,10 +54,14 @@ describe("RecentActivityWidget", () => {
   });
 
   it("filters out notifications from other workspaces", async () => {
-    listNotificationsMock.mockResolvedValue({
-      data: [buildNotification({ id: "notif-other", workspace_id: "ws-2" })],
-      meta: { page: 1, per_page: 10, total: 1, total_pages: 1 },
-    } satisfies CollectionEnvelope<Notification>);
+    server.use(
+      http.get(`${API_BASE_URL}/notifications`, () =>
+        HttpResponse.json({
+          data: [buildNotification({ id: "notif-other", workspace_id: "ws-2" })],
+          meta: buildPaginationMeta(1, 10, 1),
+        }),
+      ),
+    );
 
     renderWidget();
 
