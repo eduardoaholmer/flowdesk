@@ -28,6 +28,26 @@ Hover/focus de botão, linha de tabela, item de menu — tudo já usa `transitio
 com a duração default do Tailwind (curta o bastante para não precisar de um token
 próprio). Não introduza uma segunda forma de fazer a mesma coisa.
 
+## Microinterações de profundidade (Sprint 13.3)
+
+A auditoria de gap do M3 (ADR-024) encontrou zero `hover:scale`/`hover:-translate`/
+`hover:shadow`/`group-hover` em todo `frontend/src` — cards e linhas de tabela só
+respondiam a hover com troca de cor. Três superfícies ganharam um segundo sinal,
+sempre reaproveitando `transition-colors`/duração default do Tailwind já em uso (não
+um token novo, mesmo princípio da seção acima):
+
+- **`ui/card.tsx`**: `hover:shadow-sm` + `hover:ring-foreground/15` (a rampa de ring
+  já existente, `ring-foreground/10`, só intensifica) via `transition-shadow`.
+- **`ui/table.tsx`** (`TableRow`): `hover:shadow-[inset_2px_0_0_0_var(--primary)]` —
+  um acento à esquerda via `box-shadow` `inset`, não `border-left`. `border` em
+  `<tr>` é inconsistente entre engines com `border-collapse` (herdado do preflight
+  do Tailwind); `box-shadow` não depende do modelo de borda da tabela.
+- **`layout/Sidebar.tsx`** (item de navegação inativo): `hover:translate-x-0.5` —
+  deslocamento sutil, mesmo padrão de sidebars densas (Notion/Linear).
+
+Nenhum dos três introduz duração/easing fora do default do Tailwind (150ms), que já
+coincide com `--duration-base`.
+
 ## Por que não uma biblioteca de animação JS
 
 O projeto teve `framer-motion` instalado (Sprint 8.8/8.9, nunca documentada em

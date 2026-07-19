@@ -13,6 +13,6 @@ Fonte de verdade: `src/shared/theme/tokens/shadow.ts` (`shadowScale`) —
 A paleta (Milestone 3, ADR-019) é uma rampa de neutros quentes de baixo croma, não
 uma cor viva — a sombra continua sendo o principal sinal visual de "isto está
 flutuando acima do conteúdo", não a cor de fundo. `StatCard`/`InfoCard`
-(`shared/components/data-display/`) herdam a sombra de `Card` (`ring-1
-ring-foreground/10`, não `shadow-*`, ver `radius.md`/`elevation.md`) — nenhum deles
-declara sombra própria.
+(`shared/components/data-display/`) herdam a elevação de `Card` (`ring-1
+ring-foreground/10` em repouso, `hover:shadow-sm` desde a Sprint 13.3/M3, ver
+`cards.md`/`radius.md`/`elevation.md`) — nenhum deles declara sombra própria.

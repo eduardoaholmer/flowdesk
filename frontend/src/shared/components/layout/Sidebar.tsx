@@ -61,9 +61,11 @@ function getNavGroups(workspaceSlug: string): NavGroup[] {
 function SidebarNav({ workspaceSlug, collapsed }: { workspaceSlug: string; collapsed: boolean }) {
   const linkClassName = ({ isActive }: { isActive: boolean }) =>
     cn(
-      "flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm font-medium transition-colors",
+      "flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm font-medium transition-[color,background-color,transform]",
       collapsed && "justify-center px-0",
-      isActive ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-muted/50",
+      isActive
+        ? "bg-muted text-foreground"
+        : "text-muted-foreground hover:translate-x-0.5 hover:bg-muted/50",
     );
 
   return (

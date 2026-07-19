@@ -298,12 +298,13 @@ Com M2 fechado e a QA visual pendente resolvida, o usuário pediu explicitamente
 - **Objetivo**: confirmar formalmente que o favicon Ring Gate já entregue (`favicon.svg`, tema-aware) satisfaz o item "app icon" do escopo ampliado de M3 — sem PWA/manifest, por não haver esse requisito no roadmap.
 - **DoD**: só documentação (esta entrada + ADR-024) — nenhuma mudança de código.
 
-### Sprint 13.3 — M3: microinterações (planejada)
+### Sprint 13.3 — M3: microinterações (concluída)
 
 - **Objetivo**: adicionar feedback sutil de profundidade/escala/sombra em superfícies interativas (cards, linhas de tabela/lista, itens de navegação) usando os tokens `--duration-*`/`--ease-*` já existentes desde a ADR-019 — sem reintroduzir `framer-motion` (removido na Sprint 11 por zero consumidor real).
+- **Entregue**: `ui/card.tsx` ganhou `hover:shadow-sm` + `hover:ring-foreground/15` (intensifica o `ring-foreground/10` de repouso), herdado por todo consumidor (`StatCard`/`InfoCard`, widgets do Dashboard) sem prop nova; `ui/table.tsx::TableRow` ganhou um acento de profundidade à esquerda via `hover:shadow-[inset_2px_0_0_0_var(--primary)]` — `box-shadow inset`, não `border-left`, porque borda lateral em `<tr>` é inconsistente sob `border-collapse` (herdado do preflight do Tailwind); `layout/Sidebar.tsx` (item de navegação inativo) ganhou `hover:translate-x-0.5`. Nenhuma duração/easing nova introduzida — os três reaproveitam o default do Tailwind (150ms), que já coincide com `--duration-base`; `--duration-*`/`--ease-*` continuam consumidos só onde já eram (overlays Radix, ver `motion.md`).
 - **Dependências**: nenhuma — usa tokens já existentes, não depende de 13.1/13.2.
-- **Critérios de aceite**: `card.tsx` e linhas de `table.tsx`/listas ganham transição visível em hover (não só troca de cor); `prefers-reduced-motion` continua respeitado (regra global já existente, ADR-019); lint, type-check, testes e build verdes.
-- **DoD**: DoD-base + `design-system/motion.md` atualizado com os novos padrões de hover.
+- **Critérios de aceite**: `card.tsx` e linhas de `table.tsx`/listas ganham transição visível em hover (não só troca de cor); `prefers-reduced-motion` continua respeitado (regra global já existente, ADR-019); lint, type-check, testes (15 arquivos, 45 testes) e build verdes.
+- **DoD**: DoD-base + `design-system/motion.md`/`cards.md`/`shadow.md` atualizados com os novos padrões de hover. **Ressalva**: verificação visual em navegador real não foi possível nesta sessão (mesma limitação de Docker das sub-sprints anteriores) — recomendado ao usuário validar via `npm run dev` antes da Sprint 13.4 (revisão visual completa).
 
 ### Sprint 13.4 — M3: revisão visual completa (planejada)
 

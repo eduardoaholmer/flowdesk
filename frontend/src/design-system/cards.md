@@ -18,8 +18,9 @@ Primitivo: `ui/card.tsx` — `Card`, `CardHeader`, `CardTitle`, `CardDescription
 
 ## Hover/resposta a interação
 
-Um card clicável usa `transition-colors`/`transition-shadow` do Tailwind (ver
-`motion.md` — o projeto não usa uma biblioteca de animação JS para isto).
+`Card` (o primitivo, não uma variante separada) ganhou `hover:shadow-sm` +
+`hover:ring-foreground/15` na Sprint 13.3 (M3, ver `motion.md`) — todo consumidor
+herda, sem prop nova. `transition-shadow` do Tailwind, sem biblioteca de animação JS.
 
 ## Quando não usar `Card`
 
