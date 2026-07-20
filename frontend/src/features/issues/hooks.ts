@@ -1,10 +1,17 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
+import type { CollectionEnvelope } from "@/shared/lib/apiTypes";
 import { getApiErrorMessage } from "@/shared/lib/errors";
 
 import * as api from "./api";
-import type { IssueCreateInput, IssueListParams, IssueUpdateInput } from "./types";
+import type {
+  Issue,
+  IssueCreateInput,
+  IssueListParams,
+  IssueStatus,
+  IssueUpdateInput,
+} from "./types";
 
 function issuesListKey(workspaceId: string, params: IssueListParams) {
   return ["workspaces", workspaceId, "issues", params] as const;
@@ -75,6 +82,45 @@ export function useUpdateIssue(workspaceId: string, issueId: string) {
       toast.success("Issue atualizada.");
     },
     onError: (error) => toast.error(getApiErrorMessage(error)),
+  });
+}
+
+/**
+ * Mutação dedicada ao drag-and-drop do board: diferente de `useUpdateIssue`
+ * (usada pelo formulário completo de edição), aplica a mudança de coluna
+ * otimisticamente no cache da lista (`listParams` precisa ser o mesmo objeto
+ * passado a `useIssues` pelo board, já que a query key é derivada dele) e
+ * reverte em caso de erro — sem toast de sucesso (o próprio card já se move
+ * na tela) nem invalidação imediata (evita "piscar" a coluna antes do
+ * `onSettled` reconciliar com o servidor).
+ */
+export function useMoveIssueStatus(workspaceId: string, listParams: IssueListParams) {
+  const queryClient = useQueryClient();
+  const key = issuesListKey(workspaceId, listParams);
+
+  return useMutation({
+    mutationFn: ({ issueId, status }: { issueId: string; status: IssueStatus }) =>
+      api.updateIssue(workspaceId, issueId, { status }),
+    onMutate: async ({ issueId, status }) => {
+      await queryClient.cancelQueries({ queryKey: key });
+      const previous = queryClient.getQueryData<CollectionEnvelope<Issue>>(key);
+      if (previous) {
+        queryClient.setQueryData<CollectionEnvelope<Issue>>(key, {
+          ...previous,
+          data: previous.data.map((issue) => (issue.id === issueId ? { ...issue, status } : issue)),
+        });
+      }
+      return { previous };
+    },
+    onError: (error, _variables, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(key, context.previous);
+      }
+      toast.error(getApiErrorMessage(error));
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["workspaces", workspaceId, "issues"] });
+    },
   });
 }
 
