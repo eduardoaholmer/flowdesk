@@ -41,6 +41,7 @@ export function EditProjectDialog({
   const [open, setOpen] = useState(false);
   const {
     register,
+    control,
     handleSubmit,
     reset,
     formState: { errors },
@@ -78,7 +79,12 @@ export function EditProjectDialog({
             <DialogTitle>Editar projeto</DialogTitle>
           </DialogHeader>
           <div className="py-4">
-            <ProjectFormFields register={register} errors={errors} idPrefix="edit-project" />
+            <ProjectFormFields
+              register={register}
+              control={control}
+              errors={errors}
+              idPrefix="edit-project"
+            />
           </div>
           <DialogFooter>
             <Button type="submit" disabled={updateProject.isPending}>

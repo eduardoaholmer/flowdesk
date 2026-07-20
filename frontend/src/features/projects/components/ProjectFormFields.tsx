@@ -1,5 +1,8 @@
-import type { FieldErrors, UseFormRegister } from "react-hook-form";
+import type { Control, FieldErrors, UseFormRegister } from "react-hook-form";
+import { Controller } from "react-hook-form";
 
+import { ColorSwatchPicker } from "@/shared/components/pickers/ColorSwatchPicker";
+import { EmojiIconPicker } from "@/shared/components/pickers/EmojiIconPicker";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
 import { Textarea } from "@/shared/components/ui/textarea";
@@ -13,10 +16,12 @@ export interface ProjectFormValues {
 
 export function ProjectFormFields({
   register,
+  control,
   errors,
   idPrefix,
 }: {
   register: UseFormRegister<ProjectFormValues>;
+  control: Control<ProjectFormValues>;
   errors: FieldErrors<ProjectFormValues>;
   idPrefix: string;
 }) {
@@ -41,19 +46,32 @@ export function ProjectFormFields({
       <div className="grid grid-cols-2 gap-4">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor={`${idPrefix}-icon`}>Ícone</Label>
-          <Input id={`${idPrefix}-icon`} placeholder="🚀" {...register("icon")} />
+          <Controller
+            control={control}
+            name="icon"
+            render={({ field }) => (
+              <EmojiIconPicker
+                id={`${idPrefix}-icon`}
+                value={field.value}
+                onChange={field.onChange}
+              />
+            )}
+          />
           {errors.icon && <p className="text-xs text-destructive">{errors.icon.message}</p>}
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor={`${idPrefix}-color`}>Cor</Label>
-          <div className="flex items-center gap-2">
-            <Input
-              id={`${idPrefix}-color`}
-              placeholder="#4F46E5"
-              {...register("color")}
-              className="flex-1"
-            />
-          </div>
+          <Controller
+            control={control}
+            name="color"
+            render={({ field }) => (
+              <ColorSwatchPicker
+                id={`${idPrefix}-color`}
+                value={field.value}
+                onChange={field.onChange}
+              />
+            )}
+          />
           {errors.color && <p className="text-xs text-destructive">{errors.color.message}</p>}
         </div>
       </div>

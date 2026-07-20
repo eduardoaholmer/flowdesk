@@ -32,6 +32,7 @@ export function CreateProjectDialog({ workspaceId }: { workspaceId: string }) {
   const [open, setOpen] = useState(false);
   const {
     register,
+    control,
     handleSubmit,
     reset,
     formState: { errors },
@@ -66,7 +67,12 @@ export function CreateProjectDialog({ workspaceId }: { workspaceId: string }) {
             <DialogTitle>Novo projeto</DialogTitle>
           </DialogHeader>
           <div className="py-4">
-            <ProjectFormFields register={register} errors={errors} idPrefix="create-project" />
+            <ProjectFormFields
+              register={register}
+              control={control}
+              errors={errors}
+              idPrefix="create-project"
+            />
           </div>
           <DialogFooter>
             <Button type="submit" disabled={createProject.isPending}>
