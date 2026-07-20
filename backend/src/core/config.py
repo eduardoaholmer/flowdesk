@@ -56,11 +56,22 @@ class Settings(BaseSettings):
     # deve ser a menor praticável (docs/07-security.md).
     password_reset_token_expire_minutes: int = 30
 
-    # Armazenamento local de anexos (Sprint 8) — `core/storage.py::StorageProvider`
-    # é o ponto de extensão para trocar por S3/equivalente sem mudar o contrato
-    # de `AttachmentService`. Path relativo resolvido a partir do cwd do processo
-    # (mesmo racional de `database_url` não ser hardcoded).
+    # Armazenamento de anexos — `core/storage.py::StorageProvider` é o ponto de
+    # extensão, `storage_provider` escolhe qual implementação `get_storage_provider()`
+    # devolve (Sprint 17.2/M6, ADR-038). "local" (default) grava em disco —
+    # `upload_dir` é path relativo resolvido a partir do cwd do processo, mesmo
+    # racional de `database_url` não ser hardcoded. "s3" usa um bucket
+    # S3-compatible (AWS S3, MinIO, R2, Spaces); credenciais NUNCA são um campo
+    # deste `Settings` — vêm da cadeia padrão de credenciais do boto3
+    # (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/`AWS_SESSION_TOKEN`/IAM role),
+    # o SDK já resolve isso corretamente sem duplicar a lógica aqui.
+    storage_provider: Literal["local", "s3"] = "local"
     upload_dir: str = "var/uploads"
+    s3_bucket_name: str | None = None
+    s3_region: str = "us-east-1"
+    # Non-None só para provider S3-compatible que não é AWS (MinIO, R2, Spaces) —
+    # AWS S3 real resolve o endpoint a partir de `s3_region` e não precisa disso.
+    s3_endpoint_url: str | None = None
     max_upload_size_bytes: int = 10 * 1024 * 1024
     # Lista branca por tipo de conteúdo (não extensão de arquivo, que é
     # facilmente forjável) — mesmo formato de `cors_origins_raw`, string
@@ -111,6 +122,16 @@ class Settings(BaseSettings):
                 "desenvolvimento (ver docs/09-decision-log.md ADR-008). Gere um par "
                 "novo antes de subir este ambiente."
             )
+        return self
+
+    @model_validator(mode="after")
+    def _require_s3_bucket_when_s3_provider(self) -> "Settings":
+        """Mesmo racional de `_forbid_dev_key_in_production`: falha na inicialização,
+        não no primeiro upload — `STORAGE_PROVIDER=s3` sem bucket configurado é um
+        erro de configuração, não uma condição de runtime recuperável.
+        """
+        if self.storage_provider == "s3" and not self.s3_bucket_name:
+            raise ValueError("STORAGE_PROVIDER=s3 exige S3_BUCKET_NAME configurado.")
         return self
 
 

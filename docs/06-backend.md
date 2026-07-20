@@ -107,9 +107,13 @@ Ver `CLAUDE.md` §9 para o padrão. Implementação: `structlog` configurado em 
 | `REFRESH_TOKEN_EXPIRE_DAYS` | não | `30` | Vida útil do refresh token. |
 | `INVITATION_EXPIRE_DAYS` | não | `7` | Vida útil de um convite de workspace. |
 | `PASSWORD_RESET_TOKEN_EXPIRE_MINUTES` | não | `30` | Vida útil de um token de recuperação de senha (RF-AUTH-06, Sprint 9) — curta de propósito, ver ADR-017. |
-| `UPLOAD_DIR` | não | `var/uploads` | Diretório local de anexos (`core/storage.py::LocalStorageProvider`). |
+| `UPLOAD_DIR` | não | `var/uploads` | Diretório local de anexos (`core/storage.py::LocalStorageProvider`), usado quando `STORAGE_PROVIDER=local`. |
 | `MAX_UPLOAD_SIZE_BYTES` | não | `10485760` (10 MB) | Teto de tamanho de um anexo. |
 | `ALLOWED_UPLOAD_CONTENT_TYPES` | não | ver `core/config.py` | Lista branca de `Content-Type` separada por vírgula. |
+| `STORAGE_PROVIDER` | não | `local` | `local` \| `s3` — escolhe a implementação devolvida por `core/storage.py::get_storage_provider` (Sprint 17.2/M6, ADR-038). |
+| `S3_BUCKET_NAME` | condicional | — | Obrigatório quando `STORAGE_PROVIDER=s3` (`Settings` falha na inicialização sem ele). |
+| `S3_REGION` | não | `us-east-1` | Região do bucket — MinIO/R2/Spaces ignoram o valor, mas o boto3 exige alguma região configurada. |
+| `S3_ENDPOINT_URL` | não | — (resolve o endpoint padrão da AWS) | Só para S3-compatible não-AWS (MinIO, R2, Spaces). Credenciais nunca são uma variável deste `Settings` — vêm da cadeia padrão do boto3 (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/IAM role). |
 
 ## 11. Projetos (implementação, Sprint 6)
 

@@ -99,6 +99,8 @@ TLS). Itens do segundo tipo estão marcados como "requer infraestrutura externa"
 - [x] Engine de banco e cliente Redis com `pool_pre_ping`/reconexão automática por event loop.
 - [ ] Autoscaling horizontal real (múltiplas instâncias, load balancer) — **requer
       infraestrutura externa** de orquestração (o app já é stateless o suficiente para isso hoje).
-- [ ] Armazenamento de anexos migrado para um provider remoto (S3 ou equivalente) antes de rodar
-      múltiplas instâncias de fato — `LocalStorageProvider` (disco local) não é compartilhado
-      entre réplicas.
+- [x] Armazenamento de anexos com provider remoto disponível (`S3StorageProvider`, Sprint 17.2/M6,
+      ADR-038) — `STORAGE_PROVIDER=s3` + `S3_BUCKET_NAME` troca `LocalStorageProvider` (disco
+      local, não compartilhado entre réplicas) por um bucket S3-compatible sem mudar o contrato
+      de `AttachmentService`. Default do app continua `local`; rodar múltiplas instâncias de fato
+      exige configurar `s3` explicitamente — nenhum bucket real é provisionado por este repositório.

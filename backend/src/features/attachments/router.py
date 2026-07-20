@@ -3,13 +3,14 @@ import uuid
 
 from fastapi import APIRouter, Depends, UploadFile, status
 from fastapi.responses import FileResponse
+from starlette.background import BackgroundTask
 
 from src.core.authorization import require_permission
 from src.core.dependencies import get_current_user
 from src.core.permissions import Permission
 from src.core.schemas import DataEnvelope
 from src.core.security import CurrentUser
-from src.core.storage import LocalStorageProvider, get_storage_provider
+from src.core.storage import StorageProvider, get_storage_provider
 from src.features.attachments.dependencies import get_attachment_service
 from src.features.attachments.schemas import AttachmentResponse
 from src.features.attachments.service import AttachmentService
@@ -71,14 +72,26 @@ async def download_attachment(
     attachment_id: uuid.UUID,
     _member: WorkspaceMember = Depends(require_permission(Permission.ISSUE_READ)),
     service: AttachmentService = Depends(get_attachment_service),
-    storage: LocalStorageProvider = Depends(get_storage_provider),
+    storage: StorageProvider = Depends(get_storage_provider),
 ) -> FileResponse:
+    """`storage.open()` devolve um `Path` local em qualquer provider — para
+    `S3StorageProvider` isso é um download para um arquivo temporário (ver
+    `core/storage.py`), não o arquivo de origem; por isso o `BackgroundTask`
+    de limpeza só roda quando `provider_name != "local"` (apagar
+    incondicionalmente apagaria o próprio anexo armazenado em disco).
+    """
     attachment = await service.get(workspace_id, attachment_id)
     path = await storage.open(attachment.storage_key)
+    cleanup = (
+        BackgroundTask(path.unlink, missing_ok=True)
+        if storage.provider_name != "local"
+        else None
+    )
     return FileResponse(
         path,
         media_type=attachment.content_type,
         filename=attachment.file_name,
+        background=cleanup,
     )
 
 

@@ -29,6 +29,30 @@ services:
       timeout: 5s
       retries: 10
 
+  # MinIO (S3-compatible) — só é consumido de fato quando `STORAGE_PROVIDER=s3`
+  # está setado (default do backend é "local", disco); existe aqui sobretudo
+  # para `poetry run pytest` exercitar `tests/integration/test_s3_storage_provider.py`
+  # contra um serviço real, mesmo padrão de Postgres/Redis acima (Sprint 17.2/M6,
+  # ADR-038). Credenciais fixas abaixo são de desenvolvimento local, mesmo
+  # racional do Postgres.
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: flowdesk
+      MINIO_ROOT_PASSWORD: flowdesk123
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - flowdesk_minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   backend:
     build:
       context: ./backend
@@ -79,3 +103,4 @@ services:
 
 volumes:
   flowdesk_postgres_data:
+  flowdesk_minio_data:

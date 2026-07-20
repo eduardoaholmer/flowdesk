@@ -1,7 +1,10 @@
 import asyncio
+import tempfile
 import uuid
 from pathlib import Path
 from typing import BinaryIO, Protocol
+
+import boto3
 
 from src.core.config import Settings, get_settings
 
@@ -58,6 +61,63 @@ class LocalStorageProvider:
         await asyncio.to_thread(self._resolve(storage_key).unlink, True)
 
 
-def get_storage_provider(settings: Settings | None = None) -> LocalStorageProvider:
+class S3StorageProvider:
+    """Armazenamento em um bucket S3-compatible (Sprint 17.2/M6, ADR-038) —
+    `boto3` (síncrono) envolvido em `asyncio.to_thread`, mesmo padrão já usado
+    por `LocalStorageProvider` para não bloquear o event loop com I/O; um
+    cliente S3 é thread-safe para chamadas sequenciais como as daqui, então é
+    criado uma vez no `__init__`, não a cada chamada.
+
+    `endpoint_url` não-`None` aponta para um S3-compatible que não é AWS (MinIO,
+    R2, Spaces); `None` deixa o boto3 resolver o endpoint padrão da AWS a partir
+    de `region_name`. Credenciais nunca passam por aqui — vêm da cadeia padrão
+    do boto3 (`core/config.py::Settings` não as modela, de propósito).
+    """
+
+    provider_name = "s3"
+
+    def __init__(self, *, bucket_name: str, region_name: str, endpoint_url: str | None) -> None:
+        self._bucket_name = bucket_name
+        self._client = boto3.client("s3", region_name=region_name, endpoint_url=endpoint_url)
+
+    async def save(self, *, stream: BinaryIO, suggested_name: str) -> str:
+        storage_key = f"{uuid.uuid4().hex}-{suggested_name}"
+        await asyncio.to_thread(self._client.upload_fileobj, stream, self._bucket_name, storage_key)
+        return storage_key
+
+    async def open(self, storage_key: str) -> Path:
+        """Baixa o objeto para um arquivo temporário local e devolve o `Path` —
+        mantém `download_attachment` (`features/attachments/router.py`) idêntico
+        entre providers (`FileResponse` continua funcionando sem mudança de
+        contrato), ao custo de um round-trip extra pelo disco local a cada
+        download. Quem chama é responsável por apagar o arquivo temporário
+        depois de servi-lo (`storage.provider_name != "local"` no router,
+        via `BackgroundTask` — apagar incondicionalmente apagaria o arquivo de
+        origem real de `LocalStorageProvider`, não uma cópia temporária).
+        """
+        destination = Path(tempfile.mkstemp(prefix="flowdesk-attachment-")[1])
+        try:
+            await asyncio.to_thread(
+                self._client.download_file, self._bucket_name, storage_key, str(destination)
+            )
+        except Exception:
+            destination.unlink(missing_ok=True)
+            raise
+        return destination
+
+    async def delete(self, storage_key: str) -> None:
+        await asyncio.to_thread(
+            self._client.delete_object, Bucket=self._bucket_name, Key=storage_key
+        )
+
+
+def get_storage_provider(settings: Settings | None = None) -> StorageProvider:
     settings = settings or get_settings()
+    if settings.storage_provider == "s3":
+        assert settings.s3_bucket_name is not None  # já validado por Settings na inicialização
+        return S3StorageProvider(
+            bucket_name=settings.s3_bucket_name,
+            region_name=settings.s3_region,
+            endpoint_url=settings.s3_endpoint_url,
+        )
     return LocalStorageProvider(Path(settings.upload_dir))

@@ -430,11 +430,12 @@ Com M5 fechado, o usuário pediu explicitamente o início do M6 — Production. 
 - **Dependências**: nenhuma.
 - **DoD**: DoD-base parcialmente satisfeita — testes unitário e de contrato escritos seguindo o padrão existente, `tsc`/`eslint`/`vitest` do frontend rodados e limpos; **`poetry run pytest`/`mypy`/`ruff` do backend não puderam ser executados nesta sessão** (sandbox sem toolchain Python do projeto — ver ADR-037, limitação). Pendente rodar a suíte de backend no ambiente real antes de considerar a sprint totalmente fechada.
 
-### Sprint 17.2 — M6: `StorageProvider` S3-compatible
+### Sprint 17.2 — M6: `StorageProvider` S3-compatible (concluída, verificação parcial)
 
 - **Objetivo**: implementação real de `StorageProvider` para um backend de objeto S3-compatible, mantendo `LocalStorageProvider` intacta (dado antigo com `storage_provider="local"` continua servível). Config nova em `Settings` (bucket, região, credenciais) via variável de ambiente.
-- **Dependências**: nenhuma. Introduz dependência nova (cliente S3, ex. `boto3`/`aioboto3`) — aprovação explícita do usuário antes de instalar, mesma disciplina já seguida para `@dnd-kit/core` (ADR-034).
-- **DoD**: DoD-base + teste de integração contra um serviço S3-compatible real em container efêmero (mesmo padrão já usado para Postgres/Redis em CI).
+- **Entregue**: `S3StorageProvider` (`core/storage.py`, `boto3` síncrono + `asyncio.to_thread` — aprovado explicitamente pelo usuário sobre `aioboto3`); `Settings.storage_provider` (`"local"`/`"s3"`, default `"local"`) escolhe a implementação em `get_storage_provider()`, cujo tipo de retorno foi corrigido para o `Protocol` (`StorageProvider`, não mais `LocalStorageProvider` hardcoded); `S3_BUCKET_NAME`/`S3_REGION`/`S3_ENDPOINT_URL` novos, credenciais deliberadamente fora de `Settings` (cadeia padrão do boto3). `download_attachment` (`features/attachments/router.py`) ganhou `BackgroundTask` de limpeza do arquivo temporário, condicional a `provider_name != "local"`. Serviço `minio` novo em `docker-compose.yml` (dev) e `.github/workflows/ci.yml` (via `bitnami/minio`, workaround para a limitação do bloco `services:` do GH Actions não aceitar `command:`); teste de integração (`tests/integration/test_s3_storage_provider.py`) contra MinIO real. Detalhes completos em ADR-038.
+- **Dependências**: nenhuma. Introduziu dependência nova (`boto3`/`boto3-stubs[s3]`) — aprovada explicitamente pelo usuário antes de instalar, mesma disciplina já seguida para `@dnd-kit/core` (ADR-034).
+- **DoD**: DoD-base parcialmente satisfeita — mesma limitação de sandbox da Sprint 17.1 (ADR-037): `poetry run pytest`/`mypy`/`ruff` e `docker compose up` não puderam ser executados nesta sessão (sem toolchain Python, sem acesso ao socket Docker). `pyproject.toml` ganhou a dependência declarada, mas **`poetry.lock` não foi regenerado** — rodar `poetry lock` (ou `poetry add boto3`) é pré-requisito antes de `poetry install` funcionar. Pendente validar o serviço MinIO novo (`docker-compose.yml`/CI) e rodar a suíte completa no ambiente real do usuário.
 
 ### Sprint 17.3 — M6: `MailSender` real (SMTP)
 
