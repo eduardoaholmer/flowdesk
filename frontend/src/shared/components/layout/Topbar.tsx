@@ -41,6 +41,7 @@ import { useUiStore } from "@/shared/stores/uiStore";
 
 const SECTION_LABELS: Record<string, string> = {
   issues: "Issues",
+  board: "Board",
   projects: "Projetos",
   labels: "Labels",
   settings: "Configurações",

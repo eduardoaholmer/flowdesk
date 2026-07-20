@@ -6,6 +6,9 @@ export const DashboardPage = lazy(() =>
 export const IssuesPage = lazy(() =>
   import("@/pages/IssuesPage").then((module) => ({ default: module.IssuesPage })),
 );
+export const BoardPage = lazy(() =>
+  import("@/pages/BoardPage").then((module) => ({ default: module.BoardPage })),
+);
 export const IssueDetailPage = lazy(() =>
   import("@/pages/IssueDetailPage").then((module) => ({ default: module.IssueDetailPage })),
 );

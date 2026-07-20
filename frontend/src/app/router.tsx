@@ -2,6 +2,7 @@ import { Suspense, type ReactNode } from "react";
 import { createBrowserRouter } from "react-router-dom";
 
 import {
+  BoardPage,
   DashboardPage,
   ForgotPasswordPage,
   InvitationAcceptPage,
@@ -49,6 +50,7 @@ export const router = createBrowserRouter([
           },
           { path: routePatterns.issues, element: withPageSuspense(<IssuesPage />) },
           { path: routePatterns.issueDetail, element: withPageSuspense(<IssueDetailPage />) },
+          { path: routePatterns.board, element: withPageSuspense(<BoardPage />) },
           { path: routePatterns.labels, element: withPageSuspense(<LabelsPage />) },
           { path: routePatterns.settings, element: withPageSuspense(<WorkspaceSettingsPage />) },
         ],

@@ -8,6 +8,7 @@ export const routePatterns = {
   workspaceHome: "/w/:workspaceSlug",
   issues: "/w/:workspaceSlug/issues",
   issueDetail: "/w/:workspaceSlug/issues/:issueId",
+  board: "/w/:workspaceSlug/board",
   projects: "/w/:workspaceSlug/projects",
   projectDetail: "/w/:workspaceSlug/projects/:projectId",
   labels: "/w/:workspaceSlug/labels",
@@ -20,6 +21,7 @@ export const workspaceRoutes = {
   home: (workspaceSlug: string) => `/w/${workspaceSlug}`,
   issues: (workspaceSlug: string) => `/w/${workspaceSlug}/issues`,
   issueDetail: (workspaceSlug: string, issueId: string) => `/w/${workspaceSlug}/issues/${issueId}`,
+  board: (workspaceSlug: string) => `/w/${workspaceSlug}/board`,
   projects: (workspaceSlug: string) => `/w/${workspaceSlug}/projects`,
   projectDetail: (workspaceSlug: string, projectId: string) =>
     `/w/${workspaceSlug}/projects/${projectId}`,

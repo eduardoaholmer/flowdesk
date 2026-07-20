@@ -1,6 +1,6 @@
 import { Skeleton } from "@/shared/components/ui/skeleton";
 
-/** Casca de carregamento para o board por status (ainda não implementado — ver docs/08-roadmap.md). */
+/** Casca de carregamento do board por status (`IssuesBoardView`, Sprint 16.1/M5). */
 export function KanbanSkeleton({
   columns = 4,
   cardsPerColumn = 3,

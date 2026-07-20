@@ -2,6 +2,7 @@ import {
   ChevronsUpDown,
   FolderKanban,
   Home,
+  Kanban,
   ListTodo,
   PanelLeftClose,
   PanelLeftOpen,
@@ -50,6 +51,7 @@ function getNavGroups(workspaceSlug: string): NavGroup[] {
       items: [
         { label: "Início", to: workspaceRoutes.home(workspaceSlug), icon: Home, end: true },
         { label: "Issues", to: workspaceRoutes.issues(workspaceSlug), icon: ListTodo },
+        { label: "Board", to: workspaceRoutes.board(workspaceSlug), icon: Kanban },
         { label: "Projetos", to: workspaceRoutes.projects(workspaceSlug), icon: FolderKanban },
         { label: "Labels", to: workspaceRoutes.labels(workspaceSlug), icon: Tags },
         { label: "Configurações", to: workspaceRoutes.settings(workspaceSlug), icon: Settings },

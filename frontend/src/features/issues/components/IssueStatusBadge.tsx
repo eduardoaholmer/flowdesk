@@ -1,15 +1,7 @@
 import { Badge } from "@/shared/components/ui/badge";
 
+import { ISSUE_STATUS_LABELS } from "../constants";
 import type { IssueStatus } from "../types";
-
-const LABELS: Record<IssueStatus, string> = {
-  BACKLOG: "Backlog",
-  TODO: "Todo",
-  IN_PROGRESS: "In Progress",
-  IN_REVIEW: "In Review",
-  DONE: "Done",
-  CANCELED: "Canceled",
-};
 
 const VARIANTS: Record<IssueStatus, "outline" | "secondary" | "default" | "destructive"> = {
   BACKLOG: "outline",
@@ -21,5 +13,5 @@ const VARIANTS: Record<IssueStatus, "outline" | "secondary" | "default" | "destr
 };
 
 export function IssueStatusBadge({ status }: { status: IssueStatus }) {
-  return <Badge variant={VARIANTS[status]}>{LABELS[status]}</Badge>;
+  return <Badge variant={VARIANTS[status]}>{ISSUE_STATUS_LABELS[status]}</Badge>;
 }
