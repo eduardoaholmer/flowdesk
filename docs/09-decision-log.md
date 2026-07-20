@@ -795,3 +795,17 @@ Hardening de rate limit por rota (mesma sprint, gap independente encontrado ao r
 **Desvantagens aceitas**: sem suporte a teclado/leitor de tela para o drag-and-drop (`@dnd-kit/core` oferece `KeyboardSensor`, mas exige coordenadas de movimento customizadas fora do padrão "sortable" que não foi trazido nesta sprint — YAGNI, `CLAUDE.md` §1.6; candidato de acessibilidade para quando a Sprint 16.3 revisitar o board). Testes automatizados de drag real (gesto de ponteiro) não foram escritos — jsdom não calcula `getBoundingClientRect` de forma realista, o que quebraria a detecção de colisão do dnd-kit; a mutação otimista (`useMoveIssueStatus`) foi testada isoladamente via `renderHook`, e o gesto de arrastar em si foi validado manualmente em browser real, não via suíte automatizada — mesmo trade-off já aceito pelo projeto para verificação visual (ADR-030).
 
 **Impacto futuro**: Sprint 16.3 decide explicitamente sobre reativar `Team`/`WorkflowState` — se reativado, o board precisará de uma segunda dimensão de agrupamento (por time, não só por status), o que pode exigir revisitar `BoardColumn`/`useMoveIssueStatus` para um `droppable id` composto. Acessibilidade de teclado para o drag-and-drop (Desvantagens aceitas acima) fica como candidato não urgente.
+
+---
+
+## ADR-035 — Sprint 16.3: mantém o board em escopo de workspace, não reativa `Team`/`WorkflowState` — fecha M5
+
+**Contexto**: com Sprint 16.1/16.2 fechadas, restava a decisão explícita antecipada desde a ADR-033 Decisão 1 — reativar `Team`/`WorkflowState` (board por time com workflow configurável, a visão original de `docs/00-product-vision.md` §5) ou manter o board em escopo de workspace com o enum fixo de status indefinidamente. Duas opções apresentadas ao usuário: (a) reativar `Team` — CRUD completo, membership, devolver `team_id` a `Issue` (reverte parte da ADR-012), workflow configurável por time, nova migration de schema; (b) manter workspace-scope, sem nenhuma mudança de código ou schema.
+
+**Decisão — escolhida (b), sem reativar `Team`**: decisão explícita do usuário. O board de workspace entregue nas Sprint 16.1/16.2 já cobre o objetivo funcional de M5 (visualizar e mudar status via drag-and-drop); reativar `Team` exigiria CRUD/membership do zero, reverter parte do desacoplamento da ADR-012 e uma migration de schema — custo desproporcional ao valor incremental para um projeto de portfólio, sem um requisito concreto pedindo workflow por time agora. `teams`/`team_members`/`workflow_states`/`team_issue_counters` permanecem no banco como schema dormente (mesmo estado documentado desde a ADR-033) — não removido, só não consumido; candidato a reavaliação futura caso o roadmap volte a pedir workflow por time.
+
+**Verificação**: DoD-base — nenhuma mudança de código neste ADR, decisão pura. `docs/08-roadmap.md` atualizado para fechar Sprint 16.3 e M5.
+
+**Desvantagens aceitas**: sem workflow customizável por time — todo workspace usa os mesmos seis status fixos. `Team`/`WorkflowState` seguem como schema morto no banco (nenhum custo de manutenção ativo, mas presente).
+
+**Impacto futuro**: M5 fechado. `docs/08-roadmap.md` (Sprint 15+) já lista candidatos futuros fora do corte atual de portfólio; reativar `Team`/workflow por time permanece candidato caso um requisito concreto surja.
