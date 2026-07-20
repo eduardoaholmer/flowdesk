@@ -11,7 +11,7 @@ A partir da conclusão do Milestone 1, o roadmap passa a ser acompanhado em dois
 - ✅ **M3 — Ring Gate Brand** (concluído, escopo ampliado fechado 2026-07-19, ADR-026): Sprint 11 (ADR-019) entregou a rampa de cor semântica e o motion system CSS-only. O escopo ampliado (Sprint 13.1–13.5, ADR-024/025/026) entregou display font para headings, microinterações de hover, a primeira QA visual em navegador real do projeto e quatro docs de design system novas (Dialogs/Dropdowns/Badges/Empty-Error-Loading States).
 - ✅ **M4 — Quality** (concluído, fechado 2026-07-19, ADR-027–032): Playwright (14.4 — primeiro fluxo E2E, achou e corrigiu um bug real em `EditIssueDialog`), MSW + testes de integração de frontend (14.2/14.3), observabilidade/métricas via `GET /metrics` (14.5), revisão de documentação/tooling (14.1), auditoria de segurança completa (14.6 — matriz RBAC conferida sem divergência, dois trade-offs em aberto reafirmados por decisão explícita do usuário). Ver ADR-020/ADR-021 para o detalhamento de escopo herdado da versão anterior deste milestone ("Engineering Quality"); quebra em Sprint 14.1–14.6 e achados da auditoria de gap em ADR-027.
 - ✅ **M5 — Kanban** (concluído, fechado 2026-07-20, ADR-033–035): `Team`/`WorkflowState` (schema dormente desde a Sprint 2/ADR-007, nunca removido) mais board com drag-and-drop — o antigo "Núcleo de Issues" original da Sprint 0/4/6 nunca executado nessa forma. Deixou de ser considerado feature inicial de produto (`docs/00-product-vision.md` §5 original) — é agora uma feature premium construída só depois que o sistema inteiro estiver sólido (M2–M4 fechados). Quebrado em fases (Sprint 16.1–16.3): board somente-leitura em escopo de workspace com o status fixo atual (16.1, concluída — `Team` segue dormente), drag-and-drop (16.2, concluída — ADR-034), decisão explícita sobre reativar `Team`/workflow por time (16.3, concluída — mantido escopo de workspace, `Team` segue dormente, ADR-035).
-- **M6 — Production**: deploy real, backups, TLS, secrets, CI/CD, infraestrutura, escalabilidade — inclui `MailSender`/`StorageProvider` com implementação real (hoje só `LoggingMailSender`/`LocalStorageProvider`) e transferência de propriedade de workspace (nunca implementada, ver ADR-009/ADR-018).
+- 🚧 **M6 — Production** (em andamento, aberto 2026-07-20, ADR-036): deploy real, backups, TLS, secrets, CI/CD, infraestrutura, escalabilidade — inclui `MailSender`/`StorageProvider` com implementação real (hoje só `LoggingMailSender`/`LocalStorageProvider`) e transferência de propriedade de workspace (nunca implementada, ver ADR-009/ADR-018). Quebrado em sub-sprints (17.1–17.5): os itens que dependem de infraestrutura real não provisionada por um projeto de portfólio (deploy pipeline, TLS, backups, secret manager, autoscaling, agregação de log) são documentados como decisão/runbook, não implementados como infraestrutura "de mentira" — decisão explícita do usuário, ADR-036.
 
 ---
 
@@ -412,6 +412,46 @@ Com M4 fechado, o usuário pediu explicitamente o início do M5 — Kanban. Inve
 - **DoD**: DoD-base — satisfeita (decisão pura, sem código).
 
 ## M5 fechado (2026-07-20, ADR-033–035)
+
+## M6 fase 1 — gap-analysis e quebra em sub-sprints (2026-07-20, ADR-036)
+
+Com M5 fechado, o usuário pediu explicitamente o início do M6 — Production. Mesmo processo já usado para abrir M2 fase 2 (ADR-021), o escopo ampliado de M3 (ADR-024), M4 (ADR-027) e M5 (ADR-033): antes de qualquer código, uma investigação read-only confirmou o estado real de cada item do escopo declarado na visão executiva (linha 14). Achados completos em ADR-036. Resumo:
+
+- **`MailSender`** (`backend/src/core/mail.py`): `Protocol` já existe, única implementação é `LoggingMailSender` (placeholder — nunca envia e-mail real, só loga um preview truncado do token). Ponto de extensão já documentado no próprio docstring; falta a implementação SMTP real e trocar o tipo de retorno do factory (hoje fixo em `LoggingMailSender`, não no `Protocol`).
+- **`StorageProvider`** (`backend/src/core/storage.py`): mesmo padrão — só `LocalStorageProvider` (disco local, incompatível com múltiplas réplicas). O modelo de dado (`Attachment.storage_key`/`storage_provider`) já foi desenhado desde a origem para coexistência de providers (dado antigo em "local", novo em "s3", sem migração retroativa).
+- **Transferência de propriedade de workspace**: gap total de endpoint/service (nenhuma rota existe), adiada desde a Sprint 4 (ADR-009) e reafirmada na Sprint 10 (ADR-018). Todos os primitivos que a feature reaproveitaria já existem: `WorkspaceService`/`WorkspaceRepositoryProtocol` (`update_member_role`, `count_members(role=...)`), `WorkspaceActivityLog` (append-only, já usado para outros eventos de membership), exceções no mesmo padrão (`CannotLeaveAsSoleOwnerError`/`CannotManageOwnerError`).
+- **CI/CD**: build de imagem de produção já validado em todo PR (`push: false`), `pip-audit`/`npm audit` já rodam (não bloqueantes) — mas nenhum scan de vulnerabilidade da imagem final (Trivy/Grype) e nenhum `.env.production.example` documentando o conjunto de variáveis esperado especificamente em produção (só existe `.env.example`/`backend/.env.example` de desenvolvimento).
+- **Itens que dependem de infraestrutura real** (pipeline de deploy para um orquestrador, certificado TLS, backup automatizado de banco/anexos, secret manager, autoscaling, agregação/retenção de log centralizada): nenhum é implementável dentro do repositório sem provisionar nuvem real. Opções apresentadas ao usuário — (a) documentar como decisão/runbook em ADR, mesmo critério já usado pelo `PRODUCTION_CHECKLIST.md` existente ("requer infraestrutura externa"); (b) demonstrar localmente com infraestrutura equivalente (MinIO simulando S3, TLS self-signed via Caddy, script de backup local); (c) deixar fora do M6 por completo. **Escolhida: (a)** — decisão explícita do usuário.
+
+### Sprint 17.1 — M6: transferência de propriedade de workspace
+
+- **Objetivo**: endpoint + service para transferir o papel `OWNER` de um workspace para outro membro existente — orquestração atômica (rebaixar o OWNER atual, promover o alvo), reaproveitando os primitivos já existentes de `WorkspaceService`/`WorkspaceRepositoryProtocol`. UI no frontend (`WorkspaceSettingsPage`, aba Membros) para o OWNER disparar a transferência.
+- **Dependências**: nenhuma.
+- **DoD**: DoD-base + teste de contrato cobrindo o caminho feliz e ao menos um caminho de erro (transferir para não-membro, transferir sem ser OWNER).
+
+### Sprint 17.2 — M6: `StorageProvider` S3-compatible
+
+- **Objetivo**: implementação real de `StorageProvider` para um backend de objeto S3-compatible, mantendo `LocalStorageProvider` intacta (dado antigo com `storage_provider="local"` continua servível). Config nova em `Settings` (bucket, região, credenciais) via variável de ambiente.
+- **Dependências**: nenhuma. Introduz dependência nova (cliente S3, ex. `boto3`/`aioboto3`) — aprovação explícita do usuário antes de instalar, mesma disciplina já seguida para `@dnd-kit/core` (ADR-034).
+- **DoD**: DoD-base + teste de integração contra um serviço S3-compatible real em container efêmero (mesmo padrão já usado para Postgres/Redis em CI).
+
+### Sprint 17.3 — M6: `MailSender` real (SMTP)
+
+- **Objetivo**: implementação real de `MailSender` via SMTP genérico (configurável por variável de ambiente — host/porta/credenciais/remetente), mantendo `LoggingMailSender` como fallback/dev. Corrige o tipo de retorno do factory (`Protocol`, não a implementação concreta).
+- **Dependências**: nenhuma. Introduz dependência nova (cliente SMTP assíncrono) — mesma disciplina de aprovação explícita.
+- **DoD**: DoD-base + teste de integração contra um servidor SMTP de teste (ex. container efêmero) confirmando o envio; verificação manual de que nenhum segredo de SMTP é logado (`CLAUDE.md` §9).
+
+### Sprint 17.4 — M6: hardening de CI (scan de imagem + template de env de produção)
+
+- **Objetivo**: novo step no job `docker` do CI rodando Trivy ou Grype contra as imagens de produção já buildadas (não-bloqueante inicialmente, mesmo critério de `pip-audit`/`npm audit`); `.env.production.example` na raiz documentando o conjunto completo de variáveis esperadas em produção (sem valores reais, só placeholders e instrução de geração).
+- **Dependências**: nenhuma.
+- **DoD**: DoD-base.
+
+### Sprint 17.5 — M6: runbook/decisão para itens que exigem infraestrutura real
+
+- **Objetivo**: fechar `PRODUCTION_CHECKLIST.md` no nível de maturidade decidido nesta fase de planejamento — documentar em ADR a estratégia recomendada para cada item que depende de infraestrutura real (pipeline de deploy, TLS, backup, secret manager, autoscaling, agregação de log), sem código novo. Fecha M6.
+- **Dependências**: Sprint 17.1–17.4 (decisão só faz sentido depois do que é código real estar fechado).
+- **DoD**: DoD-base — satisfeita (decisão/documentação, sem código).
 
 ## Sprint 15+ — Extensões futuras (pós-portfólio)
 
