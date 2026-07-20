@@ -59,8 +59,8 @@ class MemberNotFoundError(NotFoundError):
 class CannotManageOwnMembershipError(ConflictError):
     """`PATCH`/`DELETE .../members/{member_id}` são ações administrativas sobre
     *outro* membro — gerenciar a própria associação (sair, trocar o próprio
-    papel) passa por `DELETE .../members/me` ou por uma transferência de
-    propriedade (fora de escopo, ver `docs/09-decision-log.md` ADR-009/ADR-010).
+    papel) passa por `DELETE .../members/me` ou por
+    `POST .../members/{member_id}/transfer-ownership` (Sprint 17.1/M6).
     """
 
     code = "cannot_manage_own_membership"
@@ -75,3 +75,8 @@ class CannotManageOwnerError(PermissionDeniedError):
 
     code = "cannot_manage_owner"
     message = "Não é possível alterar ou remover um OWNER."
+
+
+class CannotTransferOwnershipToSelfError(ConflictError):
+    code = "cannot_transfer_ownership_to_self"
+    message = "Você já é o OWNER deste workspace."

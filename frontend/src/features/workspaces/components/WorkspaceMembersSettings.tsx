@@ -24,6 +24,7 @@ import { cn } from "@/shared/lib/utils";
 import {
   useLeaveWorkspace,
   useRemoveMember,
+  useTransferOwnership,
   useUpdateMemberRole,
   useWorkspaceMembersPage,
 } from "../hooks";
@@ -39,17 +40,21 @@ function MemberRow({
   workspaceId,
   isSelf,
   canManage,
+  isOwner,
 }: {
   member: WorkspaceMember;
   workspaceId: string;
   isSelf: boolean;
   canManage: boolean;
+  isOwner: boolean;
 }) {
   const updateRole = useUpdateMemberRole(workspaceId);
   const removeMember = useRemoveMember(workspaceId);
   const leaveWorkspace = useLeaveWorkspace();
+  const transferOwnership = useTransferOwnership(workspaceId);
 
   const canManageThisMember = canManage && !isSelf && member.role !== "OWNER";
+  const canTransferToThisMember = isOwner && !isSelf && member.role !== "OWNER";
 
   return (
     <div className="flex items-center gap-3 border-b py-3 last:border-b-0">
@@ -88,23 +93,39 @@ function MemberRow({
         <Badge variant={member.role === "OWNER" ? "default" : "outline"}>{member.role}</Badge>
       )}
 
-      {isSelf
-        ? member.role !== "OWNER" && (
+      {isSelf ? (
+        member.role !== "OWNER" && (
+          <ConfirmActionDialog
+            trigger={
+              <Button variant="ghost" size="sm">
+                Sair
+              </Button>
+            }
+            title="Sair deste workspace?"
+            description="Você perderá acesso a todos os projetos e issues deste workspace."
+            confirmLabel="Sair"
+            destructive
+            isPending={leaveWorkspace.isPending}
+            onConfirm={() => leaveWorkspace.mutate(workspaceId)}
+          />
+        )
+      ) : (
+        <>
+          {canTransferToThisMember && (
             <ConfirmActionDialog
               trigger={
                 <Button variant="ghost" size="sm">
-                  Sair
+                  Transferir propriedade
                 </Button>
               }
-              title="Sair deste workspace?"
-              description="Você perderá acesso a todos os projetos e issues deste workspace."
-              confirmLabel="Sair"
-              destructive
-              isPending={leaveWorkspace.isPending}
-              onConfirm={() => leaveWorkspace.mutate(workspaceId)}
+              title="Transferir a propriedade do workspace?"
+              description={`${member.user.name} vira OWNER e você passa a ADMIN. Esta ação não pode ser desfeita por você sozinho — só o novo OWNER poderá transferir de volta.`}
+              confirmLabel="Transferir"
+              isPending={transferOwnership.isPending}
+              onConfirm={() => transferOwnership.mutate(member.id)}
             />
-          )
-        : canManageThisMember && (
+          )}
+          {canManageThisMember && (
             <ConfirmActionDialog
               trigger={
                 <Button variant="ghost" size="sm" className="text-destructive">
@@ -119,6 +140,8 @@ function MemberRow({
               onConfirm={() => removeMember.mutate(member.id)}
             />
           )}
+        </>
+      )}
     </div>
   );
 }
@@ -126,9 +149,11 @@ function MemberRow({
 export function WorkspaceMembersSettings({
   workspaceId,
   canManage,
+  isOwner,
 }: {
   workspaceId: string;
   canManage: boolean;
+  isOwner: boolean;
 }) {
   const { data: profile } = useCurrentUser();
   const [page, setPage] = useState(1);
@@ -193,6 +218,7 @@ export function WorkspaceMembersSettings({
                 workspaceId={workspaceId}
                 isSelf={member.user.id === profile?.id}
                 canManage={canManage}
+                isOwner={isOwner}
               />
             ))}
           </div>

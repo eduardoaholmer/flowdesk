@@ -7,6 +7,7 @@ from src.core.security import CurrentUser
 from src.features.workspaces.exceptions import (
     CannotLeaveAsSoleOwnerError,
     CannotManageOwnMembershipError,
+    CannotTransferOwnershipToSelfError,
     MemberNotFoundError,
     SlugTakenError,
     WorkspaceNotFoundError,
@@ -247,6 +248,52 @@ async def test_remove_member_removes_and_records_activity(
 
     assert await workspace_repo.get_member(workspace.id, member_user.id) is None
     assert any(entry.action == "member.removed" for entry in workspace_repo.activity_log)
+
+
+async def test_transfer_ownership_promotes_target_and_demotes_current_owner(
+    service: WorkspaceService, workspace_repo: FakeWorkspaceRepository
+) -> None:
+    owner = _user()
+    member_user = _user("member@example.com")
+    workspace = await service.create(owner, WorkspaceCreateRequest(name="Acme"))
+    target = await workspace_repo.add_member(
+        WorkspaceMember(
+            workspace_id=workspace.id, user_id=member_user.id, role=WorkspaceRole.MEMBER
+        )
+    )
+
+    updated_workspace = await service.transfer_ownership(owner, workspace.id, target.id)
+
+    assert updated_workspace.owner_id == member_user.id
+    new_owner = await workspace_repo.get_member(workspace.id, member_user.id)
+    assert new_owner is not None
+    assert new_owner.role == WorkspaceRole.OWNER
+    former_owner = await workspace_repo.get_member(workspace.id, owner.id)
+    assert former_owner is not None
+    assert former_owner.role == WorkspaceRole.ADMIN
+    assert any(
+        entry.action == "workspace.ownership_transferred" for entry in workspace_repo.activity_log
+    )
+
+
+async def test_transfer_ownership_rejects_unknown_member(service: WorkspaceService) -> None:
+    owner = _user()
+    workspace = await service.create(owner, WorkspaceCreateRequest(name="Acme"))
+
+    with pytest.raises(MemberNotFoundError):
+        await service.transfer_ownership(owner, workspace.id, uuid.uuid4())
+
+
+async def test_transfer_ownership_rejects_self_target(
+    service: WorkspaceService, workspace_repo: FakeWorkspaceRepository
+) -> None:
+    owner = _user()
+    workspace = await service.create(owner, WorkspaceCreateRequest(name="Acme"))
+    own_member = await workspace_repo.get_member(workspace.id, owner.id)
+    assert own_member is not None
+
+    with pytest.raises(CannotTransferOwnershipToSelfError):
+        await service.transfer_ownership(owner, workspace.id, own_member.id)
 
 
 async def test_remove_member_admin_cannot_remove_owner(

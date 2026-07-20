@@ -131,6 +131,23 @@ async def update_member_role(
     return DataEnvelope(data=WorkspaceMemberResponse.from_member(member))
 
 
+@router.post(
+    "/{workspace_id}/members/{member_id}/transfer-ownership",
+    response_model=DataEnvelope[WorkspaceResponse],
+)
+async def transfer_ownership(
+    workspace_id: uuid.UUID,
+    member_id: uuid.UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+    _member: WorkspaceMember = Depends(
+        require_permission(Permission.WORKSPACE_TRANSFER_OWNERSHIP)
+    ),
+    service: WorkspaceService = Depends(get_workspace_service),
+) -> DataEnvelope[WorkspaceResponse]:
+    workspace = await service.transfer_ownership(current_user, workspace_id, member_id)
+    return DataEnvelope(data=WorkspaceResponse.model_validate(workspace))
+
+
 @router.delete("/{workspace_id}/members/{member_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def remove_member(
     workspace_id: uuid.UUID,

@@ -13,6 +13,7 @@ from src.features.workspaces.exceptions import (
     AlreadyMemberError,
     CannotLeaveAsSoleOwnerError,
     CannotManageOwnMembershipError,
+    CannotTransferOwnershipToSelfError,
     InvitationAlreadyPendingError,
     InvitationEmailMismatchError,
     InvitationExpiredError,
@@ -188,6 +189,47 @@ class WorkspaceService:
             {"member_id": str(member_id), "old_role": old_role.value, "new_role": new_role.value},
         )
         return updated
+
+    async def transfer_ownership(
+        self, current_user: CurrentUser, workspace_id: uuid.UUID, member_id: uuid.UUID
+    ) -> Workspace:
+        """`current_user` já foi autorizado pelo router via
+        `Depends(require_permission(Permission.WORKSPACE_TRANSFER_OWNERSHIP))`,
+        restrita a `OWNER` na matriz de `core/authorization.py` — não há checagem
+        contextual adicional aqui, ao contrário de `update_member_role`/
+        `remove_member` (não existe "ADMIN não pode transferir a posse de outro
+        OWNER" para checar: só o próprio OWNER chega até este método).
+
+        Rebaixa o ator a `ADMIN` e promove o alvo a `OWNER`, mantendo o
+        invariante de um único `OWNER` por workspace (nenhum outro caminho do
+        sistema concede o papel `OWNER` — `MemberUpdateRoleRequest` o rejeita
+        explicitamente). Sincroniza `Workspace.owner_id` no mesmo método, como
+        o próprio docstring de `Workspace` (`models.py`) já exige do service.
+        """
+        workspace = await self._get_active_workspace(workspace_id)
+
+        target = await self._workspace_repo.get_member_by_id(workspace_id, member_id)
+        if target is None:
+            raise MemberNotFoundError()
+        if target.user_id == current_user.id:
+            raise CannotTransferOwnershipToSelfError()
+
+        current_owner = await self._workspace_repo.get_member(workspace_id, current_user.id)
+        if current_owner is None:
+            raise WorkspaceNotFoundError()
+
+        await self._workspace_repo.update_member_role(target, WorkspaceRole.OWNER)
+        await self._workspace_repo.update_member_role(current_owner, WorkspaceRole.ADMIN)
+        workspace.owner_id = target.user_id
+        await self._workspace_repo.update(workspace)
+
+        await self._record_activity(
+            workspace_id,
+            current_user.id,
+            "workspace.ownership_transferred",
+            {"from_user_id": str(current_user.id), "to_user_id": str(target.user_id)},
+        )
+        return workspace
 
     async def remove_member(
         self,

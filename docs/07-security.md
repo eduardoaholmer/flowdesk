@@ -70,7 +70,7 @@ Permissões são strings estáveis `"<domínio>.<ação>"` (`core/permissions.py
 
 | Domínio | Permissões |
 |---|---|
-| Workspace | `workspace.view`, `workspace.update`, `workspace.delete`, `workspace.invite` |
+| Workspace | `workspace.view`, `workspace.update`, `workspace.delete`, `workspace.invite`, `workspace.transfer_ownership` |
 | Membros | `member.remove`, `member.update_role` |
 | Projetos | `project.create`, `project.read`, `project.update`, `project.delete` |
 | Issues *(feature na Sprint 7)* | `issue.create`, `issue.read`, `issue.update`, `issue.delete`, `issue.assign`, `issue.change_status` |
@@ -90,8 +90,9 @@ A fonte de verdade é `ROLE_PERMISSIONS`/`OWNERSHIP_OVERRIDE_PERMISSIONS` em `co
 | `workspace.update` | ✅ | ✅ | ❌ | ❌ | |
 | `workspace.delete` | ✅ | ❌ | ❌ | ❌ | Única ação irreversível do domínio — reservada ao dono, nunca delegável a ADMIN. |
 | `workspace.invite` | ✅ | ✅ | ❌ | ❌ | Cobre criar, listar e cancelar convite — mesma checagem para as três ações (eram idênticas antes da Sprint 5 via `_require_role`, ADR-009). |
+| `workspace.transfer_ownership` | ✅ | ❌ | ❌ | ❌ | Segunda ação irreversível/de posse do domínio, junto de `workspace.delete` — nem ADMIN pode transferir a propriedade de outro OWNER. Única forma de qualquer membro virar OWNER fora da criação do workspace (Sprint 17.1/M6, ADR-036/037). |
 | `member.remove` | ✅ | ✅ (exceto OWNER) | ❌ | ❌ | Exceção "exceto OWNER" é contextual (`require_can_manage_member`, §8.4), não expressável na matriz estática. |
-| `member.update_role` | ✅ | ✅ (exceto OWNER) | ❌ | ❌ | Idem. Promover alguém a OWNER é sempre rejeitado (422 na validação de schema — transferência de propriedade é fora de escopo, ADR-009/ADR-010). |
+| `member.update_role` | ✅ | ✅ (exceto OWNER) | ❌ | ❌ | Idem. Promover alguém a OWNER é sempre rejeitado (422 na validação de schema) — a única forma de promoção a OWNER é `workspace.transfer_ownership`, acima. |
 | `project.create` / `update` / `delete` | ✅ | ✅ | ❌ | ❌ | |
 | `project.read` | ✅ | ✅ | ✅ | ✅ | |
 | `issue.create` | ✅ | ✅ | ✅ | ❌ | |
@@ -109,7 +110,7 @@ A fonte de verdade é `ROLE_PERMISSIONS`/`OWNERSHIP_OVERRIDE_PERMISSIONS` em `co
 
 ### 8.4 Regra contextual: gerenciamento de membro
 
-`member.remove`/`member.update_role` concedem a permissão *base* a OWNER/ADMIN (checado por `Depends(require_permission(...))`, antes do service ser chamado), mas "ADMIN não pode gerenciar um OWNER" só é decidível depois que o service busca a `WorkspaceMember`-alvo pelo `member_id` do path — o papel do alvo não está disponível na etapa de Workspace Context. Por isso o service chama `PermissionService.require_can_manage_member(actor_role, target_role)` explicitamente, gerando `403 cannot_manage_owner` quando um ADMIN mira um OWNER. Adicionalmente, gerenciar a própria associação por esses endpoints (`member_id` = o próprio chamador) é sempre rejeitado com `409 cannot_manage_own_membership` — sair é `DELETE .../members/me`, trocar o próprio papel exigiria uma transferência de propriedade (fora de escopo, ver ADR-010).
+`member.remove`/`member.update_role` concedem a permissão *base* a OWNER/ADMIN (checado por `Depends(require_permission(...))`, antes do service ser chamado), mas "ADMIN não pode gerenciar um OWNER" só é decidível depois que o service busca a `WorkspaceMember`-alvo pelo `member_id` do path — o papel do alvo não está disponível na etapa de Workspace Context. Por isso o service chama `PermissionService.require_can_manage_member(actor_role, target_role)` explicitamente, gerando `403 cannot_manage_owner` quando um ADMIN mira um OWNER. Adicionalmente, gerenciar a própria associação por esses endpoints (`member_id` = o próprio chamador) é sempre rejeitado com `409 cannot_manage_own_membership` — sair é `DELETE .../members/me`, trocar o próprio papel é `POST .../members/{member_id}/transfer-ownership` (Sprint 17.1/M6, `workspace.transfer_ownership`, §8.2/8.3), que rejeita alvo = o próprio chamador com `409 cannot_transfer_ownership_to_self`.
 
 ### 8.5 Ownership override
 

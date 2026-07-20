@@ -47,7 +47,7 @@ function renderSettings() {
   return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter>
-        <WorkspaceMembersSettings workspaceId="ws-1" canManage />
+        <WorkspaceMembersSettings workspaceId="ws-1" canManage isOwner />
       </MemoryRouter>
     </QueryClientProvider>,
   );

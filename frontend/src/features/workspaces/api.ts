@@ -79,6 +79,13 @@ export async function removeMember(workspaceId: string, memberId: string): Promi
   await httpClient.delete(`/workspaces/${workspaceId}/members/${memberId}`);
 }
 
+export async function transferOwnership(workspaceId: string, memberId: string): Promise<Workspace> {
+  const { data } = await httpClient.post<DataEnvelope<Workspace>>(
+    `/workspaces/${workspaceId}/members/${memberId}/transfer-ownership`,
+  );
+  return data.data;
+}
+
 export async function leaveWorkspace(workspaceId: string): Promise<void> {
   await httpClient.delete(`/workspaces/${workspaceId}/members/me`);
 }

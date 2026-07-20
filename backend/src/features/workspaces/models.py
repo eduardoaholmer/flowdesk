@@ -21,9 +21,10 @@ class Workspace(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
     """`owner_id` é um ponteiro de conveniência (criador original).
 
     A fonte de verdade de "quem é OWNER hoje" é `WorkspaceMember.role` — uma
-    transferência de propriedade (fora de escopo desta sprint) muda o membro,
-    não necessariamente este campo. Nenhuma FK garante essa consistência; é
-    responsabilidade do service (Sprint 3+) manter as duas em sincronia.
+    transferência de propriedade muda o membro, não automaticamente este
+    campo. Nenhuma FK garante essa consistência; é responsabilidade do
+    service manter as duas em sincronia (`WorkspaceService.transfer_ownership`,
+    Sprint 17.1/M6).
     """
 
     __tablename__ = "workspaces"

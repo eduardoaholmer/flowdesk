@@ -398,6 +398,107 @@ async def test_multi_tenant_isolation_across_two_workspaces(client: AsyncClient)
     assert [w["id"] for w in own_list.json()["data"]] == [workspace_a["id"]]
 
 
+async def test_transfer_ownership_by_owner_succeeds(client: AsyncClient) -> None:
+    _, owner_token = await _register_and_login(client)
+    created = await client.post(
+        "/api/v1/workspaces", json={"name": "Acme"}, headers=_auth(owner_token)
+    )
+    workspace_id = created.json()["data"]["id"]
+    member_email, member_token = await _register_and_login(client)
+    invite = await client.post(
+        f"/api/v1/workspaces/{workspace_id}/invitations",
+        json={"email": member_email, "role": "MEMBER"},
+        headers=_auth(owner_token),
+    )
+    await client.post(
+        f"/api/v1/invitations/{invite.json()['data']['token']}/accept", headers=_auth(member_token)
+    )
+    members = (
+        await client.get(f"/api/v1/workspaces/{workspace_id}/members", headers=_auth(owner_token))
+    ).json()["data"]
+    target_member = next(m for m in members if m["user"]["email"] == member_email)
+
+    response = await client.post(
+        f"/api/v1/workspaces/{workspace_id}/members/{target_member['id']}/transfer-ownership",
+        headers=_auth(owner_token),
+    )
+
+    assert response.status_code == 200
+    body = response.json()["data"]
+    assert body["owner_id"] == target_member["user"]["id"]
+
+    updated_members = (
+        await client.get(f"/api/v1/workspaces/{workspace_id}/members", headers=_auth(owner_token))
+    ).json()["data"]
+    roles_by_email = {m["user"]["email"]: m["role"] for m in updated_members}
+    assert roles_by_email[member_email] == "OWNER"
+
+
+async def test_transfer_ownership_requires_owner(client: AsyncClient) -> None:
+    _, owner_token = await _register_and_login(client)
+    created = await client.post(
+        "/api/v1/workspaces", json={"name": "Acme"}, headers=_auth(owner_token)
+    )
+    workspace_id = created.json()["data"]["id"]
+    admin_email, admin_token = await _register_and_login(client)
+    invite = await client.post(
+        f"/api/v1/workspaces/{workspace_id}/invitations",
+        json={"email": admin_email, "role": "ADMIN"},
+        headers=_auth(owner_token),
+    )
+    await client.post(
+        f"/api/v1/invitations/{invite.json()['data']['token']}/accept", headers=_auth(admin_token)
+    )
+    members = (
+        await client.get(f"/api/v1/workspaces/{workspace_id}/members", headers=_auth(owner_token))
+    ).json()["data"]
+    owner_member = next(m for m in members if m["role"] == "OWNER")
+
+    response = await client.post(
+        f"/api/v1/workspaces/{workspace_id}/members/{owner_member['id']}/transfer-ownership",
+        headers=_auth(admin_token),
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "permission_denied"
+
+
+async def test_transfer_ownership_rejects_unknown_member(client: AsyncClient) -> None:
+    _, owner_token = await _register_and_login(client)
+    created = await client.post(
+        "/api/v1/workspaces", json={"name": "Acme"}, headers=_auth(owner_token)
+    )
+    workspace_id = created.json()["data"]["id"]
+
+    response = await client.post(
+        f"/api/v1/workspaces/{workspace_id}/members/{uuid.uuid4()}/transfer-ownership",
+        headers=_auth(owner_token),
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "member_not_found"
+
+
+async def test_transfer_ownership_rejects_self_target(client: AsyncClient) -> None:
+    _, owner_token = await _register_and_login(client)
+    created = await client.post(
+        "/api/v1/workspaces", json={"name": "Acme"}, headers=_auth(owner_token)
+    )
+    workspace_id = created.json()["data"]["id"]
+    members = (
+        await client.get(f"/api/v1/workspaces/{workspace_id}/members", headers=_auth(owner_token))
+    ).json()["data"]
+    owner_member = members[0]
+
+    response = await client.post(
+        f"/api/v1/workspaces/{workspace_id}/members/{owner_member['id']}/transfer-ownership",
+        headers=_auth(owner_token),
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "cannot_transfer_ownership_to_self"
+
+
 async def test_users_me_includes_workspace_memberships(client: AsyncClient) -> None:
     _, token = await _register_and_login(client)
     created = await client.post("/api/v1/workspaces", json={"name": "Acme"}, headers=_auth(token))

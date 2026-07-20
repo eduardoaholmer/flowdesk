@@ -48,11 +48,13 @@ logger = get_logger(__name__)
 #
 # OWNER tem toda permissão que existe hoje ou vier a existir (`frozenset(Permission)`
 # reavalia o enum inteiro, então uma permissão nova automaticamente cai aqui sem
-# exigir edição desta linha). ADMIN tem tudo exceto excluir o workspace — a
-# única ação irreversível de todo o domínio, reservada ao dono.
+# exigir edição desta linha). ADMIN tem tudo exceto excluir o workspace e
+# transferir a propriedade — as duas únicas ações irreversíveis/de posse do
+# domínio, reservadas ao dono.
 ROLE_PERMISSIONS: dict[WorkspaceRole, frozenset[Permission]] = {
     WorkspaceRole.OWNER: frozenset(Permission),
-    WorkspaceRole.ADMIN: frozenset(Permission) - {Permission.WORKSPACE_DELETE},
+    WorkspaceRole.ADMIN: frozenset(Permission)
+    - {Permission.WORKSPACE_DELETE, Permission.WORKSPACE_TRANSFER_OWNERSHIP},
     WorkspaceRole.MEMBER: frozenset(
         {
             Permission.WORKSPACE_VIEW,

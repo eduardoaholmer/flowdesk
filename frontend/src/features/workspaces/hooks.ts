@@ -123,6 +123,20 @@ export function useRemoveMember(workspaceId: string) {
   });
 }
 
+export function useTransferOwnership(workspaceId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (memberId: string) => api.transferOwnership(workspaceId, memberId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: workspaceKey(workspaceId) });
+      queryClient.invalidateQueries({ queryKey: membersKey(workspaceId) });
+      queryClient.invalidateQueries({ queryKey: ["users", "me"] });
+      toast.success("Propriedade do workspace transferida.");
+    },
+    onError: (error) => toast.error(getApiErrorMessage(error)),
+  });
+}
+
 export function useLeaveWorkspace() {
   const queryClient = useQueryClient();
   return useMutation({

@@ -35,7 +35,11 @@ export function WorkspaceSettingsPage({
           />
         </TabsContent>
         <TabsContent value="members" className="pt-4">
-          <WorkspaceMembersSettings workspaceId={workspaceId} canManage={canManage} />
+          <WorkspaceMembersSettings
+            workspaceId={workspaceId}
+            canManage={canManage}
+            isOwner={role === "OWNER"}
+          />
         </TabsContent>
         {canManage && (
           <TabsContent value="invitations" className="pt-4">
