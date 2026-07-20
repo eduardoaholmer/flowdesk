@@ -8,6 +8,7 @@ import { z } from "zod";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
+import { PasswordInput } from "@/shared/components/forms/PasswordInput";
 import { useAuthStore } from "@/shared/stores/authStore";
 
 import { login, register as registerUser } from "../api";
@@ -63,9 +64,8 @@ function LoginTab({ redirectTo }: { redirectTo: string }) {
             Esqueci minha senha
           </Link>
         </div>
-        <Input
+        <PasswordInput
           id="login-password"
-          type="password"
           autoComplete="current-password"
           {...register("password")}
         />
@@ -113,9 +113,8 @@ function RegisterTab({ onRegistered }: { onRegistered: (email: string) => void }
       </div>
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="register-password">Senha</Label>
-        <Input
+        <PasswordInput
           id="register-password"
-          type="password"
           autoComplete="new-password"
           {...register("password")}
         />

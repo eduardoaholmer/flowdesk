@@ -7,8 +7,8 @@ import { toast } from "sonner";
 import { z } from "zod";
 
 import { Button } from "@/shared/components/ui/button";
-import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
+import { PasswordInput } from "@/shared/components/forms/PasswordInput";
 import { getApiErrorMessage } from "@/shared/lib/errors";
 
 import { confirmPasswordReset } from "../api";
@@ -67,9 +67,8 @@ export function ResetPasswordForm({ token }: { token: string }) {
     <form className="flex flex-col gap-4" onSubmit={handleSubmit(onSubmit)}>
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="reset-password-password">Nova senha</Label>
-        <Input
+        <PasswordInput
           id="reset-password-password"
-          type="password"
           autoComplete="new-password"
           {...register("password")}
         />
@@ -80,9 +79,8 @@ export function ResetPasswordForm({ token }: { token: string }) {
       </div>
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="reset-password-confirm">Confirmar nova senha</Label>
-        <Input
+        <PasswordInput
           id="reset-password-confirm"
-          type="password"
           autoComplete="new-password"
           {...register("confirmPassword")}
         />

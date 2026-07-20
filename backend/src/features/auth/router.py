@@ -53,11 +53,15 @@ def _set_auth_cookies(response: Response, *, refresh_token: str, settings: Setti
         secure=True,
         samesite="strict",
     )
+    # Path="/" (não COOKIE_PATH): este cookie só existe para o frontend ler via
+    # `document.cookie` (docs/07-security.md §4) e ecoar no header X-CSRF-Token —
+    # como o SPA vive em rotas fora de /api/v1/auth, um Path restrito o tornaria
+    # invisível para o próprio JavaScript que precisa lê-lo.
     response.set_cookie(
         CSRF_COOKIE_NAME,
         secrets.token_urlsafe(32),
         max_age=max_age,
-        path=COOKIE_PATH,
+        path="/",
         httponly=False,
         secure=True,
         samesite="strict",
@@ -66,7 +70,7 @@ def _set_auth_cookies(response: Response, *, refresh_token: str, settings: Setti
 
 def _clear_auth_cookies(response: Response) -> None:
     response.delete_cookie(REFRESH_COOKIE_NAME, path=COOKIE_PATH)
-    response.delete_cookie(CSRF_COOKIE_NAME, path=COOKIE_PATH)
+    response.delete_cookie(CSRF_COOKIE_NAME, path="/")
 
 
 @router.post(
