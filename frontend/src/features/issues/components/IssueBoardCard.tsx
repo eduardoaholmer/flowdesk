@@ -5,8 +5,14 @@ import { Avatar, AvatarFallback } from "@/shared/components/ui/avatar";
 import { workspaceRoutes } from "@/shared/lib/routes";
 import { getInitials } from "@/shared/lib/string";
 
-import { IssuePriorityBadge } from "./IssuePriorityBadge";
+import { IssuePriorityIcon } from "./IssuePriorityIcon";
 import type { Issue } from "../types";
+
+/** Sombra sutil do cartão de board, conforme o handoff de redesign (Milestone 7,
+ * `docs/design-handoff/2026-07-20-redesign-gestor/data.js` não cobre isso — vem do
+ * `.dc.html` do board diretamente) — one-off, não é o token `--sh` do sistema
+ * (esse é reservado a popover/modal/dropdown, mais pronunciado). */
+const CARD_SHADOW = { boxShadow: "0 1px 2px rgba(20,19,15,.05)" };
 
 function IssueBoardCardContent({
   issue,
@@ -17,13 +23,17 @@ function IssueBoardCardContent({
 }) {
   return (
     <>
-      <p className="font-mono text-xs text-muted-foreground">{issue.identifier}</p>
-      <p className="line-clamp-2 font-medium">{issue.title}</p>
-      <div className="flex items-center justify-between">
-        <IssuePriorityBadge priority={issue.priority} />
+      <div className="flex items-center justify-between gap-2">
+        <p className="font-mono text-xs text-t3">{issue.identifier}</p>
+        <IssuePriorityIcon priority={issue.priority} />
+      </div>
+      <p className="line-clamp-2 text-[12.5px] leading-snug font-medium">{issue.title}</p>
+      <div className="flex items-center justify-end">
         {assigneeName && (
-          <Avatar className="size-5">
-            <AvatarFallback className="text-[10px]">{getInitials(assigneeName)}</AvatarFallback>
+          <Avatar className="size-5 border border-border2 bg-sunken">
+            <AvatarFallback className="bg-transparent text-[7.5px] font-semibold text-t2">
+              {getInitials(assigneeName)}
+            </AvatarFallback>
           </Avatar>
         )}
       </div>
@@ -46,8 +56,8 @@ export function IssueBoardCard({
     <Link
       ref={setNodeRef}
       to={workspaceRoutes.issueDetail(workspaceSlug, issue.id)}
-      className="flex flex-col gap-2 rounded-lg border bg-card p-3 text-sm hover:border-ring"
-      style={{ opacity: isDragging ? 0.4 : 1, touchAction: "none" }}
+      className="flex cursor-grab flex-col gap-1.5 rounded-lg border border-border bg-panel px-3 py-2.5 text-sm hover:border-border2"
+      style={{ ...CARD_SHADOW, opacity: isDragging ? 0.4 : 1, touchAction: "none" }}
       {...attributes}
       {...listeners}
     >
@@ -68,7 +78,7 @@ export function IssueBoardCardPreview({
   assigneeName: string | undefined;
 }) {
   return (
-    <div className="flex w-64 flex-col gap-2 rounded-lg border bg-card p-3 text-sm shadow-lg">
+    <div className="flex w-64 cursor-grab flex-col gap-1.5 rounded-lg border border-border bg-panel px-3 py-2.5 text-sm shadow-lg">
       <IssueBoardCardContent issue={issue} assigneeName={assigneeName} />
     </div>
   );

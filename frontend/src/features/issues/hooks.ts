@@ -5,6 +5,7 @@ import type { CollectionEnvelope } from "@/shared/lib/apiTypes";
 import { getApiErrorMessage } from "@/shared/lib/errors";
 
 import * as api from "./api";
+import { ISSUE_STATUS_LABELS } from "./constants";
 import type {
   Issue,
   IssueCreateInput,
@@ -117,6 +118,9 @@ export function useMoveIssueStatus(workspaceId: string, listParams: IssueListPar
         queryClient.setQueryData(key, context.previous);
       }
       toast.error(getApiErrorMessage(error));
+    },
+    onSuccess: (updated) => {
+      toast.success(`${updated.identifier} → ${ISSUE_STATUS_LABELS[updated.status]}`);
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["workspaces", workspaceId, "issues"] });

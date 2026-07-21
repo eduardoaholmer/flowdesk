@@ -68,6 +68,6 @@ describe("IssuesBoardView", () => {
       .getByText("Backlog")
       .closest('[data-slot="board-column"]') as HTMLElement;
 
-    expect(within(backlogColumn).getByText("Nenhuma issue")).toBeInTheDocument();
+    expect(within(backlogColumn).getByText("Solte um cartão aqui")).toBeInTheDocument();
   });
 });
