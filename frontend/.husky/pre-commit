@@ -15,7 +15,14 @@ fi
 # ex. `/app/.venv`) tem o bit setado mas quebra ao rodar. `--version` é barato
 # e prova que o binário de fato executa antes de tentar ativar o venv inteiro.
 if [ -n "$BACKEND_PRE_COMMIT" ] && "$BACKEND_PRE_COMMIT" --version >/dev/null 2>&1; then
-  . backend/.venv/Scripts/activate 2>/dev/null || . backend/.venv/bin/activate
+  # `.` (source) num arquivo inexistente é fatal no dash (Debian/Ubuntu `/bin/sh`)
+  # — ele aborta o script inteiro em vez de só falhar o comando, então o `||`
+  # nunca chega a tentar o fallback. Testar a existência antes de sourcing.
+  if [ -f backend/.venv/bin/activate ]; then
+    . backend/.venv/bin/activate
+  elif [ -f backend/.venv/Scripts/activate ]; then
+    . backend/.venv/Scripts/activate
+  fi
   pre-commit run
 else
   echo "pre-commit não encontrado/utilizável em backend/.venv — pulando hooks de backend (ver README)."
