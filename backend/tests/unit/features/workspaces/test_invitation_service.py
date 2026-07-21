@@ -202,6 +202,28 @@ async def test_accept_rejects_when_already_member(
         await service.accept(invitee, issued.token)
 
 
+async def test_preview_returns_invitation_metadata(
+    service: InvitationService, workspace_service: WorkspaceService
+) -> None:
+    owner = _user()
+    workspace = await workspace_service.create(owner, WorkspaceCreateRequest(name="Acme"))
+    issued = await service.create(
+        owner,
+        workspace.id,
+        InvitationCreateRequest(email="invitee@example.com", role=WorkspaceRole.MEMBER),
+    )
+
+    invitation = await service.preview(issued.token)
+
+    assert invitation.email == "invitee@example.com"
+    assert invitation.role == WorkspaceRole.MEMBER
+
+
+async def test_preview_rejects_unknown_token(service: InvitationService) -> None:
+    with pytest.raises(InvitationNotFoundError):
+        await service.preview("not-a-real-token")
+
+
 async def test_cancel_invitation(
     service: InvitationService,
     workspace_service: WorkspaceService,

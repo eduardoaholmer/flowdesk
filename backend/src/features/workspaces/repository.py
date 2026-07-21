@@ -258,8 +258,14 @@ class InvitationRepository:
         return result
 
     async def get_by_token_hash(self, token_hash: str) -> Invitation | None:
-        stmt = select(Invitation).where(
-            Invitation.token_hash == token_hash, Invitation.deleted_at.is_(None)
+        """`selectinload` de `workspace`/`invited_by` — usado tanto por `accept` (só
+        precisa de `workspace_id`, carga extra desprezível) quanto por `preview`
+        (precisa de `workspace.name`/`invited_by.name`, evita um segundo round-trip).
+        """
+        stmt = (
+            select(Invitation)
+            .options(selectinload(Invitation.workspace), selectinload(Invitation.invited_by))
+            .where(Invitation.token_hash == token_hash, Invitation.deleted_at.is_(None))
         )
         result: Invitation | None = await self._session.scalar(stmt)
         return result

@@ -79,6 +79,7 @@ Não-membro em `workspace_id` existente recebe **404**, nunca **403** — mesmo 
 | Listar convites | `GET .../invitations?page=&per_page=` | `workspace.invite` (`OWNER`/`ADMIN`) | — | `{ data: [invitation], meta }` (sem `token`) | 200, 403, 404 |
 | Cancelar convite | `DELETE .../invitations/{invitation_id}` | `workspace.invite` (`OWNER`/`ADMIN`) | — | 204 (soft delete) | 204, 403, 404 |
 | Reenviar convite | `POST .../invitations/{invitation_id}/resend` | `workspace.invite` (`OWNER`/`ADMIN`) | — | `{ data: { invitation } }` — novo `token` em texto plano (§3.2) | 200, 403, 404, 409 (`invitation_already_accepted`) |
+| Pré-visualizar convite | `GET /invitations/{token}` | **Público** (sem autenticação) | — | `{ data: { email, role, status, workspace_name, invited_by_name } }` | 200, 404 (`invitation_not_found`) |
 | Aceitar convite | `POST /invitations/{token}/accept` | Autenticado (e-mail deve bater) | — | `{ data: { workspace_member } }` | 200, 403 (`invitation_email_mismatch`), 404 (`invitation_not_found`), 409 (`invitation_expired`, `already_member`) |
 | Transferir propriedade | `POST .../members/{member_id}/transfer-ownership` | `workspace.transfer_ownership` (só `OWNER`) | — | `{ data: { workspace } }` (`owner_id` atualizado) | 200, 403 (`permission_denied`), 404 (`workspace_not_found`, `member_not_found`), 409 (`cannot_transfer_ownership_to_self`) |
 
@@ -89,6 +90,10 @@ Não-membro em `workspace_id` existente recebe **404**, nunca **403** — mesmo 
 ### 3.1 Aceitar convite é um endpoint global, não aninhado
 
 `POST /invitations/{token}/accept` fica fora de `/workspaces/{workspace_id}/...` deliberadamente: quem aceita ainda não é membro do workspace (não tem como o cliente afirmar um `workspace_id` de forma confiável antes de aceitar), e o token opaco já resolve o workspace correto no servidor — nenhum valor de segurança extra viria de exigir o `workspace_id` na URL também. Mesmo racional de `/auth/*` viver fora de `/users/{id}/...`.
+
+### 3.1.1 Pré-visualizar convite é público, e deliberadamente redundante com `Aceitar`
+
+`GET /invitations/{token}` (Sprint 21.1, M7) não checa expiração/aceite — só resolve o token e devolve metadados de exibição (`email`/`role`/`status`/`workspace_name`/`invited_by_name`), nunca `id`/`workspace_id`/`invited_by_id`. Existe para a tela de aceite montar "fulano convidou você para X como Y" **antes** de a pessoa logar ou criar conta — sem sessão, não há como chamar nenhum outro endpoint desta tabela para obter esse contexto. A validação real (expirado, já aceito, e-mail não bate) permanece só em `Aceitar convite`, não duplicada aqui: `status` no corpo é informativo (permite o frontend mostrar "convite já aceito" sem tentar aceitar), não uma segunda fonte de verdade.
 
 ### 3.2 Convite: token em texto plano só na criação
 

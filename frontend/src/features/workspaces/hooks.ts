@@ -184,6 +184,17 @@ export function useResendInvitation(workspaceId: string) {
   });
 }
 
+/** Endpoint público — funciona sem sessão, então sem `enabled: accessToken`
+ * como o resto dos hooks deste arquivo (esta é a exceção deliberada). */
+export function useInvitationPreview(token: string | undefined) {
+  return useQuery({
+    queryKey: ["invitations", "preview", token],
+    queryFn: () => api.getInvitationPreview(token as string),
+    enabled: Boolean(token),
+    retry: false,
+  });
+}
+
 export function useAcceptInvitation() {
   const queryClient = useQueryClient();
   return useMutation({

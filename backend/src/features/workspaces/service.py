@@ -384,6 +384,17 @@ class InvitationService:
         )
         return InvitationIssued(invitation=invitation, token=token)
 
+    async def preview(self, token: str) -> Invitation:
+        """Sem checagem de expiração/aceite aqui de propósito — é só leitura
+        informativa para a tela de aceite montar a mensagem "fulano convidou você
+        para X como Y" antes de logar/criar conta. A validação real (expirado,
+        já aceito, e-mail não bate) continua só em `accept`, não duplicada aqui.
+        """
+        invitation = await self._invitation_repo.get_by_token_hash(hash_invitation_token(token))
+        if invitation is None:
+            raise InvitationNotFoundError()
+        return invitation
+
     async def accept(self, current_user: CurrentUser, token: str) -> WorkspaceMember:
         invitation = await self._invitation_repo.get_by_token_hash(hash_invitation_token(token))
         if invitation is None:

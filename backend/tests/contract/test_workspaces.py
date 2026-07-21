@@ -294,6 +294,39 @@ async def test_invitation_create_rejects_existing_member(client: AsyncClient) ->
     assert response.json()["error"]["code"] == "already_member"
 
 
+async def test_preview_invitation_is_public_and_returns_metadata(client: AsyncClient) -> None:
+    _, owner_token = await _register_and_login(client)
+    created = await client.post(
+        "/api/v1/workspaces", json={"name": "Acme"}, headers=_auth(owner_token)
+    )
+    workspace_id = created.json()["data"]["id"]
+    invitee_email = _unique_email()
+    invite = await client.post(
+        f"/api/v1/workspaces/{workspace_id}/invitations",
+        json={"email": invitee_email, "role": "MEMBER"},
+        headers=_auth(owner_token),
+    )
+    token = invite.json()["data"]["token"]
+
+    # sem header de Authorization — precisa funcionar deslogado
+    response = await client.get(f"/api/v1/invitations/{token}")
+
+    assert response.status_code == 200
+    body = response.json()["data"]
+    assert body["email"] == invitee_email
+    assert body["role"] == "MEMBER"
+    assert body["workspace_name"] == "Acme"
+    assert body["invited_by_name"] == "Ada Lovelace"
+    assert body["status"] == "PENDING"
+
+
+async def test_preview_invitation_rejects_unknown_token(client: AsyncClient) -> None:
+    response = await client.get("/api/v1/invitations/not-a-real-token")
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "invitation_not_found"
+
+
 async def test_cancel_invitation(client: AsyncClient) -> None:
     _, owner_token = await _register_and_login(client)
     created = await client.post(

@@ -7,6 +7,7 @@ import type {
   InvitationCreatedResult,
   InvitationCreateInput,
   InvitationListParams,
+  InvitationPreview,
   Workspace,
   WorkspaceMember,
   WorkspaceMemberListParams,
@@ -123,6 +124,11 @@ export async function resendInvitation(
   const { data } = await httpClient.post<DataEnvelope<InvitationCreatedResult>>(
     `/workspaces/${workspaceId}/invitations/${invitationId}/resend`,
   );
+  return data.data;
+}
+
+export async function getInvitationPreview(token: string): Promise<InvitationPreview> {
+  const { data } = await httpClient.get<DataEnvelope<InvitationPreview>>(`/invitations/${token}`);
   return data.data;
 }
 

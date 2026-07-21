@@ -155,6 +155,30 @@ class InvitationCreatedResponse(InvitationResponse):
         return cls(**base.model_dump(), token=token)
 
 
+class InvitationPreviewResponse(BaseModel):
+    """Endpoint público (`GET /invitations/{token}`, sem autenticação) — só o
+    necessário para a tela de aceite mostrar "fulano convidou você para X como Y"
+    antes de criar conta/logar. Nunca expõe `id`/`workspace_id`/`invited_by_id`
+    (nenhum valor além do que a própria tela precisa renderizar).
+    """
+
+    email: str
+    role: WorkspaceRole
+    status: InvitationStatus
+    workspace_name: str
+    invited_by_name: str
+
+    @classmethod
+    def from_invitation(cls, invitation: Invitation) -> "InvitationPreviewResponse":
+        return cls(
+            email=invitation.email,
+            role=invitation.role,
+            status=_compute_status(invitation),
+            workspace_name=invitation.workspace.name,
+            invited_by_name=invitation.invited_by.name,
+        )
+
+
 def _compute_status(invitation: Invitation) -> InvitationStatus:
     if invitation.accepted_at is not None:
         return InvitationStatus.ACCEPTED

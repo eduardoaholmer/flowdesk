@@ -1,7 +1,6 @@
 import { Navigate, useParams } from "react-router-dom";
 
 import { ResetPasswordForm } from "@/features/auth/components/ResetPasswordForm";
-import { Logo } from "@/shared/components/brand/Logo";
 import { AuthLayout } from "@/shared/components/layout/AuthLayout";
 import { useAuthStore } from "@/shared/stores/authStore";
 
@@ -18,12 +17,16 @@ export function ResetPasswordPage() {
 
   return (
     <AuthLayout>
-      <div className="w-full max-w-sm rounded-xl border p-6">
-        <h1 className="mb-4">
-          <Logo size="md" />
-        </h1>
-        <p className="mb-6 text-sm text-muted-foreground">Escolha uma nova senha.</p>
-        <ResetPasswordForm token={token} />
+      <div className="w-full max-w-sm">
+        <div className="mb-6 text-center">
+          <h1 className="font-heading text-2xl font-semibold tracking-tight">
+            Escolha uma nova senha
+          </h1>
+          <p className="mt-1.5 text-sm text-t2">Para a conta acessada por este link.</p>
+        </div>
+        <div className="rounded-xl border border-border bg-panel p-6 shadow-sm">
+          <ResetPasswordForm token={token} />
+        </div>
       </div>
     </AuthLayout>
   );

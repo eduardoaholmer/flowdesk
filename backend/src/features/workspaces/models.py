@@ -97,6 +97,7 @@ class Invitation(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
     accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
 
     workspace: Mapped[Workspace] = relationship(back_populates="invitations")
+    invited_by: Mapped[User] = relationship()
 
 
 Index(

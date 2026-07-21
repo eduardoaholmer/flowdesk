@@ -7,6 +7,6 @@ describe("App", () => {
   it("renders the home page at the root route", async () => {
     render(<App />);
 
-    expect(await screen.findByRole("heading", { name: "FlowDesk" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Bem-vinda de volta" })).toBeInTheDocument();
   });
 });

@@ -1,7 +1,6 @@
 import { Navigate } from "react-router-dom";
 
 import { ForgotPasswordForm } from "@/features/auth/components/ForgotPasswordForm";
-import { Logo } from "@/shared/components/brand/Logo";
 import { AuthLayout } from "@/shared/components/layout/AuthLayout";
 import { useAuthStore } from "@/shared/stores/authStore";
 
@@ -14,14 +13,14 @@ export function ForgotPasswordPage() {
 
   return (
     <AuthLayout>
-      <div className="w-full max-w-sm rounded-xl border p-6">
-        <h1 className="mb-4">
-          <Logo size="md" />
-        </h1>
-        <p className="mb-6 text-sm text-muted-foreground">
-          Informe seu e-mail para receber um link de redefinição de senha.
-        </p>
-        <ForgotPasswordForm />
+      <div className="w-full max-w-sm">
+        <div className="mb-6 text-center">
+          <h1 className="font-heading text-2xl font-semibold tracking-tight">Redefinir senha</h1>
+          <p className="mt-1.5 text-sm text-t2">Envie um link de redefinição para o seu e-mail.</p>
+        </div>
+        <div className="rounded-xl border border-border bg-panel p-6 shadow-sm">
+          <ForgotPasswordForm />
+        </div>
       </div>
     </AuthLayout>
   );

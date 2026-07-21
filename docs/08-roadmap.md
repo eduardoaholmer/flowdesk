@@ -573,6 +573,20 @@ A fase foi quebrada em duas sub-sprints: 20.1 (fecha os dois gaps reais) e 20.2 
 
 `Administracao.dc.html` está com as três telas endereçadas. Próximas telas do handoff: `Autenticacao.dc.html`, `Sidebar`/`NotifBell`/`CommandPalette`.
 
+## M7 fase 4 — gap-analysis e Sprint 21.1 (Autenticação) (2026-07-21, ADR-052)
+
+Fechada a fase 3 (Administração), a próxima tela do handoff é `Autenticacao.dc.html` (Login/Cadastro/Aceite de convite). Mesmo processo de gap-analysis das fases anteriores. Achados: as três telas já eram funcionais (Sprints 3/12.1/12.2/M2) mas com markup genérico pré-redesign; o gap real era `InvitationAcceptPage`, que sempre exigia sessão e aceitava o convite automaticamente sem confirmação nem contexto de "quem convidou, para onde" — quem estava deslogado caía direto num login genérico. Detalhes completos em ADR-052.
+
+### Sprint 21.1 — M7: redesign de Autenticação + convite público com confirmação explícita (concluída)
+
+- **Objetivo**: aplicar a linguagem visual do handoff às telas de Login/Cadastro/Esqueci senha/Redefinir senha, e resolver o gap real de `InvitationAcceptPage` — torná-la acessível deslogada, com confirmação explícita em vez de aceite automático.
+- **Entregue**: `GET /invitations/{token}` novo, público (`InvitationService.preview`) — metadados de exibição do convite sem exigir sessão; `AuthLayout` ganha header (logo + tema); `LoginForm` com card `--panel`, título/subtítulo por aba e `PasswordStrengthMeter` (feedback visual, não substitui validação real do backend); `InvitationAcceptPage` reescrita — rota pública fora de `RequireAuth`, três caminhos (deslogado cria conta e aceita numa submissão só; logado com e-mail batendo confirma/recusa explicitamente; logado com e-mail diferente mostra mismatch), convite já aceito/expirado com tela própria em vez de erro genérico.
+- **Não implementado (decisão explícita)**: `ForgotPasswordPage`/`ResetPasswordPage` só herdaram o `AuthLayout`/cartão novos (consistência mínima) — handoff não detalha elemento específico a elas.
+- **Dependências**: nenhuma estrutural — reskin + um endpoint novo.
+- **DoD**: DoD-base — backend (`ruff`/`mypy`, `pytest` completo, 3 erros/1 falha são infraestrutura/flakiness já documentada em ADR-050/051) e frontend (`tsc -b --noEmit`, `eslint`, `vitest` 18/18 arquivos, `npm run build`) verdes; `docs/04-api-design.md` (§3, §3.1.1) e `docs/09-decision-log.md` (ADR-052) atualizados no mesmo conjunto de mudanças.
+
+`Autenticacao.dc.html` está endereçada. Última tela pendente do handoff de M7: `Sidebar`/`NotifBell`/`CommandPalette` — precisa da mesma auditoria de gap das fases anteriores antes de codar.
+
 ## Sprint 15+ — Extensões futuras (pós-portfólio)
 
 Não planejadas em detalhe agora (evita over-engineering especulativo, `CLAUDE.md` §1.6); candidatas registradas para não serem esquecidas: integrações externas (GitHub, Slack), colaboração em tempo real via WebSocket, papel `GUEST` completo, anexos de arquivo em UI (schema de `Attachment` já existe desde a Sprint 2, falta a feature), refinamento avançado da command palette (ex.: paginação de resultados, busca por label), página dedicada de notificações (hoje o popover do Topbar trunca nas 10 mais recentes, achado na auditoria de M2 fase 2 mas fora do escopo redefinido do milestone), app mobile, `ProjectDetailPage` listar/filtrar as issues do próprio projeto (achado (b) da Sprint 13.4 — `Issue.project_id` já existe no schema, falta a UI), migrar `LabelsToolbar`/demais toolbars futuras para `SearchInput` (`shared/components/forms/SearchInput.tsx`, fundação da Sprint 8.5 ainda sem call site — fora do escopo da Sprint 13.5, que só corrigiu o reflow, não substituiu o markup de busca). Command palette em sua forma funcional básica deixou de estar nesta lista — entregue na Sprint 10/M2. Playwright/regressão visual automatizada (M4, ver ressalva da Sprint 11 acima) também deixa de ser "futuro distante" para virar candidato concreto do próximo milestone.

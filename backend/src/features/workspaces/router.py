@@ -12,6 +12,7 @@ from src.features.workspaces.models import WorkspaceMember, WorkspaceRole
 from src.features.workspaces.schemas import (
     InvitationCreatedResponse,
     InvitationCreateRequest,
+    InvitationPreviewResponse,
     InvitationResponse,
     MemberUpdateRoleRequest,
     WorkspaceCreateRequest,
@@ -217,6 +218,19 @@ async def resend_invitation(
     issued = await service.resend(current_user, workspace_id, invitation_id)
     response = InvitationCreatedResponse.from_issued(issued.invitation, issued.token)
     return DataEnvelope(data=response)
+
+
+@invitations_router.get("/{token}", response_model=DataEnvelope[InvitationPreviewResponse])
+async def preview_invitation(
+    token: str,
+    service: InvitationService = Depends(get_invitation_service),
+) -> DataEnvelope[InvitationPreviewResponse]:
+    """Sem `Depends(get_current_user)` — endpoint público, deliberadamente: a
+    tela de aceite precisa mostrar quem convidou/para qual workspace/papel antes
+    do usuário deslogado sequer ter uma conta para autenticar.
+    """
+    invitation = await service.preview(token)
+    return DataEnvelope(data=InvitationPreviewResponse.from_invitation(invitation))
 
 
 @invitations_router.post("/{token}/accept", response_model=DataEnvelope[WorkspaceMemberResponse])
