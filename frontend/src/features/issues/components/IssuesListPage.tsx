@@ -9,6 +9,7 @@ import { cn } from "@/shared/lib/utils";
 
 import { useIssues } from "../hooks";
 import type { IssuePriority, IssueSort, IssueStatus } from "../types";
+import { CreateIssueDialog } from "./CreateIssueDialog";
 import { IssuesEmptyState } from "./IssuesEmptyState";
 import { IssuesTable } from "./IssuesTable";
 import { IssuesToolbar } from "./IssuesToolbar";
@@ -89,9 +90,11 @@ export function IssuesListPage({
 
   return (
     <div className="flex flex-col gap-4">
-      <div>
-        <h1 className="text-lg font-semibold">Issues</h1>
-        <p className="text-sm text-muted-foreground">Issues deste workspace.</p>
+      <div className="flex items-center gap-3">
+        <h1 className="font-heading text-xl font-semibold">Issues</h1>
+        {data && <span className="text-xs text-t3">{data.meta.total} issues</span>}
+        <div className="flex-1" />
+        <CreateIssueDialog workspaceId={workspaceId} />
       </div>
 
       <IssuesToolbar

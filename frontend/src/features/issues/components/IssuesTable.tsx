@@ -10,13 +10,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/shared/components/ui/table";
-import { formatDate } from "@/shared/lib/date";
+import { formatDate, formatRelativeTime } from "@/shared/lib/date";
 import { workspaceRoutes } from "@/shared/lib/routes";
 import { getInitials } from "@/shared/lib/string";
 
-import { IssuePriorityBadge } from "./IssuePriorityBadge";
+import { ISSUE_PRIORITY_LABELS, ISSUE_STATUS_LABELS } from "../constants";
+import { IssuePriorityIcon } from "./IssuePriorityIcon";
 import { IssueRowActions } from "./IssueRowActions";
-import { IssueStatusBadge } from "./IssueStatusBadge";
+import { IssueStatusIcon } from "./IssueStatusIcon";
 import type { Issue } from "../types";
 
 export function IssuesTable({
@@ -38,10 +39,11 @@ export function IssuesTable({
           <TableRow>
             <TableHead className="w-20">Id</TableHead>
             <TableHead>Título</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead>Prioridade</TableHead>
+            <TableHead className="w-10">Status</TableHead>
+            <TableHead className="w-10">Prioridade</TableHead>
             <TableHead>Responsável</TableHead>
             <TableHead>Vencimento</TableHead>
+            <TableHead>Atualizado</TableHead>
             <TableHead className="w-24 text-right">Ações</TableHead>
           </TableRow>
         </TableHeader>
@@ -62,10 +64,24 @@ export function IssuesTable({
                   </Link>
                 </TableCell>
                 <TableCell>
-                  <IssueStatusBadge status={issue.status} />
+                  <span
+                    role="img"
+                    aria-label={ISSUE_STATUS_LABELS[issue.status]}
+                    title={ISSUE_STATUS_LABELS[issue.status]}
+                    className="inline-flex"
+                  >
+                    <IssueStatusIcon status={issue.status} />
+                  </span>
                 </TableCell>
                 <TableCell>
-                  <IssuePriorityBadge priority={issue.priority} />
+                  <span
+                    role="img"
+                    aria-label={ISSUE_PRIORITY_LABELS[issue.priority]}
+                    title={ISSUE_PRIORITY_LABELS[issue.priority]}
+                    className="inline-flex"
+                  >
+                    <IssuePriorityIcon priority={issue.priority} />
+                  </span>
                 </TableCell>
                 <TableCell>
                   {assignee ? (
@@ -83,6 +99,9 @@ export function IssuesTable({
                 </TableCell>
                 <TableCell className="text-sm text-muted-foreground">
                   {issue.due_date ? formatDate(issue.due_date) : "—"}
+                </TableCell>
+                <TableCell className="text-sm text-t3">
+                  {formatRelativeTime(issue.updated_at)}
                 </TableCell>
                 <TableCell>
                   <div className="flex justify-end">

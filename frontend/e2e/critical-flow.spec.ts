@@ -55,5 +55,5 @@ test("cadastro → login → criar workspace → criar issue → mudar status", 
   await page.getByRole("option", { name: "In Progress" }).click();
   await dialog.getByRole("button", { name: "Salvar alterações" }).click();
 
-  await expect(page.locator('[data-slot="badge"]', { hasText: "In Progress" })).toBeVisible();
+  await expect(page.getByText("In Progress", { exact: true })).toBeVisible();
 });

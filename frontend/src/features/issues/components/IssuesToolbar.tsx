@@ -12,7 +12,6 @@ import {
 } from "@/shared/components/ui/select";
 import { MAX_PICKER_PAGE_SIZE } from "@/shared/lib/constants";
 
-import { CreateIssueDialog } from "./CreateIssueDialog";
 import type { IssuePriority, IssueSort, IssueStatus } from "../types";
 
 const STATUS_OPTIONS: { value: IssueStatus; label: string }[] = [
@@ -146,7 +145,6 @@ export function IssuesToolbar({
           </Select>
         </>
       }
-      actions={<CreateIssueDialog workspaceId={workspaceId} />}
     />
   );
 }
