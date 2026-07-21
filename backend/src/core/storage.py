@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import BinaryIO, Protocol
 
 import boto3
+from fastapi import Depends
 
 from src.core.config import Settings, get_settings
 
@@ -111,8 +112,15 @@ class S3StorageProvider:
         )
 
 
-def get_storage_provider(settings: Settings | None = None) -> StorageProvider:
-    settings = settings or get_settings()
+def get_storage_provider(settings: Settings = Depends(get_settings)) -> StorageProvider:
+    """`settings: Settings = Depends(get_settings)`, não um default `None` bare —
+    um parâmetro tipado como `BaseModel`/`BaseSettings` sem marcador explícito de
+    dependency, mesmo com default, faz o FastAPI 0.115 tratá-lo como um segundo
+    campo de *body* implícito, forçando o body real da rota a ser embrulhado sob
+    o nome do parâmetro (`{"payload": {...}}` em vez do JSON direto) — quebra
+    qualquer endpoint que dependa disto, mesmo transitivamente (achado real
+    durante a validação retroativa desta sessão, ver ADR-042).
+    """
     if settings.storage_provider == "s3":
         assert settings.s3_bucket_name is not None  # já validado por Settings na inicialização
         return S3StorageProvider(

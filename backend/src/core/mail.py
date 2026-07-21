@@ -3,6 +3,8 @@ import smtplib
 from email.message import EmailMessage
 from typing import Protocol
 
+from fastapi import Depends
+
 from src.core.config import Settings, get_settings
 from src.core.logging import get_logger
 
@@ -90,8 +92,13 @@ class SMTPMailSender:
         logger.info("password_reset_email_sent", email=email)
 
 
-def get_mail_sender(settings: Settings | None = None) -> MailSender:
-    settings = settings or get_settings()
+def get_mail_sender(settings: Settings = Depends(get_settings)) -> MailSender:
+    """`settings: Settings = Depends(get_settings)`, não um default `None` bare —
+    ver o mesmo comentário em `core/storage.py::get_storage_provider` (achado
+    real desta sessão, ADR-042): um parâmetro `BaseSettings` sem `Depends(...)`
+    explícito faz o FastAPI 0.115 embrulhar o body de qualquer rota que dependa
+    disto, mesmo transitivamente.
+    """
     if settings.mail_provider == "smtp":
         assert settings.smtp_host is not None  # já validado por Settings na inicialização
         assert settings.smtp_from_email is not None
