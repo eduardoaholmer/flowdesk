@@ -58,4 +58,10 @@ export const workspacesHandlers = [
     `${API_BASE_URL}/workspaces/:workspaceId/invitations/:invitationId`,
     () => new HttpResponse(null, { status: 204 }),
   ),
+
+  http.post(`${API_BASE_URL}/workspaces/:workspaceId/invitations/:invitationId/resend`, () =>
+    HttpResponse.json({
+      data: { ...demoInvitation, token: "mock-resent-token" },
+    }),
+  ),
 ];

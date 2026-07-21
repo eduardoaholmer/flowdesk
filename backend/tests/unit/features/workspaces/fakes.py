@@ -228,3 +228,10 @@ class FakeInvitationRepository:
         invitation = self.invitations.get(invitation_id)
         if invitation is not None:
             invitation.accepted_at = datetime.now(UTC)
+
+    async def reissue(
+        self, invitation: Invitation, *, token_hash: str, expires_at: datetime
+    ) -> Invitation:
+        invitation.token_hash = token_hash
+        invitation.expires_at = expires_at
+        return invitation

@@ -46,6 +46,16 @@ class InvitationEmailMismatchError(PermissionDeniedError):
     message = "Este convite foi emitido para outro e-mail."
 
 
+class InvitationAlreadyAcceptedError(ConflictError):
+    """Guarda só o reenvio (`InvitationService.resend`) — expirado é justamente o
+    caso que o reenvio existe para resolver, diferente de `InvitationExpiredError`
+    (usada no aceite, onde expirado e aceito são tratados igual).
+    """
+
+    code = "invitation_already_accepted"
+    message = "Este convite já foi aceito."
+
+
 class CannotLeaveAsSoleOwnerError(ConflictError):
     code = "sole_owner_cannot_leave"
     message = "Transfira a propriedade do workspace antes de sair — você é o único OWNER."

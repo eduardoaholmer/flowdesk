@@ -8,6 +8,7 @@ from src.core.security import CurrentUser
 from src.features.auth.models import User
 from src.features.workspaces.exceptions import (
     AlreadyMemberError,
+    InvitationAlreadyAcceptedError,
     InvitationAlreadyPendingError,
     InvitationEmailMismatchError,
     InvitationExpiredError,
@@ -227,3 +228,70 @@ async def test_cancel_rejects_unknown_invitation(
 
     with pytest.raises(InvitationNotFoundError):
         await service.cancel(workspace.id, uuid.uuid4())
+
+
+async def test_resend_issues_new_token_and_extends_expiry(
+    service: InvitationService,
+    workspace_service: WorkspaceService,
+    workspace_repo: FakeWorkspaceRepository,
+    user_repo: FakeUserRepository,
+) -> None:
+    owner = _user()
+    workspace = await workspace_service.create(owner, WorkspaceCreateRequest(name="Acme"))
+    issued = await service.create(
+        owner,
+        workspace.id,
+        InvitationCreateRequest(email="invitee@example.com", role=WorkspaceRole.MEMBER),
+    )
+    issued.invitation.expires_at = datetime.now(UTC) - timedelta(days=1)
+    old_token, old_hash = issued.token, issued.invitation.token_hash
+
+    resent = await service.resend(owner, workspace.id, issued.invitation.id)
+
+    assert resent.token != old_token
+    assert resent.invitation.token_hash != old_hash
+    assert resent.invitation.expires_at > datetime.now(UTC)
+    assert any(entry.action == "invitation.resent" for entry in workspace_repo.activity_log)
+
+    invitee = _user("invitee@example.com")
+    await user_repo.create(
+        User(id=invitee.id, name=invitee.name, email=invitee.email, password_hash="hash")
+    )
+
+    # o link antigo não funciona mais, o novo sim
+    with pytest.raises(InvitationNotFoundError):
+        await service.accept(invitee, old_token)
+    member = await service.accept(invitee, resent.token)
+    assert member.workspace_id == workspace.id
+
+
+async def test_resend_rejects_unknown_invitation(
+    service: InvitationService, workspace_service: WorkspaceService
+) -> None:
+    owner = _user()
+    workspace = await workspace_service.create(owner, WorkspaceCreateRequest(name="Acme"))
+
+    with pytest.raises(InvitationNotFoundError):
+        await service.resend(owner, workspace.id, uuid.uuid4())
+
+
+async def test_resend_rejects_already_accepted_invitation(
+    service: InvitationService,
+    workspace_service: WorkspaceService,
+    user_repo: FakeUserRepository,
+) -> None:
+    owner = _user()
+    workspace = await workspace_service.create(owner, WorkspaceCreateRequest(name="Acme"))
+    issued = await service.create(
+        owner,
+        workspace.id,
+        InvitationCreateRequest(email="invitee@example.com", role=WorkspaceRole.MEMBER),
+    )
+    invitee = _user("invitee@example.com")
+    await user_repo.create(
+        User(id=invitee.id, name=invitee.name, email=invitee.email, password_hash="hash")
+    )
+    await service.accept(invitee, issued.token)
+
+    with pytest.raises(InvitationAlreadyAcceptedError):
+        await service.resend(owner, workspace.id, issued.invitation.id)

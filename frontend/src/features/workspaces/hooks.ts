@@ -173,6 +173,17 @@ export function useCancelInvitation(workspaceId: string) {
   });
 }
 
+export function useResendInvitation(workspaceId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (invitationId: string) => api.resendInvitation(workspaceId, invitationId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["workspaces", workspaceId, "invitations"] });
+    },
+    onError: (error) => toast.error(getApiErrorMessage(error)),
+  });
+}
+
 export function useAcceptInvitation() {
   const queryClient = useQueryClient();
   return useMutation({

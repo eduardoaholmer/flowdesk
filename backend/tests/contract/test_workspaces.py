@@ -318,6 +318,78 @@ async def test_cancel_invitation(client: AsyncClient) -> None:
     assert list_response.json()["meta"]["total"] == 0
 
 
+async def test_resend_invitation_issues_new_token(client: AsyncClient) -> None:
+    _, owner_token = await _register_and_login(client)
+    created = await client.post(
+        "/api/v1/workspaces", json={"name": "Acme"}, headers=_auth(owner_token)
+    )
+    workspace_id = created.json()["data"]["id"]
+    invite = await client.post(
+        f"/api/v1/workspaces/{workspace_id}/invitations",
+        json={"email": _unique_email(), "role": "MEMBER"},
+        headers=_auth(owner_token),
+    )
+    invitation_id = invite.json()["data"]["id"]
+    old_token = invite.json()["data"]["token"]
+
+    resend_response = await client.post(
+        f"/api/v1/workspaces/{workspace_id}/invitations/{invitation_id}/resend",
+        headers=_auth(owner_token),
+    )
+
+    assert resend_response.status_code == 200
+    new_token = resend_response.json()["data"]["token"]
+    assert new_token != old_token
+
+    old_accept = await client.post(
+        f"/api/v1/invitations/{old_token}/accept", headers=_auth(owner_token)
+    )
+    assert old_accept.status_code == 404
+    assert old_accept.json()["error"]["code"] == "invitation_not_found"
+
+
+async def test_resend_invitation_rejects_already_accepted(client: AsyncClient) -> None:
+    _, owner_token = await _register_and_login(client)
+    created = await client.post(
+        "/api/v1/workspaces", json={"name": "Acme"}, headers=_auth(owner_token)
+    )
+    workspace_id = created.json()["data"]["id"]
+    member_email, member_token = await _register_and_login(client)
+    invite = await client.post(
+        f"/api/v1/workspaces/{workspace_id}/invitations",
+        json={"email": member_email, "role": "MEMBER"},
+        headers=_auth(owner_token),
+    )
+    invitation_id = invite.json()["data"]["id"]
+    await client.post(
+        f"/api/v1/invitations/{invite.json()['data']['token']}/accept", headers=_auth(member_token)
+    )
+
+    response = await client.post(
+        f"/api/v1/workspaces/{workspace_id}/invitations/{invitation_id}/resend",
+        headers=_auth(owner_token),
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "invitation_already_accepted"
+
+
+async def test_resend_invitation_rejects_unknown_invitation(client: AsyncClient) -> None:
+    _, owner_token = await _register_and_login(client)
+    created = await client.post(
+        "/api/v1/workspaces", json={"name": "Acme"}, headers=_auth(owner_token)
+    )
+    workspace_id = created.json()["data"]["id"]
+
+    response = await client.post(
+        f"/api/v1/workspaces/{workspace_id}/invitations/{uuid.uuid4()}/resend",
+        headers=_auth(owner_token),
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "invitation_not_found"
+
+
 async def test_leave_workspace_as_sole_owner_is_rejected(client: AsyncClient) -> None:
     _, owner_token = await _register_and_login(client)
     created = await client.post(

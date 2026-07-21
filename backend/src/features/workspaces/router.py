@@ -203,6 +203,22 @@ async def cancel_invitation(
     await service.cancel(workspace_id, invitation_id)
 
 
+@router.post(
+    "/{workspace_id}/invitations/{invitation_id}/resend",
+    response_model=DataEnvelope[InvitationCreatedResponse],
+)
+async def resend_invitation(
+    workspace_id: uuid.UUID,
+    invitation_id: uuid.UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+    _member: WorkspaceMember = Depends(require_permission(Permission.WORKSPACE_INVITE)),
+    service: InvitationService = Depends(get_invitation_service),
+) -> DataEnvelope[InvitationCreatedResponse]:
+    issued = await service.resend(current_user, workspace_id, invitation_id)
+    response = InvitationCreatedResponse.from_issued(issued.invitation, issued.token)
+    return DataEnvelope(data=response)
+
+
 @invitations_router.post("/{token}/accept", response_model=DataEnvelope[WorkspaceMemberResponse])
 async def accept_invitation(
     token: str,

@@ -232,6 +232,9 @@ class InvitationRepositoryProtocol(Protocol):
     async def count_by_workspace(self, workspace_id: uuid.UUID) -> int: ...
     async def cancel(self, invitation_id: uuid.UUID) -> None: ...
     async def mark_accepted(self, invitation_id: uuid.UUID) -> None: ...
+    async def reissue(
+        self, invitation: Invitation, *, token_hash: str, expires_at: datetime
+    ) -> Invitation: ...
 
 
 class InvitationRepository:
@@ -304,3 +307,11 @@ class InvitationRepository:
             .where(Invitation.id == invitation_id)
             .values(accepted_at=datetime.now(UTC))
         )
+
+    async def reissue(
+        self, invitation: Invitation, *, token_hash: str, expires_at: datetime
+    ) -> Invitation:
+        invitation.token_hash = token_hash
+        invitation.expires_at = expires_at
+        await self._session.flush()
+        return invitation

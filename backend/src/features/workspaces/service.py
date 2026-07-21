@@ -14,6 +14,7 @@ from src.features.workspaces.exceptions import (
     CannotLeaveAsSoleOwnerError,
     CannotManageOwnMembershipError,
     CannotTransferOwnershipToSelfError,
+    InvitationAlreadyAcceptedError,
     InvitationAlreadyPendingError,
     InvitationEmailMismatchError,
     InvitationExpiredError,
@@ -354,6 +355,34 @@ class InvitationService:
             raise InvitationNotFoundError()
 
         await self._invitation_repo.cancel(invitation_id)
+
+    async def resend(
+        self, current_user: CurrentUser, workspace_id: uuid.UUID, invitation_id: uuid.UUID
+    ) -> InvitationIssued:
+        """Reemite um convite pendente ou expirado com um token novo — o produto não
+        envia e-mail de convite automaticamente (ADR-009), então "reenviar" aqui
+        significa invalidar o link antigo e gerar um novo para compartilhar,
+        cobrindo o caso real de link perdido ou expirado.
+        """
+        invitation = await self._invitation_repo.get_by_id(workspace_id, invitation_id)
+        if invitation is None:
+            raise InvitationNotFoundError()
+        if invitation.accepted_at is not None:
+            raise InvitationAlreadyAcceptedError()
+
+        token = generate_invitation_token()
+        invitation = await self._invitation_repo.reissue(
+            invitation,
+            token_hash=hash_invitation_token(token),
+            expires_at=datetime.now(UTC) + timedelta(days=self._settings.invitation_expire_days),
+        )
+        await self._record_activity(
+            workspace_id,
+            current_user.id,
+            "invitation.resent",
+            {"email": invitation.email},
+        )
+        return InvitationIssued(invitation=invitation, token=token)
 
     async def accept(self, current_user: CurrentUser, token: str) -> WorkspaceMember:
         invitation = await self._invitation_repo.get_by_token_hash(hash_invitation_token(token))

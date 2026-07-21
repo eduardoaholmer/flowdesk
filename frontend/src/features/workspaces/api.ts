@@ -116,6 +116,16 @@ export async function cancelInvitation(workspaceId: string, invitationId: string
   await httpClient.delete(`/workspaces/${workspaceId}/invitations/${invitationId}`);
 }
 
+export async function resendInvitation(
+  workspaceId: string,
+  invitationId: string,
+): Promise<InvitationCreatedResult> {
+  const { data } = await httpClient.post<DataEnvelope<InvitationCreatedResult>>(
+    `/workspaces/${workspaceId}/invitations/${invitationId}/resend`,
+  );
+  return data.data;
+}
+
 export async function acceptInvitation(token: string): Promise<WorkspaceMember> {
   const { data } = await httpClient.post<DataEnvelope<WorkspaceMember>>(
     `/invitations/${token}/accept`,

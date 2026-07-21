@@ -78,6 +78,7 @@ Não-membro em `workspace_id` existente recebe **404**, nunca **403** — mesmo 
 | Convidar | `POST .../invitations` | `workspace.invite` (`OWNER`/`ADMIN`) | `{ email, role }` (`role` ≠ `OWNER`) | `{ data: { invitation } }` — `token` em texto plano só nesta resposta (§3.2) | 201, 403, 404, 409 (`already_member`, `invitation_already_pending`) |
 | Listar convites | `GET .../invitations?page=&per_page=` | `workspace.invite` (`OWNER`/`ADMIN`) | — | `{ data: [invitation], meta }` (sem `token`) | 200, 403, 404 |
 | Cancelar convite | `DELETE .../invitations/{invitation_id}` | `workspace.invite` (`OWNER`/`ADMIN`) | — | 204 (soft delete) | 204, 403, 404 |
+| Reenviar convite | `POST .../invitations/{invitation_id}/resend` | `workspace.invite` (`OWNER`/`ADMIN`) | — | `{ data: { invitation } }` — novo `token` em texto plano (§3.2) | 200, 403, 404, 409 (`invitation_already_accepted`) |
 | Aceitar convite | `POST /invitations/{token}/accept` | Autenticado (e-mail deve bater) | — | `{ data: { workspace_member } }` | 200, 403 (`invitation_email_mismatch`), 404 (`invitation_not_found`), 409 (`invitation_expired`, `already_member`) |
 | Transferir propriedade | `POST .../members/{member_id}/transfer-ownership` | `workspace.transfer_ownership` (só `OWNER`) | — | `{ data: { workspace } }` (`owner_id` atualizado) | 200, 403 (`permission_denied`), 404 (`workspace_not_found`, `member_not_found`), 409 (`cannot_transfer_ownership_to_self`) |
 
@@ -91,7 +92,7 @@ Não-membro em `workspace_id` existente recebe **404**, nunca **403** — mesmo 
 
 ### 3.2 Convite: token em texto plano só na criação
 
-O banco guarda apenas `token_hash` (`SHA-256`, mesmo padrão de `refresh_tokens`) — o valor em texto plano só existe no momento da criação e é devolvido uma única vez em `POST .../invitations`. Substitui o envio por e-mail transacional (fora do escopo de infraestrutura desta sprint, que não inclui um provedor de e-mail): o `OWNER`/`ADMIN` copia o token e o repassa manualmente. Nenhuma listagem subsequente (`GET .../invitations`) o expõe.
+O banco guarda apenas `token_hash` (`SHA-256`, mesmo padrão de `refresh_tokens`) — o valor em texto plano só existe no momento da criação e é devolvido uma única vez em `POST .../invitations`. Substitui o envio por e-mail transacional (fora do escopo de infraestrutura desta sprint, que não inclui um provedor de e-mail): o `OWNER`/`ADMIN` copia o token e o repassa manualmente. Nenhuma listagem subsequente (`GET .../invitations`) o expõe. `POST .../invitations/{invitation_id}/resend` (Sprint 20.1, M7) segue a mesma regra — reemite um convite pendente ou expirado com token/expiração novos (invalidando o link antigo) e devolve o novo token em texto plano pela mesma janela única; rejeita convite já aceito (`409 invitation_already_accepted`).
 
 ## 4. Times (`/workspaces/{workspace_id}/teams`)
 

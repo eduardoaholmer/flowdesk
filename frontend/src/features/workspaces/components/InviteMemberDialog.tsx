@@ -1,8 +1,6 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Check, Copy } from "lucide-react";
 import { useState } from "react";
 import { Controller, useForm } from "react-hook-form";
-import { toast } from "sonner";
 import { z } from "zod";
 
 import { Button } from "@/shared/components/ui/button";
@@ -24,10 +22,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/shared/components/ui/select";
-import { invitationAcceptRoute } from "@/shared/lib/routes";
 
 import { useCreateInvitation } from "../hooks";
 import type { InvitationCreatedResult } from "../types";
+import { InviteLinkStep } from "./InviteLinkStep";
 
 const schema = z.object({
   email: z.string().email("Informe um e-mail válido."),
@@ -35,56 +33,6 @@ const schema = z.object({
 });
 
 type Values = z.infer<typeof schema>;
-
-function InviteLinkStep({
-  invitation,
-  onDone,
-}: {
-  invitation: InvitationCreatedResult;
-  onDone: () => void;
-}) {
-  const [copied, setCopied] = useState(false);
-  const link = `${window.location.origin}${invitationAcceptRoute(invitation.token)}`;
-
-  async function handleCopy() {
-    try {
-      await navigator.clipboard.writeText(link);
-      setCopied(true);
-      toast.success("Link copiado.");
-    } catch {
-      toast.error("Não foi possível copiar o link.");
-    }
-  }
-
-  return (
-    <>
-      <DialogHeader>
-        <DialogTitle>Convite criado</DialogTitle>
-        <DialogDescription>
-          Ainda não enviamos e-mails automaticamente — compartilhe este link com {invitation.email}.
-          Ele só é exibido uma vez.
-        </DialogDescription>
-      </DialogHeader>
-      <div className="flex items-center gap-2 py-4">
-        <Input readOnly value={link} className="font-mono text-xs" />
-        <Button
-          type="button"
-          variant="outline"
-          size="icon"
-          onClick={handleCopy}
-          aria-label="Copiar link"
-        >
-          {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
-        </Button>
-      </div>
-      <DialogFooter>
-        <Button type="button" onClick={onDone}>
-          Concluído
-        </Button>
-      </DialogFooter>
-    </>
-  );
-}
 
 export function InviteMemberDialog({ workspaceId }: { workspaceId: string }) {
   const [open, setOpen] = useState(false);
