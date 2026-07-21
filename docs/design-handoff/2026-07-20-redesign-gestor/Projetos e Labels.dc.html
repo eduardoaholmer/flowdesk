@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300..800&amp;family=Geist:wght@300..800&amp;display=swap" rel="stylesheet">
+<script>document.documentElement.dataset.theme=localStorage.getItem('fd-theme')||'light'</script>
+<style>
+:root{--bg:#FAF8F3;--panel:#FFFDF8;--sunken:#F1EDE1;--text:#14130F;--t2:#575246;--t3:#78715F;--border:#E7E1D2;--border2:#D5CEBC;--red:#C0271C;--redbg:#F8ECEA;--amber:#8F6A11;--green:#50713A;--sh:0 12px 32px rgba(20,19,15,.10)}
+[data-theme="dark"]{--bg:#14130F;--panel:#1C1A14;--sunken:#262319;--text:#FAF8F3;--t2:#B8B1A0;--t3:#918A78;--border:#2B2820;--border2:#3C382A;--red:#F0685E;--redbg:#2C1613;--amber:#D9A73C;--green:#96B471;--sh:0 12px 32px rgba(0,0,0,.5)}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font:400 13.5px/1.45 'Geist',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+*{box-sizing:border-box}a{color:var(--text);text-decoration:none}a:hover{color:var(--t2)}
+input,textarea,button,select{font-family:inherit;color:inherit}button{cursor:pointer}::selection{background:var(--border2)}
+input::placeholder,textarea::placeholder{color:var(--t3)}
+@keyframes fdsh{0%,100%{opacity:.4}50%{opacity:1}}
+@keyframes fdpop{from{opacity:0;transform:translateY(4px) scale(.985)}to{opacity:1;transform:none}}
+@keyframes fdup{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+</style>
+</helmet>
+<div style="display:flex;height:100vh;overflow:hidden;background:var(--bg)">
+<dc-import name="Sidebar" active="{{active}}" hint-size="232px,100%"></dc-import>
+<div style="flex:1;display:flex;flex-direction:column;min-width:0">
+  <header style="height:50px;flex:none;display:flex;align-items:center;gap:8px;padding:0 18px;border-bottom:1px solid var(--border)">
+    <div style="display:flex;align-items:center;gap:7px;font-size:13px;min-width:0">
+      <span style="color:var(--t3)">Vela Labs</span>
+      <span style="color:var(--border2)">/</span>
+      <sc-if value="{{crumbLink}}" hint-placeholder-val="{{false}}">
+        <a href="#projetos" style="color:var(--t3)">Projetos</a>
+        <span style="color:var(--border2)">/</span>
+      </sc-if>
+      <span style="font-weight:560;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{crumb}}</span>
+    </div>
+    <div style="flex:1"></div>
+    <button onClick="{{openPalette}}" style="display:flex;align-items:center;gap:8px;border:1px solid var(--border);background:var(--panel);border-radius:8px;padding:5px 10px;color:var(--t3);font-size:12.5px" style-hover="border-color:var(--border2);color:var(--t2)">
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="7" cy="7" r="4.6"></circle><path d="m10.6 10.6 3 3"></path></svg>
+      Buscar
+      <span style="border:1px solid var(--border);border-radius:4px;padding:0 5px;font-size:10.5px">⌘K</span>
+    </button>
+    <dc-import name="NotifBell" hint-size="32px,32px"></dc-import>
+  </header>
+  <main style="flex:1;overflow:auto;min-height:0">
+
+    <sc-if value="{{sProjetos}}" hint-placeholder-val="{{true}}">
+      <div data-screen-label="Projetos">
+        <div style="display:flex;align-items:center;gap:12px;padding:22px 24px 14px">
+          <h2 style="font-family:'Fraunces',serif;font-weight:580;font-size:21px;margin:0;letter-spacing:-.01em">Projetos</h2>
+          <div style="display:flex;border:1px solid var(--border);border-radius:8px;padding:2px;gap:2px">
+            <button onClick="{{verAtivos}}" style="{{tabAtivos}}" style-hover="color:var(--text)">Ativos</button>
+            <button onClick="{{verArquivados}}" style="{{tabArq}}" style-hover="color:var(--text)">Arquivados</button>
+          </div>
+          <div style="flex:1"></div>
+          <button onClick="{{novoProjeto}}" style="display:flex;align-items:center;gap:7px;background:var(--text);color:var(--bg);border:none;border-radius:8px;padding:7px 14px;font-size:12.5px;font-weight:560" style-hover="opacity:.88">
+            <svg width="11" height="11" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M7 2.5v9M2.5 7h9"></path></svg>
+            Novo projeto
+          </button>
+        </div>
+        <sc-if value="{{ldg}}" hint-placeholder-val="{{true}}">
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;padding:8px 24px">
+            <sc-for list="{{skels}}" as="s" hint-placeholder-count="4">
+              <div style="height:150px;border-radius:12px;background:var(--sunken);animation:fdsh 1.3s ease-in-out infinite"></div>
+            </sc-for>
+          </div>
+        </sc-if>
+        <sc-if value="{{err}}" hint-placeholder-val="{{false}}">
+          <div style="padding:60px 24px;text-align:center;max-width:440px;margin:0 auto">
+            <div style="font-family:'Fraunces',serif;font-size:18px;font-weight:620;margin-bottom:6px">Não foi possível carregar os projetos</div>
+            <div style="color:var(--t2);font-size:13px;margin-bottom:16px">O servidor não respondeu a tempo. Nada foi perdido.</div>
+            <button onClick="{{retry}}" style="background:var(--text);color:var(--bg);border:none;border-radius:8px;padding:8px 18px;font-size:13px;font-weight:560">Tentar novamente</button>
+          </div>
+        </sc-if>
+        <sc-if value="{{projEmpty}}" hint-placeholder-val="{{false}}">
+          <div style="padding:70px 24px;text-align:center;max-width:460px;margin:0 auto">
+            <svg width="44" height="44" viewBox="0 0 24 24" fill="none" style="color:var(--border2);margin-bottom:14px">
+              <circle cx="12" cy="12" r="7.6" stroke="currentColor" stroke-width="2.4"></circle>
+              <path d="M12 0.8 V8.4 M12 15.6 V23.2" stroke="var(--bg)" stroke-width="6"></path>
+              <path d="M12 0.8 V8.4 M12 15.6 V23.2" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"></path>
+            </svg>
+            <div style="font-family:'Fraunces',serif;font-size:19px;font-weight:620;margin-bottom:6px">{{emptyTitle}}</div>
+            <div style="color:var(--t2);font-size:13px;margin-bottom:18px">{{emptyDesc}}</div>
+            <sc-if value="{{emptyCta}}" hint-placeholder-val="{{false}}">
+              <button onClick="{{novoProjeto}}" style="background:var(--text);color:var(--bg);border:none;border-radius:8px;padding:8px 18px;font-size:13px;font-weight:560">Criar o primeiro projeto</button>
+            </sc-if>
+          </div>
+        </sc-if>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;padding:8px 24px 32px">
+          <sc-for list="{{projCards}}" as="p" hint-placeholder-count="4">
+            <div onClick="{{p.go}}" style="border:1px solid var(--border);border-radius:12px;background:var(--panel);padding:16px 18px;cursor:pointer;box-shadow:0 1px 2px rgba(20,19,15,.04)" style-hover="border-color:var(--border2)">
+              <div style="display:flex;align-items:center;gap:9px;margin-bottom:8px">
+                <span style="font-size:10.5px;font-weight:650;letter-spacing:.6px;color:var(--t3);border:1px solid var(--border);border-radius:5px;padding:2px 6px">{{p.key}}</span>
+                <span style="font-family:'Fraunces',serif;font-weight:600;font-size:15.5px;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{p.name}}</span>
+                <sc-if value="{{p.arq}}" hint-placeholder-val="{{false}}"><span style="font-size:10px;letter-spacing:.5px;text-transform:uppercase;color:var(--t3);background:var(--sunken);border-radius:999px;padding:2px 8px;font-weight:600">Arquivado</span></sc-if>
+              </div>
+              <div style="color:var(--t2);font-size:12.5px;line-height:1.5;margin-bottom:14px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:38px">{{p.desc}}</div>
+              <div style="display:flex;align-items:center;gap:10px">
+                <span style="flex:1;height:4px;border-radius:99px;background:var(--sunken);overflow:hidden;display:block"><span style="display:block;height:100%;background:var(--text);width:{{p.pct}}"></span></span>
+                <span style="color:var(--t3);font-size:11.5px">{{p.meta}}</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:6px;margin-top:12px">
+                <sc-for list="{{p.avs}}" as="a" hint-placeholder-count="2">
+                  <span style="width:22px;height:22px;border-radius:50%;background:var(--sunken);border:1px solid var(--border2);color:var(--t2);font-size:8px;font-weight:650;display:inline-flex;align-items:center;justify-content:center" title="{{a.name}}">{{a.ini}}</span>
+                </sc-for>
+                <span style="flex:1"></span>
+                <span style="color:var(--t3);font-size:11.5px">{{p.target}}</span>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{sDetalhe}}" hint-placeholder-val="{{false}}">
+      <div data-screen-label="Detalhe do projeto">
+        <sc-if value="{{notFound}}" hint-placeholder-val="{{false}}">
+          <div style="padding:80px 24px;text-align:center">
+            <div style="font-family:'Fraunces',serif;font-size:19px;font-weight:620;margin-bottom:6px">Projeto não encontrado</div>
+            <a href="#projetos" style="border:1px solid var(--border2);border-radius:8px;padding:7px 14px;font-size:12.5px;font-weight:550">Voltar para Projetos</a>
+          </div>
+        </sc-if>
+        <sc-if value="{{found}}" hint-placeholder-val="{{false}}">
+          <div style="max-width:860px;margin:0 auto;padding:26px 30px 60px">
+            <a href="#projetos" style="display:inline-flex;align-items:center;gap:6px;color:var(--t3);font-size:12.5px;margin-bottom:16px">
+              <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3 5 8l5 5"></path></svg>
+              Projetos
+            </a>
+            <div style="display:flex;align-items:flex-start;gap:12px">
+              <div style="flex:1;min-width:0">
+                <div style="display:flex;align-items:center;gap:9px;margin-bottom:5px">
+                  <span style="font-size:10.5px;font-weight:650;letter-spacing:.6px;color:var(--t3);border:1px solid var(--border);border-radius:5px;padding:2px 6px">{{det.key}}</span>
+                  <sc-if value="{{det.arq}}" hint-placeholder-val="{{false}}"><span style="font-size:10px;letter-spacing:.5px;text-transform:uppercase;color:var(--t3);background:var(--sunken);border-radius:999px;padding:2px 8px;font-weight:600">Arquivado</span></sc-if>
+                </div>
+                <h1 style="font-family:'Fraunces',serif;font-weight:580;font-size:26px;margin:0 0 6px;letter-spacing:-.01em">{{det.name}}</h1>
+                <div style="color:var(--t2);font-size:13.5px;max-width:560px">{{det.desc}}</div>
+              </div>
+              <div style="display:flex;gap:8px;flex:none;margin-top:4px">
+                <button onClick="{{editarDet}}" style="border:1px solid var(--border2);background:var(--panel);border-radius:8px;padding:6px 13px;font-size:12.5px;font-weight:550" style-hover="border-color:var(--t3)">Editar</button>
+                <button onClick="{{togArquivar}}" style="border:1px solid var(--border);background:none;border-radius:8px;padding:6px 13px;font-size:12.5px;color:var(--t2)" style-hover="border-color:var(--border2);color:var(--text)">{{det.arqCta}}</button>
+              </div>
+            </div>
+            <div style="display:flex;gap:26px;margin:22px 0 6px;padding:14px 18px;border:1px solid var(--border);border-radius:12px;background:var(--panel);align-items:center;flex-wrap:wrap">
+              <span style="display:flex;flex-direction:column;gap:2px"><span style="font-size:10.5px;letter-spacing:.7px;text-transform:uppercase;color:var(--t3);font-weight:600">Líder</span><span style="display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:550"><span style="width:20px;height:20px;border-radius:50%;background:var(--sunken);border:1px solid var(--border2);color:var(--t2);font-size:8px;font-weight:650;display:inline-flex;align-items:center;justify-content:center">{{det.leadIni}}</span>{{det.leadName}}</span></span>
+              <span style="display:flex;flex-direction:column;gap:2px"><span style="font-size:10.5px;letter-spacing:.7px;text-transform:uppercase;color:var(--t3);font-weight:600">Entrega</span><span style="font-size:12.5px;font-weight:550">{{det.target}}</span></span>
+              <span style="display:flex;flex-direction:column;gap:2px;flex:1;min-width:190px"><span style="font-size:10.5px;letter-spacing:.7px;text-transform:uppercase;color:var(--t3);font-weight:600">Progresso · {{det.meta}}</span><span style="height:4px;border-radius:99px;background:var(--sunken);overflow:hidden;display:block;margin-top:6px"><span style="display:block;height:100%;background:var(--text);width:{{det.pct}}"></span></span></span>
+            </div>
+            <div style="display:flex;align-items:center;gap:12px;margin-top:24px;margin-bottom:8px">
+              <h3 style="font-family:'Fraunces',serif;font-weight:600;font-size:16px;margin:0">Issues do projeto</h3>
+              <span style="color:var(--t3);font-size:12px">{{det.nIss}}</span>
+            </div>
+            <sc-if value="{{issEmpty}}" hint-placeholder-val="{{false}}">
+              <div style="border:1px dashed var(--border2);border-radius:12px;padding:32px 20px;text-align:center">
+                <div style="font-family:'Fraunces',serif;font-size:15px;font-weight:600;margin-bottom:3px">Nenhuma issue vinculada</div>
+                <div style="color:var(--t3);font-size:12.5px;margin-bottom:12px">Vincule issues a este projeto para acompanhar o progresso aqui.</div>
+                <a href="Inicio e Issues.dc.html#nova" style="font-size:12.5px;font-weight:550;border:1px solid var(--border2);border-radius:7px;padding:6px 12px;display:inline-block">Criar issue</a>
+              </div>
+            </sc-if>
+            <div style="border:1px solid var(--border);border-radius:12px;background:var(--panel);overflow:hidden">
+              <sc-for list="{{det.rows}}" as="r" hint-placeholder-count="5">
+                <a href="{{r.href}}" style="display:grid;grid-template-columns:24px 22px 50px minmax(0,1fr) 28px 56px;align-items:center;gap:10px;padding:0 16px;height:42px;border-bottom:1px solid var(--border)" style-hover="background:var(--sunken)">
+                  <span style="{{r.pr.outer}}"><span style="{{r.pr.inner}}">{{r.pr.glyph}}</span></span>
+                  <span style="{{r.st.outer}}"><span style="{{r.st.inner}}">{{r.st.glyph}}</span></span>
+                  <span style="color:var(--t3);font-size:12px">{{r.id}}</span>
+                  <span style="font-weight:530;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{r.title}}</span>
+                  <span style="width:24px;height:24px;border-radius:50%;background:var(--sunken);border:1px solid var(--border2);color:var(--t2);font-size:8.5px;font-weight:650;display:inline-flex;align-items:center;justify-content:center" title="{{r.userName}}">{{r.ini}}</span>
+                  <span style="color:var(--t3);font-size:12px;text-align:right">{{r.when}}</span>
+                </a>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{sLabels}}" hint-placeholder-val="{{false}}">
+      <div data-screen-label="Labels" style="max-width:760px;margin:0 auto;padding:26px 30px 60px">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px">
+          <h2 style="font-family:'Fraunces',serif;font-weight:580;font-size:21px;margin:0;letter-spacing:-.01em">Labels</h2>
+          <div style="flex:1"></div>
+          <button onClick="{{novaLabel}}" style="display:flex;align-items:center;gap:7px;background:var(--text);color:var(--bg);border:none;border-radius:8px;padding:7px 14px;font-size:12.5px;font-weight:560" style-hover="opacity:.88">
+            <svg width="11" height="11" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M7 2.5v9M2.5 7h9"></path></svg>
+            Nova label
+          </button>
+        </div>
+        <div style="color:var(--t2);font-size:13px;margin-bottom:20px">Labels organizam as issues do workspace inteiro. Mantenha poucas e claras.</div>
+        <sc-if value="{{ldg}}" hint-placeholder-val="{{false}}">
+          <div>
+            <sc-for list="{{skels}}" as="s" hint-placeholder-count="5">
+              <div style="height:52px;border-radius:10px;background:var(--sunken);animation:fdsh 1.3s ease-in-out infinite;margin-bottom:10px"></div>
+            </sc-for>
+          </div>
+        </sc-if>
+        <sc-if value="{{labEmpty}}" hint-placeholder-val="{{false}}">
+          <div style="border:1px dashed var(--border2);border-radius:12px;padding:40px 20px;text-align:center">
+            <div style="font-family:'Fraunces',serif;font-size:17px;font-weight:620;margin-bottom:5px">Nenhuma label ainda</div>
+            <div style="color:var(--t2);font-size:13px;margin-bottom:14px">Comece com poucas: bug, melhoria e dívida técnica já cobrem muito.</div>
+            <button onClick="{{novaLabel}}" style="background:var(--text);color:var(--bg);border:none;border-radius:8px;padding:8px 16px;font-size:12.5px;font-weight:560">Criar label</button>
+          </div>
+        </sc-if>
+        <div style="border:1px solid var(--border);border-radius:12px;background:var(--panel);overflow:hidden">
+          <sc-for list="{{labRows}}" as="l" hint-placeholder-count="5">
+            <div style="border-bottom:1px solid var(--border)">
+              <sc-if value="{{l.editing}}" hint-placeholder-val="{{false}}">
+                <div style="padding:14px 16px;background:var(--sunken)">
+                  <div style="display:flex;gap:10px;margin-bottom:10px">
+                    <input value="{{l.fName}}" onChange="{{l.onName}}" placeholder="nome-da-label" style="flex:1;border:1px solid var(--border2);background:var(--panel);border-radius:8px;padding:7px 11px;font-size:13px;outline:none">
+                    <input value="{{l.fDesc}}" onChange="{{l.onDesc}}" placeholder="Descrição curta (opcional)" style="flex:2;border:1px solid var(--border2);background:var(--panel);border-radius:8px;padding:7px 11px;font-size:13px;outline:none">
+                  </div>
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <sc-for list="{{l.swatches}}" as="sw" hint-placeholder-count="8">
+                      <button onClick="{{sw.pick}}" title="{{sw.c}}" style="{{sw.style}}"></button>
+                    </sc-for>
+                    <div style="flex:1"></div>
+                    <button onClick="{{l.cancel}}" style="background:none;border:none;color:var(--t2);font-size:12.5px;padding:6px 10px;border-radius:7px" style-hover="background:var(--panel)">Cancelar</button>
+                    <button onClick="{{l.save}}" style="background:var(--text);color:var(--bg);border:none;border-radius:8px;padding:7px 15px;font-size:12.5px;font-weight:560" style-hover="opacity:.88">Salvar</button>
+                  </div>
+                  <sc-if value="{{l.err}}" hint-placeholder-val="{{false}}"><div style="color:var(--red);font-size:12px;margin-top:8px">{{l.err}}</div></sc-if>
+                </div>
+              </sc-if>
+              <sc-if value="{{l.showing}}" hint-placeholder-val="{{true}}">
+                <div style="display:flex;align-items:center;gap:12px;padding:13px 16px">
+                  <span style="display:inline-flex;align-items:center;gap:7px;border:1px solid var(--border);border-radius:999px;padding:4px 12px;font-size:12px;font-weight:550;flex:none"><span style="{{l.dot}}"></span>{{l.name}}</span>
+                  <span style="flex:1;color:var(--t3);font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{l.desc}}</span>
+                  <span style="color:var(--t3);font-size:11.5px;flex:none">{{l.uso}}</span>
+                  <button onClick="{{l.edit}}" style="background:none;border:none;color:var(--t3);font-size:12px;padding:5px 9px;border-radius:6px;flex:none" style-hover="background:var(--sunken);color:var(--text)">Editar</button>
+                  <button onClick="{{l.del}}" style="background:none;border:none;color:var(--t3);font-size:12px;padding:5px 9px;border-radius:6px;flex:none" style-hover="background:var(--redbg);color:var(--red)">Excluir</button>
+                </div>
+              </sc-if>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </sc-if>
+  </main>
+</div>
+<dc-import name="CommandPalette" hint-size="1px,1px"></dc-import>
+<sc-if value="{{modalOpen}}" hint-placeholder-val="{{false}}">
+  <div onMouseDown="{{fecharModal}}" style="position:fixed;inset:0;background:rgba(20,19,15,.38);z-index:200;display:flex;justify-content:center;align-items:flex-start">
+    <div onMouseDown="{{stop}}" style="width:min(540px,92vw);margin-top:12vh;background:var(--panel);border:1px solid var(--border);border-radius:14px;box-shadow:var(--sh);animation:fdpop .14s ease">
+      <div style="display:flex;align-items:center;gap:8px;padding:16px 20px 0">
+        <span style="font-family:'Fraunces',serif;font-weight:620;font-size:17px">{{modalTitle}}</span>
+        <div style="flex:1"></div>
+        <button onClick="{{fecharModal}}" style="background:none;border:none;color:var(--t3);padding:4px;border-radius:6px;display:flex" style-hover="background:var(--sunken);color:var(--text)">
+          <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="m3 3 8 8M11 3l-8 8"></path></svg>
+        </button>
+      </div>
+      <div style="padding:14px 20px 4px;display:grid;gap:12px">
+        <label style="display:grid;gap:5px;font-size:12px;font-weight:600;color:var(--t2)">Nome
+          <input value="{{mNome}}" onChange="{{onMNome}}" placeholder="Ex.: Onboarding v2" style="border:1px solid var(--border);background:var(--bg);border-radius:8px;padding:8px 11px;font-size:13.5px;outline:none;font-weight:400" style-focus="border-color:var(--border2)">
+        </label>
+        <label style="display:grid;gap:5px;font-size:12px;font-weight:600;color:var(--t2)">Descrição
+          <textarea value="{{mDesc}}" onChange="{{onMDesc}}" placeholder="Qual resultado esse projeto persegue?" style="border:1px solid var(--border);background:var(--bg);border-radius:8px;padding:8px 11px;font-size:13.5px;outline:none;min-height:66px;resize:vertical;font-weight:400;line-height:1.5" style-focus="border-color:var(--border2)"></textarea>
+        </label>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <label style="display:grid;gap:5px;font-size:12px;font-weight:600;color:var(--t2)">Líder
+            <select value="{{mLead}}" onChange="{{onMLead}}" style="border:1px solid var(--border);background:var(--bg);border-radius:8px;padding:8px 11px;font-size:13px;outline:none;font-weight:400">
+              <sc-for list="{{mLeads}}" as="u" hint-placeholder-count="4"><option value="{{u.id}}">{{u.name}}</option></sc-for>
+            </select>
+          </label>
+          <label style="display:grid;gap:5px;font-size:12px;font-weight:600;color:var(--t2)">Entrega prevista
+            <input type="date" value="{{mTarget}}" onChange="{{onMTarget}}" style="border:1px solid var(--border);background:var(--bg);border-radius:8px;padding:7px 11px;font-size:13px;outline:none;font-weight:400">
+          </label>
+        </div>
+        <sc-if value="{{mErr}}" hint-placeholder-val="{{false}}">
+          <div style="color:var(--red);font-size:12.5px;background:var(--redbg);border-radius:7px;padding:7px 11px">{{mErr}}</div>
+        </sc-if>
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:10px;padding:14px 20px;border-top:1px solid var(--border);margin-top:12px">
+        <button onClick="{{fecharModal}}" style="background:none;border:none;color:var(--t2);font-size:13px;padding:7px 10px;border-radius:7px" style-hover="background:var(--sunken)">Cancelar</button>
+        <button onClick="{{salvarModal}}" style="background:var(--text);color:var(--bg);border:none;border-radius:8px;padding:8px 18px;font-size:13px;font-weight:560" style-hover="opacity:.88">{{modalCta}}</button>
+      </div>
+    </div>
+  </div>
+</sc-if>
+<sc-if value="{{toast}}" hint-placeholder-val="{{false}}">
+  <div style="position:fixed;bottom:24px;right:24px;z-index:400;background:var(--panel);border:1px solid var(--border);border-radius:10px;box-shadow:var(--sh);padding:10px 14px;font-size:12.5px;animation:fdup .18s ease">{{toast}}</div>
+</sc-if>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;estadoDados&quot;: {&quot;editor&quot;: &quot;enum&quot;, &quot;options&quot;: [&quot;auto&quot;, &quot;carregando&quot;, &quot;vazio&quot;, &quot;erro&quot;], &quot;default&quot;: &quot;auto&quot;, &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;Demonstração de estados&quot;}}">
+class Component extends DCLogic {
+  state = { ok: false, projects: [], labels: [], screen: 'projetos', projId: null, tab: 'ativo', phase: 'carregando', modal: null, toast: '', editLab: null, labF: null };
+  async componentDidMount() {
+    const db = this.db = await import('./data.js');
+    this.setState({ ok: true, projects: db.PROJECTS.map(p => ({ ...p })), labels: db.LABELS.map(l => ({ ...l })) });
+    this.applyHash();
+    this.onHash = () => this.applyHash();
+    window.addEventListener('hashchange', this.onHash);
+    this.onKey = e => { if (e.key === 'Escape' && this.state.modal) this.setState({ modal: null }); };
+    document.addEventListener('keydown', this.onKey);
+    this.load();
+  }
+  componentWillUnmount() { window.removeEventListener('hashchange', this.onHash); document.removeEventListener('keydown', this.onKey); }
+  load() { this.setState({ phase: 'carregando' }); clearTimeout(this._t); this._t = setTimeout(() => this.setState({ phase: 'pronto' }), 700); }
+  applyHash() {
+    let h = decodeURIComponent((location.hash || '').slice(1)) || 'projetos';
+    if (h === 'novo') { this.setState({ screen: 'projetos' }); this.novoProjeto(); return; }
+    if (h.indexOf('projeto/') === 0) { this.setState({ screen: 'detalhe', projId: h.slice(8) }); return; }
+    if (['projetos', 'labels'].indexOf(h) < 0) h = 'projetos';
+    this.setState({ screen: h, projId: null });
+  }
+  ph() { const p = this.props.estadoDados; return (p && p !== 'auto') ? p : this.state.phase; }
+  flash(m) { this.setState({ toast: m }); clearTimeout(this._tt); this._tt = setTimeout(() => this.setState({ toast: '' }), 3000); }
+  novoProjeto() { this.setState({ modal: { mode: 'novo', f: { name: '', desc: '', lead: 'u1', target: '' } } }); }
+  salvarModal() {
+    const M = this.state.modal, f = M.f;
+    if (!f.name.trim()) { this.setState(s => ({ modal: { ...s.modal, err: 'Dê um nome ao projeto.' } })); return; }
+    if (M.mode === 'novo') {
+      const key = f.name.trim().replace(/[^A-Za-z]/g, '').slice(0, 3).toUpperCase() || 'PRJ';
+      const np = { id: 'p' + (Date.now() % 100000), key, name: f.name.trim(), desc: f.desc.trim() || 'Sem descrição por enquanto.', status: 'ativo', lead: f.lead, target: f.target || null, members: [f.lead] };
+      this.setState(s => ({ projects: [np, ...s.projects], modal: null }));
+      this.flash('Projeto criado');
+      if (location.hash === '#novo') history.replaceState(null, '', '#projetos');
+    } else {
+      this.setState(s => ({ projects: s.projects.map(p => p.id === M.mode ? { ...p, name: f.name.trim(), desc: f.desc, lead: f.lead, target: f.target || null } : p), modal: null }));
+      this.flash('Projeto atualizado');
+    }
+  }
+  renderVals() {
+    const db = this.db;
+    if (!db) return { active: 'projetos', crumb: 'Projetos', sProjetos: true, ldg: true, skels: [1, 2, 3, 4, 5, 6] };
+    const S = this.state, ph = this.ph();
+    const ldg = ph === 'carregando', err = ph === 'erro', rdy = !ldg && !err;
+    const projects = ph === 'vazio' ? [] : S.projects;
+    const labels = ph === 'vazio' ? [] : S.labels;
+    const out = {
+      active: S.screen === 'labels' ? 'labels' : 'projetos',
+      crumb: S.screen === 'labels' ? 'Labels' : S.screen === 'detalhe' ? (db.pById(S.projId) || { name: '…' }).name : 'Projetos',
+      crumbLink: S.screen === 'detalhe',
+      sProjetos: S.screen === 'projetos', sDetalhe: S.screen === 'detalhe', sLabels: S.screen === 'labels',
+      ldg, err, skels: [1, 2, 3, 4, 5, 6], retry: () => this.load(),
+      openPalette: () => window.dispatchEvent(new Event('fd:palette')),
+      stop: e => e.stopPropagation(), toast: S.toast
+    };
+    const issOf = pid => db.ISSUES.filter(i => i.project === pid);
+    const cardOf = p => {
+      const rel = issOf(p.id), done = rel.filter(i => i.status === 'done').length;
+      return {
+        key: p.key, name: p.name, desc: p.desc, arq: p.status === 'arquivado',
+        pct: (rel.length ? Math.round(done / rel.length * 100) : 0) + '%',
+        meta: done + '/' + rel.length + ' concluídas', target: p.target ? db.fmtDate(p.target) : 'Sem data',
+        avs: (p.members || []).slice(0, 4).map(id => ({ ini: db.uById(id).ini, name: db.uById(id).name })),
+        go: () => { location.hash = 'projeto/' + p.id; }
+      };
+    };
+    if (S.screen === 'projetos') {
+      const list = projects.filter(p => p.status === S.tab);
+      const seg = on => ({ background: on ? 'var(--sunken)' : 'none', border: 'none', borderRadius: '6px', padding: '4px 12px', fontSize: '12px', fontWeight: on ? 600 : 450, color: on ? 'var(--text)' : 'var(--t3)' });
+      Object.assign(out, {
+        tabAtivos: seg(S.tab === 'ativo'), tabArq: seg(S.tab === 'arquivado'),
+        verAtivos: () => this.setState({ tab: 'ativo' }), verArquivados: () => this.setState({ tab: 'arquivado' }),
+        projCards: rdy ? list.map(cardOf) : [],
+        projEmpty: rdy && list.length === 0,
+        emptyTitle: S.tab === 'ativo' ? 'Nenhum projeto ativo' : 'Nada arquivado',
+        emptyDesc: S.tab === 'ativo' ? 'Projetos agrupam issues em torno de um objetivo com prazo. Crie o primeiro para dar direção ao trabalho.' : 'Quando um projeto terminar, arquive-o para manter a lista limpa — ele continua acessível aqui.',
+        emptyCta: S.tab === 'ativo',
+        novoProjeto: () => this.novoProjeto()
+      });
+    }
+    if (S.screen === 'detalhe') {
+      const p = projects.find(x => x.id === S.projId);
+      out.notFound = !p; out.found = !!p;
+      if (p) {
+        const rel = issOf(p.id).map(i => db.hydrate(i));
+        const done = rel.filter(i => i.status === 'done').length;
+        out.det = {
+          key: p.key, name: p.name, desc: p.desc, arq: p.status === 'arquivado',
+          arqCta: p.status === 'arquivado' ? 'Restaurar' : 'Arquivar',
+          leadIni: db.uById(p.lead).ini, leadName: db.uById(p.lead).name,
+          target: p.target ? db.fmtDate(p.target) : 'Sem data',
+          pct: (rel.length ? Math.round(done / rel.length * 100) : 0) + '%',
+          meta: done + ' de ' + rel.length + ' concluídas',
+          nIss: rel.length + (rel.length === 1 ? ' issue' : ' issues'),
+          rows: rel.map(r => ({ ...r, href: 'Inicio e Issues.dc.html#issue/' + r.id, ini: r.user ? r.user.ini : '–', userName: r.user ? r.user.name : 'Sem responsável' }))
+        };
+        out.issEmpty = rel.length === 0;
+        out.editarDet = () => this.setState({ modal: { mode: p.id, f: { name: p.name, desc: p.desc, lead: p.lead, target: p.target || '' } } });
+        out.togArquivar = () => { const nv = p.status === 'arquivado' ? 'ativo' : 'arquivado'; this.setState(s => ({ projects: s.projects.map(x => x.id === p.id ? { ...x, status: nv } : x) })); this.flash(nv === 'arquivado' ? 'Projeto arquivado' : 'Projeto restaurado'); };
+      }
+    }
+    if (S.screen === 'labels') {
+      const usage = id => db.ISSUES.filter(i => (i.labels || []).includes(id)).length;
+      const startEdit = l => this.setState({ editLab: l ? l.id : 'nova', labF: { name: l ? l.name : '', desc: l ? l.desc : '', color: l ? l.color : db.LABEL_PALETTE[0], err: null } });
+      const rows = labels.map(l => {
+        const editing = S.editLab === l.id, F = S.labF || {};
+        return {
+          name: l.name, desc: l.desc || 'Sem descrição', uso: usage(l.id) + ' issues',
+          dot: { width: '9px', height: '9px', borderRadius: '50%', background: l.color, flex: 'none', display: 'inline-block' },
+          editing, showing: !editing,
+          fName: F.name, fDesc: F.desc, err: F.err,
+          onName: e => this.setState(s => ({ labF: { ...s.labF, name: e.target.value, err: null } })),
+          onDesc: e => this.setState(s => ({ labF: { ...s.labF, desc: e.target.value } })),
+          swatches: db.LABEL_PALETTE.map(c => ({ c, pick: () => this.setState(s => ({ labF: { ...s.labF, color: c } })), style: { width: '22px', height: '22px', borderRadius: '50%', background: c, border: F.color === c ? '2px solid var(--text)' : '2px solid transparent', outline: F.color === c ? '2px solid var(--panel)' : 'none', outlineOffset: '-4px', padding: 0 } })),
+          edit: () => startEdit(l),
+          cancel: () => this.setState({ editLab: null, labF: null }),
+          save: () => {
+            const F2 = this.state.labF;
+            if (!F2.name.trim()) { this.setState(s => ({ labF: { ...s.labF, err: 'A label precisa de um nome.' } })); return; }
+            this.setState(s => ({ labels: s.labels.map(x => x.id === l.id ? { ...x, name: F2.name.trim().toLowerCase(), desc: F2.desc.trim(), color: F2.color } : x), editLab: null, labF: null }));
+            this.flash('Label atualizada');
+          },
+          del: () => { this.setState(s => ({ labels: s.labels.filter(x => x.id !== l.id) })); this.flash('Label "' + l.name + '" excluída'); }
+        };
+      });
+      if (S.editLab === 'nova') {
+        const F = S.labF || {};
+        rows.unshift({
+          editing: true, showing: false, fName: F.name, fDesc: F.desc, err: F.err,
+          onName: e => this.setState(s => ({ labF: { ...s.labF, name: e.target.value, err: null } })),
+          onDesc: e => this.setState(s => ({ labF: { ...s.labF, desc: e.target.value } })),
+          swatches: db.LABEL_PALETTE.map(c => ({ c, pick: () => this.setState(s => ({ labF: { ...s.labF, color: c } })), style: { width: '22px', height: '22px', borderRadius: '50%', background: c, border: F.color === c ? '2px solid var(--text)' : '2px solid transparent', outline: F.color === c ? '2px solid var(--panel)' : 'none', outlineOffset: '-4px', padding: 0 } })),
+          cancel: () => this.setState({ editLab: null, labF: null }),
+          save: () => {
+            const F2 = this.state.labF;
+            if (!F2.name.trim()) { this.setState(s => ({ labF: { ...s.labF, err: 'A label precisa de um nome.' } })); return; }
+            const nl = { id: 'l' + Date.now(), name: F2.name.trim().toLowerCase(), desc: F2.desc.trim(), color: F2.color };
+            this.setState(s => ({ labels: [...s.labels, nl], editLab: null, labF: null }));
+            this.flash('Label criada');
+          }
+        });
+      }
+      Object.assign(out, {
+        labRows: rdy ? rows : [], labEmpty: rdy && rows.length === 0,
+        novaLabel: () => startEdit(null)
+      });
+    }
+    const M = S.modal;
+    out.modalOpen = !!M;
+    if (M) {
+      out.modalTitle = M.mode === 'novo' ? 'Novo projeto' : 'Editar projeto';
+      out.modalCta = M.mode === 'novo' ? 'Criar projeto' : 'Salvar alterações';
+      out.mNome = M.f.name; out.onMNome = e => this.setState(s => ({ modal: { ...s.modal, err: null, f: { ...s.modal.f, name: e.target.value } } }));
+      out.mDesc = M.f.desc; out.onMDesc = e => this.setState(s => ({ modal: { ...s.modal, f: { ...s.modal.f, desc: e.target.value } } }));
+      out.mLead = M.f.lead; out.onMLead = e => this.setState(s => ({ modal: { ...s.modal, f: { ...s.modal.f, lead: e.target.value } } }));
+      out.mTarget = M.f.target; out.onMTarget = e => this.setState(s => ({ modal: { ...s.modal, f: { ...s.modal.f, target: e.target.value } } }));
+      out.mLeads = db.USERS.filter(u => u.role !== 'Convidado').map(u => ({ id: u.id, name: u.name }));
+      out.mErr = M.err || false;
+      out.fecharModal = () => this.setState({ modal: null });
+      out.salvarModal = () => this.salvarModal();
+    }
+    return out;
+  }
+}
+</script>
+</body>
+</html>

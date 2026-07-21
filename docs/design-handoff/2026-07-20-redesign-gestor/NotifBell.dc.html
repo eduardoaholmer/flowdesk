@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300..800&amp;family=Geist:wght@300..800&amp;display=swap" rel="stylesheet">
+<script>document.documentElement.dataset.theme=localStorage.getItem('fd-theme')||'light'</script>
+<style>
+:root{--bg:#FAF8F3;--panel:#FFFDF8;--sunken:#F1EDE1;--text:#14130F;--t2:#575246;--t3:#78715F;--border:#E7E1D2;--border2:#D5CEBC;--red:#C0271C;--redbg:#F8ECEA;--amber:#8F6A11;--green:#50713A;--sh:0 12px 32px rgba(20,19,15,.10)}
+[data-theme="dark"]{--bg:#14130F;--panel:#1C1A14;--sunken:#262319;--text:#FAF8F3;--t2:#B8B1A0;--t3:#918A78;--border:#2B2820;--border2:#3C382A;--red:#F0685E;--redbg:#2C1613;--amber:#D9A73C;--green:#96B471;--sh:0 12px 32px rgba(0,0,0,.5)}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font:400 13.5px/1.45 'Geist',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+*{box-sizing:border-box}a{color:var(--text);text-decoration:none}a:hover{color:var(--t2)}
+input,textarea,button,select{font-family:inherit;color:inherit}button{cursor:pointer}::selection{background:var(--border2)}
+@keyframes fdpop{from{opacity:0;transform:translateY(4px) scale(.985)}to{opacity:1;transform:none}}
+</style>
+</helmet>
+<span ref="{{setRef}}" style="position:relative;display:inline-flex">
+  <button onClick="{{tog}}" title="Notificações" style="position:relative;display:flex;background:none;border:1px solid transparent;padding:6px;border-radius:8px;color:var(--t2)" style-hover="background:var(--sunken);color:var(--text)">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12.5 5.5a4.5 4.5 0 0 0-9 0c0 3.2-1.2 4.6-1.2 4.6h11.4s-1.2-1.4-1.2-4.6M9.3 12.8a1.5 1.5 0 0 1-2.6 0"></path></svg>
+    <sc-if value="{{hasUnread}}" hint-placeholder-val="{{false}}">
+      <span style="position:absolute;top:2px;right:2px;min-width:14px;height:14px;border-radius:999px;background:var(--red);color:#FFFDF8;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 3px;line-height:1">{{unread}}</span>
+    </sc-if>
+  </button>
+  <sc-if value="{{open}}" hint-placeholder-val="{{false}}">
+    <div style="position:absolute;top:38px;right:0;width:372px;background:var(--panel);border:1px solid var(--border);border-radius:12px;box-shadow:var(--sh);z-index:90;animation:fdpop .13s ease;overflow:hidden">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 14px;border-bottom:1px solid var(--border)">
+        <span style="font-family:'Fraunces',serif;font-weight:620;font-size:15px">Notificações</span>
+        <sc-if value="{{hasUnread}}" hint-placeholder-val="{{false}}">
+          <button onClick="{{markAll}}" style="background:none;border:none;font-size:11.5px;color:var(--t3);padding:3px 6px;border-radius:6px" style-hover="color:var(--text);background:var(--sunken)">Marcar todas como lidas</button>
+        </sc-if>
+      </div>
+      <sc-if value="{{empty}}" hint-placeholder-val="{{false}}">
+        <div style="padding:34px 20px;text-align:center">
+          <div style="font-family:'Fraunces',serif;font-size:16px;font-weight:600;margin-bottom:4px">Tudo em dia</div>
+          <div style="color:var(--t3);font-size:12.5px">Menções, atribuições e mudanças de status aparecem aqui.</div>
+        </div>
+      </sc-if>
+      <div style="max-height:380px;overflow-y:auto">
+        <sc-for list="{{items}}" as="n" hint-placeholder-count="3">
+          <button onClick="{{n.go}}" style="display:flex;gap:10px;width:100%;text-align:left;background:none;border:none;border-bottom:1px solid var(--border);padding:11px 14px;align-items:flex-start" style-hover="background:var(--sunken)">
+            <span style="width:24px;height:24px;border-radius:50%;background:var(--sunken);border:1px solid var(--border2);color:var(--t2);font-size:9px;font-weight:650;display:inline-flex;align-items:center;justify-content:center;flex:none;margin-top:1px">{{n.ini}}</span>
+            <span style="flex:1;min-width:0;font-size:12.5px;line-height:1.45;color:var(--t2)">
+              <b style="color:var(--text);font-weight:600">{{n.actor}}</b> {{n.verb}} <span style="font-weight:600;color:var(--text)">{{n.issue}}</span>
+              <span style="display:block;color:var(--t3);font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{n.title}}</span>
+            </span>
+            <span style="display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex:none">
+              <span style="color:var(--t3);font-size:11px">{{n.when}}</span>
+              <span style="{{n.dotStyle}}"></span>
+            </span>
+          </button>
+        </sc-for>
+      </div>
+    </div>
+  </sc-if>
+</span>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;: {&quot;width&quot;: &quot;420px&quot;, &quot;height&quot;: &quot;520px&quot;}}">
+class Component extends DCLogic {
+  state = { open: false, read: JSON.parse(localStorage.getItem('fd-nread') || '[]'), ok: false };
+  async componentDidMount() {
+    this.db = await import('./data.js');
+    this.setState({ ok: true });
+    this.onDoc = e => { if (this.state.open && this.ref && !this.ref.contains(e.target)) this.setState({ open: false }); };
+    document.addEventListener('mousedown', this.onDoc);
+  }
+  componentWillUnmount() { document.removeEventListener('mousedown', this.onDoc); }
+  save(read) { localStorage.setItem('fd-nread', JSON.stringify(read)); this.setState({ read }); }
+  renderVals() {
+    const db = this.db;
+    if (!db) return { setRef: el => this.ref = el, tog: () => {}, items: [], unread: 0 };
+    const read = this.state.read;
+    const items = db.NOTIFS.map(n => {
+      const isRead = n.read || read.includes(n.id);
+      const iss = db.ISSUES.find(i => i.id === n.issue);
+      return {
+        ini: db.uById(n.actor).ini, actor: db.uById(n.actor).name, verb: n.verb, issue: n.issue,
+        title: iss ? iss.title : '', when: db.timeAgo(n.time),
+        dotStyle: { width: '7px', height: '7px', borderRadius: '50%', background: isRead ? 'transparent' : 'var(--red)' },
+        go: () => { if (!read.includes(n.id)) this.save([...read, n.id]); location.href = 'Inicio e Issues.dc.html#issue/' + n.issue; }
+      };
+    });
+    const unread = db.NOTIFS.filter(n => !n.read && !read.includes(n.id)).length;
+    return {
+      setRef: el => this.ref = el,
+      open: this.state.open, tog: () => this.setState({ open: !this.state.open }),
+      items, unread, hasUnread: unread > 0, empty: items.length === 0,
+      markAll: () => this.save(db.NOTIFS.map(n => n.id))
+    };
+  }
+}
+</script>
+</body>
+</html>

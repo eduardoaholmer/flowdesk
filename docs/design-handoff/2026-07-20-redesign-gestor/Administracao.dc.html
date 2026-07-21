@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300..800&amp;family=Geist:wght@300..800&amp;display=swap" rel="stylesheet">
+<script>document.documentElement.dataset.theme=localStorage.getItem('fd-theme')||'light'</script>
+<style>
+:root{--bg:#FAF8F3;--panel:#FFFDF8;--sunken:#F1EDE1;--text:#14130F;--t2:#575246;--t3:#78715F;--border:#E7E1D2;--border2:#D5CEBC;--red:#C0271C;--redbg:#F8ECEA;--amber:#8F6A11;--green:#50713A;--sh:0 12px 32px rgba(20,19,15,.10)}
+[data-theme="dark"]{--bg:#14130F;--panel:#1C1A14;--sunken:#262319;--text:#FAF8F3;--t2:#B8B1A0;--t3:#918A78;--border:#2B2820;--border2:#3C382A;--red:#F0685E;--redbg:#2C1613;--amber:#D9A73C;--green:#96B471;--sh:0 12px 32px rgba(0,0,0,.5)}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font:400 13.5px/1.45 'Geist',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+*{box-sizing:border-box}a{color:var(--text);text-decoration:none}a:hover{color:var(--t2)}
+input,textarea,button,select{font-family:inherit;color:inherit}button{cursor:pointer}::selection{background:var(--border2)}
+input::placeholder,textarea::placeholder{color:var(--t3)}
+@keyframes fdsh{0%,100%{opacity:.4}50%{opacity:1}}
+@keyframes fdpop{from{opacity:0;transform:translateY(4px) scale(.985)}to{opacity:1;transform:none}}
+@keyframes fdup{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+</style>
+</helmet>
+<div style="display:flex;height:100vh;overflow:hidden;background:var(--bg)">
+<dc-import name="Sidebar" active="{{active}}" hint-size="232px,100%"></dc-import>
+<div style="flex:1;display:flex;flex-direction:column;min-width:0">
+  <header style="height:50px;flex:none;display:flex;align-items:center;gap:8px;padding:0 18px;border-bottom:1px solid var(--border)">
+    <div style="display:flex;align-items:center;gap:7px;font-size:13px">
+      <span style="color:var(--t3)">Vela Labs</span>
+      <span style="color:var(--border2)">/</span>
+      <span style="color:var(--t3)">Administração</span>
+      <span style="color:var(--border2)">/</span>
+      <span style="font-weight:560">{{crumb}}</span>
+    </div>
+    <div style="flex:1"></div>
+    <button onClick="{{openPalette}}" style="display:flex;align-items:center;gap:8px;border:1px solid var(--border);background:var(--panel);border-radius:8px;padding:5px 10px;color:var(--t3);font-size:12.5px" style-hover="border-color:var(--border2);color:var(--t2)">
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="7" cy="7" r="4.6"></circle><path d="m10.6 10.6 3 3"></path></svg>
+      Buscar
+      <span style="border:1px solid var(--border);border-radius:4px;padding:0 5px;font-size:10.5px">⌘K</span>
+    </button>
+    <dc-import name="NotifBell" hint-size="32px,32px"></dc-import>
+  </header>
+  <main style="flex:1;overflow:auto;min-height:0">
+
+    <sc-if value="{{sConfig}}" hint-placeholder-val="{{true}}">
+      <div data-screen-label="Configurações" style="max-width:640px;margin:0 auto;padding:30px 30px 60px">
+        <h2 style="font-family:'Fraunces',serif;font-weight:580;font-size:21px;margin:0 0 4px;letter-spacing:-.01em">Configurações do workspace</h2>
+        <div style="color:var(--t2);font-size:13px;margin-bottom:26px">Identidade e informações básicas da Vela Labs.</div>
+        <div style="border:1px solid var(--border);border-radius:12px;background:var(--panel);padding:20px;display:grid;gap:16px">
+          <label style="display:grid;gap:5px;font-size:12px;font-weight:600;color:var(--t2)">Nome do workspace
+            <input value="{{wName}}" onChange="{{onWName}}" style="border:1px solid var(--border);background:var(--bg);border-radius:8px;padding:8px 11px;font-size:13.5px;outline:none;font-weight:400" style-focus="border-color:var(--border2)">
+          </label>
+          <label style="display:grid;gap:5px;font-size:12px;font-weight:600;color:var(--t2)">Slug
+            <span style="display:flex;align-items:center;border:1px solid var(--border);background:var(--bg);border-radius:8px;overflow:hidden">
+              <span style="padding:8px 0 8px 11px;color:var(--t3);font-size:13px;font-weight:400">flowdesk.app/</span>
+              <input value="{{wSlug}}" onChange="{{onWSlug}}" style="flex:1;border:none;background:none;padding:8px 11px 8px 2px;font-size:13.5px;outline:none;font-weight:400">
+            </span>
+            <sc-if value="{{slugErr}}" hint-placeholder-val="{{false}}"><span style="color:var(--red);font-weight:400;font-size:12px">{{slugErr}}</span></sc-if>
+          </label>
+          <label style="display:grid;gap:5px;font-size:12px;font-weight:600;color:var(--t2)">Descrição
+            <textarea value="{{wDesc}}" onChange="{{onWDesc}}" placeholder="Para que serve este workspace?" style="border:1px solid var(--border);background:var(--bg);border-radius:8px;padding:8px 11px;font-size:13.5px;outline:none;min-height:64px;resize:vertical;font-weight:400;line-height:1.5" style-focus="border-color:var(--border2)"></textarea>
+          </label>
+          <div style="display:flex;justify-content:flex-end;gap:10px">
+            <button onClick="{{salvarConfig}}" disabled="{{semMudanca}}" style="{{salvarStyle}}" style-hover="opacity:.88">Salvar alterações</button>
+          </div>
+        </div>
+        <div style="border:1px solid var(--red);border-radius:12px;margin-top:26px;overflow:hidden">
+          <div style="padding:18px 20px">
+            <div style="font-weight:650;font-size:13.5px;margin-bottom:3px;color:var(--red)">Excluir workspace</div>
+            <div style="color:var(--t2);font-size:12.5px;margin-bottom:14px">Remove permanentemente a Vela Labs, todas as {{nIssues}} issues, projetos e membros. Esta ação não pode ser desfeita.</div>
+            <sc-if value="{{delStep0}}" hint-placeholder-val="{{true}}">
+              <button onClick="{{iniciarDel}}" style="border:1px solid var(--red);color:var(--red);background:none;border-radius:8px;padding:7px 14px;font-size:12.5px;font-weight:560" style-hover="background:var(--redbg)">Excluir workspace…</button>
+            </sc-if>
+            <sc-if value="{{delStep1}}" hint-placeholder-val="{{false}}">
+              <div style="display:grid;gap:10px;background:var(--redbg);border-radius:9px;padding:12px 14px">
+                <div style="font-size:12.5px;color:var(--text)">Digite <b>vela-labs</b> para confirmar:</div>
+                <input value="{{delTxt}}" onChange="{{onDelTxt}}" placeholder="vela-labs" style="border:1px solid var(--border2);background:var(--panel);border-radius:8px;padding:7px 11px;font-size:13px;outline:none" style-focus="border-color:var(--red)">
+                <div style="display:flex;gap:10px;justify-content:flex-end">
+                  <button onClick="{{cancelarDel}}" style="background:none;border:none;color:var(--t2);font-size:12.5px;padding:6px 10px;border-radius:7px" style-hover="background:var(--panel)">Cancelar</button>
+                  <button onClick="{{confirmarDel}}" disabled="{{delDisabled}}" style="{{delBtnStyle}}">Excluir definitivamente</button>
+                </div>
+              </div>
+            </sc-if>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{sMembros}}" hint-placeholder-val="{{false}}">
+      <div data-screen-label="Membros" style="max-width:820px;margin:0 auto;padding:30px 30px 60px">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:4px">
+          <h2 style="font-family:'Fraunces',serif;font-weight:580;font-size:21px;margin:0;letter-spacing:-.01em">Membros</h2>
+          <span style="color:var(--t3);font-size:12.5px">{{memTotal}}</span>
+          <div style="flex:1"></div>
+          <a href="#convites" style="display:flex;align-items:center;gap:7px;background:var(--text);color:var(--bg);border-radius:8px;padding:7px 14px;font-size:12.5px;font-weight:560" style-hover="opacity:.88">Convidar pessoas</a>
+        </div>
+        <div style="color:var(--t2);font-size:13px;margin-bottom:18px">Quem tem acesso à Vela Labs e com qual papel.</div>
+        <div style="display:flex;gap:8px;margin-bottom:14px">
+          <sc-for list="{{roleTabs}}" as="rt" hint-placeholder-count="4">
+            <button onClick="{{rt.on}}" style="{{rt.style}}" style-hover="color:var(--text)">{{rt.label}}</button>
+          </sc-for>
+        </div>
+        <sc-if value="{{ldg}}" hint-placeholder-val="{{false}}">
+          <div>
+            <sc-for list="{{skels}}" as="s" hint-placeholder-count="6">
+              <div style="height:56px;border-radius:10px;background:var(--sunken);animation:fdsh 1.3s ease-in-out infinite;margin-bottom:8px"></div>
+            </sc-for>
+          </div>
+        </sc-if>
+        <sc-if value="{{memEmpty}}" hint-placeholder-val="{{false}}">
+          <div style="border:1px dashed var(--border2);border-radius:12px;padding:36px 20px;text-align:center">
+            <div style="font-family:'Fraunces',serif;font-size:16px;font-weight:620;margin-bottom:4px">Ninguém com esse papel</div>
+            <div style="color:var(--t2);font-size:12.5px">Ajuste o filtro ou convide alguém novo.</div>
+          </div>
+        </sc-if>
+        <div style="border:1px solid var(--border);border-radius:12px;background:var(--panel);overflow:hidden">
+          <sc-for list="{{memRows}}" as="m" hint-placeholder-count="6">
+            <div data-menu="1" style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--border);position:relative">
+              <span style="width:30px;height:30px;border-radius:50%;background:var(--sunken);border:1px solid var(--border2);color:var(--t2);font-size:10px;font-weight:650;display:inline-flex;align-items:center;justify-content:center;flex:none">{{m.ini}}</span>
+              <span style="flex:1;min-width:0">
+                <span style="display:block;font-weight:560;font-size:13px">{{m.name}} {{m.voce}}</span>
+                <span style="display:block;color:var(--t3);font-size:12px">{{m.email}}</span>
+              </span>
+              <span style="color:var(--t3);font-size:11.5px;flex:none">desde {{m.since}}</span>
+              <button onClick="{{m.togRole}}" disabled="{{m.self}}" style="{{m.roleStyle}}" style-hover="border-color:var(--border2)">
+                {{m.role}}
+                <sc-if value="{{m.canEdit}}" hint-placeholder-val="{{true}}"><svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2 3.5 5 6.5 8 3.5"></path></svg></sc-if>
+              </button>
+              <sc-if value="{{m.roleOpen}}" hint-placeholder-val="{{false}}">
+                <div style="position:absolute;top:46px;right:52px;min-width:200px;background:var(--panel);border:1px solid var(--border);border-radius:10px;box-shadow:var(--sh);padding:5px;z-index:70;animation:fdpop .12s ease">
+                  <sc-for list="{{m.roleRows}}" as="o" hint-placeholder-count="3">
+                    <div onClick="{{o.on}}" style="display:flex;flex-direction:column;gap:1px;padding:7px 9px;border-radius:7px;cursor:pointer" style-hover="background:var(--sunken)">
+                      <span style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--text);font-weight:550">{{o.label}}
+                        <sc-if value="{{o.checked}}" hint-placeholder-val="{{false}}"><svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="var(--text)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6.4 4.8 9 10 3.4"></path></svg></sc-if>
+                      </span>
+                      <span style="font-size:11px;color:var(--t3)">{{o.hint}}</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-if>
+              <button onClick="{{m.remover}}" disabled="{{m.self}}" title="{{m.remTitle}}" style="{{m.remStyle}}" style-hover="background:var(--redbg);color:var(--red)">
+                <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4.5h11M6.5 4.5V3a1 1 0 0 1 1-1h1a1 1 0 0 1 1 1v1.5M5 4.5l.5 8a1 1 0 0 0 1 .9h3a1 1 0 0 0 1-.9l.5-8"></path></svg>
+              </button>
+            </div>
+          </sc-for>
+        </div>
+        <sc-if value="{{memPager}}" hint-placeholder-val="{{false}}">
+          <div style="display:flex;align-items:center;justify-content:flex-end;gap:10px;padding:12px 2px">
+            <span style="color:var(--t3);font-size:12px">{{memPagerTxt}}</span>
+            <button onClick="{{memPrev}}" disabled="{{memNoPrev}}" style="{{memPrevStyle}}" style-hover="border-color:var(--border2)">‹</button>
+            <button onClick="{{memNext}}" disabled="{{memNoNext}}" style="{{memNextStyle}}" style-hover="border-color:var(--border2)">›</button>
+          </div>
+        </sc-if>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{sConvites}}" hint-placeholder-val="{{false}}">
+      <div data-screen-label="Convites" style="max-width:680px;margin:0 auto;padding:30px 30px 60px">
+        <h2 style="font-family:'Fraunces',serif;font-weight:580;font-size:21px;margin:0 0 4px;letter-spacing:-.01em">Convites</h2>
+        <div style="color:var(--t2);font-size:13px;margin-bottom:22px">Convide pessoas por e-mail. Convites expiram em 14 dias.</div>
+        <div style="border:1px solid var(--border);border-radius:12px;background:var(--panel);padding:18px 20px;margin-bottom:24px">
+          <div style="display:flex;gap:10px">
+            <input value="{{invEmail}}" onChange="{{onInvEmail}}" placeholder="nome@empresa.com.br" style="flex:1;border:1px solid var(--border);background:var(--bg);border-radius:8px;padding:8px 12px;font-size:13.5px;outline:none" style-focus="border-color:var(--border2)">
+            <select value="{{invRole}}" onChange="{{onInvRole}}" style="border:1px solid var(--border);background:var(--bg);border-radius:8px;padding:8px 11px;font-size:13px;outline:none">
+              <option value="Membro">Membro</option>
+              <option value="Admin">Admin</option>
+              <option value="Convidado">Convidado</option>
+            </select>
+            <button onClick="{{enviarInv}}" style="background:var(--text);color:var(--bg);border:none;border-radius:8px;padding:8px 16px;font-size:12.5px;font-weight:560;flex:none" style-hover="opacity:.88">Enviar convite</button>
+          </div>
+          <sc-if value="{{invErr}}" hint-placeholder-val="{{false}}">
+            <div style="color:var(--red);font-size:12.5px;background:var(--redbg);border-radius:7px;padding:7px 11px;margin-top:10px">{{invErr}}</div>
+          </sc-if>
+        </div>
+        <div style="font-size:11px;letter-spacing:.8px;text-transform:uppercase;color:var(--t3);font-weight:600;margin-bottom:10px">Pendentes {{invN}}</div>
+        <sc-if value="{{invEmpty}}" hint-placeholder-val="{{false}}">
+          <div style="border:1px dashed var(--border2);border-radius:12px;padding:32px 20px;text-align:center">
+            <div style="font-family:'Fraunces',serif;font-size:15px;font-weight:600;margin-bottom:3px">Nenhum convite pendente</div>
+            <div style="color:var(--t3);font-size:12.5px">Convites enviados e ainda não aceitos aparecem aqui.</div>
+          </div>
+        </sc-if>
+        <div style="border:1px solid var(--border);border-radius:12px;background:var(--panel);overflow:hidden">
+          <sc-for list="{{invRows}}" as="v" hint-placeholder-count="3">
+            <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--border)">
+              <span style="width:28px;height:28px;border-radius:50%;border:1px dashed var(--border2);color:var(--t3);display:inline-flex;align-items:center;justify-content:center;flex:none">
+                <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><path d="M2 4h12v8H2zM2.4 4.6 8 9l5.6-4.4"></path></svg>
+              </span>
+              <span style="flex:1;min-width:0">
+                <span style="display:block;font-weight:550;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{v.email}}</span>
+                <span style="display:block;color:var(--t3);font-size:11.5px">{{v.role}} · enviado {{v.sent}}</span>
+              </span>
+              <button onClick="{{v.reenviar}}" style="background:none;border:none;color:var(--t3);font-size:12px;padding:5px 9px;border-radius:6px" style-hover="background:var(--sunken);color:var(--text)">Reenviar</button>
+              <button onClick="{{v.cancelar}}" style="background:none;border:none;color:var(--t3);font-size:12px;padding:5px 9px;border-radius:6px" style-hover="background:var(--redbg);color:var(--red)">Cancelar</button>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </sc-if>
+  </main>
+</div>
+<dc-import name="CommandPalette" hint-size="1px,1px"></dc-import>
+<sc-if value="{{confirmRem}}" hint-placeholder-val="{{false}}">
+  <div onMouseDown="{{cancelarRem}}" style="position:fixed;inset:0;background:rgba(20,19,15,.38);z-index:200;display:flex;justify-content:center;align-items:center">
+    <div onMouseDown="{{stop}}" style="width:min(420px,90vw);background:var(--panel);border:1px solid var(--border);border-radius:14px;box-shadow:var(--sh);padding:22px;animation:fdpop .14s ease">
+      <div style="font-family:'Fraunces',serif;font-weight:620;font-size:17px;margin-bottom:6px">Remover {{remName}}?</div>
+      <div style="color:var(--t2);font-size:13px;line-height:1.55;margin-bottom:18px">A pessoa perde o acesso imediatamente. Issues atribuídas a ela ficam sem responsável.</div>
+      <div style="display:flex;justify-content:flex-end;gap:10px">
+        <button onClick="{{cancelarRem}}" style="background:none;border:none;color:var(--t2);font-size:13px;padding:7px 12px;border-radius:7px" style-hover="background:var(--sunken)">Cancelar</button>
+        <button onClick="{{confirmarRem}}" style="background:var(--red);color:#FFFDF8;border:none;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:560" style-hover="opacity:.9">Remover</button>
+      </div>
+    </div>
+  </div>
+</sc-if>
+<sc-if value="{{toast}}" hint-placeholder-val="{{false}}">
+  <div style="position:fixed;bottom:24px;right:24px;z-index:400;background:var(--panel);border:1px solid var(--border);border-radius:10px;box-shadow:var(--sh);padding:10px 14px;font-size:12.5px;animation:fdup .18s ease">{{toast}}</div>
+</sc-if>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { ok: false, screen: 'configuracoes', phase: 'carregando', wName: 'Vela Labs', wSlug: 'vela-labs', wDesc: 'Produto e engenharia da Vela — issues, projetos e o board do FlowDesk.', saved: null, delStep: 0, delTxt: '', members: [], invites: [], roleFilter: 'todos', page: 1, menu: null, rem: null, invEmail: '', invRole: 'Membro', invErr: null, toast: '' };
+  async componentDidMount() {
+    const db = this.db = await import('./data.js');
+    this.setState({ ok: true, members: db.USERS.map(u => ({ ...u })), invites: db.INVITES.map(i => ({ ...i })), saved: { n: 'Vela Labs', s: 'vela-labs', d: this.state.wDesc } });
+    this.applyHash();
+    this.onHash = () => this.applyHash();
+    window.addEventListener('hashchange', this.onHash);
+    this.onDoc = e => { if (this.state.menu && !e.target.closest('[data-menu]')) this.setState({ menu: null }); };
+    document.addEventListener('mousedown', this.onDoc);
+    this.load();
+  }
+  componentWillUnmount() { window.removeEventListener('hashchange', this.onHash); document.removeEventListener('mousedown', this.onDoc); }
+  load() { this.setState({ phase: 'carregando' }); clearTimeout(this._t); this._t = setTimeout(() => this.setState({ phase: 'pronto' }), 650); }
+  applyHash() {
+    let h = decodeURIComponent((location.hash || '').slice(1)) || 'configuracoes';
+    if (['configuracoes', 'membros', 'convites'].indexOf(h) < 0) h = 'configuracoes';
+    this.setState({ screen: h, menu: null, page: 1 });
+  }
+  flash(m) { this.setState({ toast: m }); clearTimeout(this._tt); this._tt = setTimeout(() => this.setState({ toast: '' }), 3000); }
+  renderVals() {
+    const db = this.db;
+    if (!db) return { active: 'config', crumb: 'Configurações', sConfig: true, skels: [1, 2, 3, 4, 5, 6] };
+    const S = this.state, ldg = S.phase === 'carregando';
+    const names = { configuracoes: 'Configurações', membros: 'Membros', convites: 'Convites' };
+    const out = {
+      active: S.screen === 'configuracoes' ? 'config' : S.screen,
+      crumb: names[S.screen],
+      sConfig: S.screen === 'configuracoes', sMembros: S.screen === 'membros', sConvites: S.screen === 'convites',
+      ldg, skels: [1, 2, 3, 4, 5, 6],
+      openPalette: () => window.dispatchEvent(new Event('fd:palette')),
+      stop: e => e.stopPropagation(), toast: S.toast
+    };
+    if (S.screen === 'configuracoes') {
+      const slugOk = /^[a-z0-9-]*$/.test(S.wSlug);
+      const dirty = S.saved && (S.wName !== S.saved.n || S.wSlug !== S.saved.s || S.wDesc !== S.saved.d);
+      const canSave = dirty && slugOk && S.wSlug && S.wName.trim();
+      Object.assign(out, {
+        wName: S.wName, onWName: e => this.setState({ wName: e.target.value }),
+        wSlug: S.wSlug, onWSlug: e => this.setState({ wSlug: e.target.value }),
+        wDesc: S.wDesc, onWDesc: e => this.setState({ wDesc: e.target.value }),
+        slugErr: slugOk ? false : 'Use apenas letras minúsculas, números e hífens.',
+        semMudanca: !canSave,
+        salvarStyle: { background: canSave ? 'var(--text)' : 'var(--sunken)', color: canSave ? 'var(--bg)' : 'var(--t3)', border: 'none', borderRadius: '8px', padding: '8px 18px', fontSize: '13px', fontWeight: 560, cursor: canSave ? 'pointer' : 'default' },
+        salvarConfig: () => { if (!canSave) return; this.setState({ saved: { n: S.wName, s: S.wSlug, d: S.wDesc } }); this.flash('Configurações salvas'); },
+        nIssues: db.ISSUES.length,
+        delStep0: S.delStep === 0, delStep1: S.delStep === 1,
+        iniciarDel: () => this.setState({ delStep: 1, delTxt: '' }),
+        cancelarDel: () => this.setState({ delStep: 0, delTxt: '' }),
+        delTxt: S.delTxt, onDelTxt: e => this.setState({ delTxt: e.target.value }),
+        delDisabled: S.delTxt !== 'vela-labs',
+        delBtnStyle: { background: S.delTxt === 'vela-labs' ? 'var(--red)' : 'var(--sunken)', color: S.delTxt === 'vela-labs' ? '#FFFDF8' : 'var(--t3)', border: 'none', borderRadius: '8px', padding: '7px 14px', fontSize: '12.5px', fontWeight: 560, cursor: S.delTxt === 'vela-labs' ? 'pointer' : 'default' },
+        confirmarDel: () => { if (S.delTxt !== 'vela-labs') return; this.setState({ delStep: 0, delTxt: '' }); this.flash('Exclusão simulada nesta demonstração — o workspace continua aqui.'); }
+      });
+    }
+    if (S.screen === 'membros') {
+      const roles = ['todos', 'Admin', 'Membro', 'Convidado'];
+      out.roleTabs = roles.map(r => ({
+        label: r === 'todos' ? 'Todos' : r, on: () => this.setState({ roleFilter: r, page: 1 }),
+        style: { background: S.roleFilter === r ? 'var(--sunken)' : 'none', border: '1px solid ' + (S.roleFilter === r ? 'var(--border2)' : 'var(--border)'), borderRadius: '999px', padding: '5px 13px', fontSize: '12px', fontWeight: S.roleFilter === r ? 600 : 450, color: S.roleFilter === r ? 'var(--text)' : 'var(--t3)' }
+      }));
+      const list = S.members.filter(m => S.roleFilter === 'todos' || m.role === S.roleFilter);
+      const PSZ = 8, pages = Math.max(1, Math.ceil(list.length / PSZ)), page = Math.min(S.page, pages);
+      const roleHints = { Admin: 'Gerencia membros, convites e configurações', Membro: 'Cria e edita issues e projetos', Convidado: 'Vê apenas o que for compartilhado' };
+      out.memRows = ldg ? [] : list.slice((page - 1) * PSZ, page * PSZ).map(m => {
+        const self = m.id === 'u1';
+        return {
+          ini: m.ini, name: m.name, voce: self ? '(você)' : '', email: m.email, since: db.fmtDate(m.since), role: m.role,
+          self, canEdit: !self,
+          roleStyle: { display: 'inline-flex', alignItems: 'center', gap: '6px', border: '1px solid var(--border)', background: 'var(--bg)', borderRadius: '7px', padding: '5px 11px', fontSize: '12px', color: self ? 'var(--t3)' : 'var(--t2)', flex: 'none', cursor: self ? 'default' : 'pointer' },
+          roleOpen: S.menu === 'role-' + m.id,
+          togRole: () => { if (!self) this.setState(s => ({ menu: s.menu === 'role-' + m.id ? null : 'role-' + m.id })); },
+          roleRows: ['Admin', 'Membro', 'Convidado'].map(r => ({ label: r, hint: roleHints[r], checked: m.role === r, on: () => { this.setState(s => ({ members: s.members.map(x => x.id === m.id ? { ...x, role: r } : x), menu: null })); this.flash(m.name.split(' ')[0] + ' agora é ' + r); } })),
+          remStyle: { background: 'none', border: 'none', color: self ? 'var(--border2)' : 'var(--t3)', padding: '6px', borderRadius: '7px', display: 'flex', flex: 'none', cursor: self ? 'default' : 'pointer' },
+          remTitle: self ? 'Você não pode remover a si mesma' : 'Remover do workspace',
+          remover: () => { if (!self) this.setState({ rem: m }); }
+        };
+      });
+      Object.assign(out, {
+        memTotal: list.length + (list.length === 1 ? ' pessoa' : ' pessoas'),
+        memEmpty: !ldg && list.length === 0,
+        memPager: !ldg && list.length > PSZ,
+        memPagerTxt: ((page - 1) * PSZ + 1) + '–' + Math.min(page * PSZ, list.length) + ' de ' + list.length,
+        memNoPrev: page <= 1, memNoNext: page >= pages,
+        memPrev: () => this.setState({ page: Math.max(1, page - 1) }),
+        memNext: () => this.setState({ page: Math.min(pages, page + 1) }),
+        memPrevStyle: { border: '1px solid var(--border)', background: 'var(--panel)', borderRadius: '7px', width: '26px', height: '26px', color: page <= 1 ? 'var(--border2)' : 'var(--t2)', cursor: page <= 1 ? 'default' : 'pointer' },
+        memNextStyle: { border: '1px solid var(--border)', background: 'var(--panel)', borderRadius: '7px', width: '26px', height: '26px', color: page >= pages ? 'var(--border2)' : 'var(--t2)', cursor: page >= pages ? 'default' : 'pointer' }
+      });
+    }
+    if (S.screen === 'convites') {
+      Object.assign(out, {
+        invEmail: S.invEmail, onInvEmail: e => this.setState({ invEmail: e.target.value, invErr: null }),
+        invRole: S.invRole, onInvRole: e => this.setState({ invRole: e.target.value }),
+        invErr: S.invErr,
+        enviarInv: () => {
+          const em = S.invEmail.trim();
+          if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) { this.setState({ invErr: 'Informe um e-mail válido, ex.: nome@empresa.com.br.' }); return; }
+          if (this.state.invites.some(v => v.email === em)) { this.setState({ invErr: 'Já existe um convite pendente para este e-mail.' }); return; }
+          this.setState(s => ({ invites: [{ id: 'i' + Date.now(), email: em, role: S.invRole, sent: new Date().toISOString() }, ...s.invites], invEmail: '' }));
+          this.flash('Convite enviado para ' + em);
+        },
+        invN: '· ' + S.invites.length,
+        invEmpty: S.invites.length === 0,
+        invRows: S.invites.map(v => ({
+          email: v.email, role: v.role, sent: db.timeAgo(v.sent),
+          reenviar: () => this.flash('Convite reenviado para ' + v.email),
+          cancelar: () => { this.setState(s => ({ invites: s.invites.filter(x => x.id !== v.id) })); this.flash('Convite cancelado'); }
+        }))
+      });
+    }
+    out.confirmRem = !!S.rem;
+    if (S.rem) {
+      out.remName = S.rem.name;
+      out.cancelarRem = () => this.setState({ rem: null });
+      out.confirmarRem = () => { const r = S.rem; this.setState(s => ({ members: s.members.filter(x => x.id !== r.id), rem: null })); this.flash(r.name + ' removida do workspace'); };
+    }
+    return out;
+  }
+}
+</script>
+</body>
+</html>

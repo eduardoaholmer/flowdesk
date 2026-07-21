@@ -5,6 +5,9 @@
  * Ring Gate (`--brand-ink`/`--brand-paper`) — não mais o placeholder acromático do
  * scaffold shadcn. `destructive` é a única exceção: cor funcional (erro/perigo), não
  * expressão de marca, inalterada nos dois temas.
+ * `panel`/`sunken`/`t2`/`t3`/`border2`/`redbg`/`amber`/`green` são tokens finos
+ * adicionados no Milestone 7 (redesign, ADR-044) — valores hexadecimais literais
+ * especificados pelo handoff de design, não derivados da rampa ink/paper.
  */
 export const colorTokens = [
   "background",
@@ -33,6 +36,14 @@ export const colorTokens = [
   "sidebar-accent-foreground",
   "sidebar-border",
   "sidebar-ring",
+  "panel",
+  "sunken",
+  "t2",
+  "t3",
+  "border2",
+  "redbg",
+  "amber",
+  "green",
 ] as const;
 
 export type ColorToken = (typeof colorTokens)[number];

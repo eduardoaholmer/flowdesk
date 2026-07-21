@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300..800&amp;family=Geist:wght@300..800&amp;display=swap" rel="stylesheet">
+<script>document.documentElement.dataset.theme=localStorage.getItem('fd-theme')||'light'</script>
+<style>
+:root{--bg:#FAF8F3;--panel:#FFFDF8;--sunken:#F1EDE1;--text:#14130F;--t2:#575246;--t3:#78715F;--border:#E7E1D2;--border2:#D5CEBC;--red:#C0271C;--redbg:#F8ECEA;--amber:#8F6A11;--green:#50713A;--sh:0 12px 32px rgba(20,19,15,.10)}
+[data-theme="dark"]{--bg:#14130F;--panel:#1C1A14;--sunken:#262319;--text:#FAF8F3;--t2:#B8B1A0;--t3:#918A78;--border:#2B2820;--border2:#3C382A;--red:#F0685E;--redbg:#2C1613;--amber:#D9A73C;--green:#96B471;--sh:0 12px 32px rgba(0,0,0,.5)}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font:400 13.5px/1.45 'Geist',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+*{box-sizing:border-box}a{color:var(--text);text-decoration:none}a:hover{color:var(--t2)}
+input,textarea,button,select{font-family:inherit;color:inherit}button{cursor:pointer}::selection{background:var(--border2)}
+input::placeholder,textarea::placeholder{color:var(--t3)}
+@keyframes fdsh{0%,100%{opacity:.4}50%{opacity:1}}
+@keyframes fdpop{from{opacity:0;transform:translateY(4px) scale(.985)}to{opacity:1;transform:none}}
+@keyframes fdup{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+</style>
+</helmet>
+<aside style="width:{{sbW}};transition:width .18s ease;height:100vh;flex:none;display:flex;flex-direction:column;border-right:1px solid var(--border);background:var(--bg);overflow:hidden">
+  <div data-wsmenu="1" style="position:relative;display:flex;align-items:center;gap:9px;padding:{{headPad}};min-width:0">
+    <button onClick="{{togWs}}" title="Vela Labs" style="display:flex;align-items:center;gap:9px;background:none;border:none;padding:4px;margin:-4px;border-radius:8px;min-width:0" style-hover="background:var(--sunken)">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" style="flex:none">
+        <circle cx="12" cy="12" r="7.6" stroke="currentColor" stroke-width="2.4"></circle>
+        <path d="M12 0.8 V8.4 M12 15.6 V23.2" stroke="var(--bg)" stroke-width="6"></path>
+        <path d="M12 0.8 V8.4 M12 15.6 V23.2" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"></path>
+      </svg>
+      <span style="{{wsNameStyle}}">Vela Labs</span>
+      <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--t3)" stroke-width="1.5" stroke-linecap="round" style="{{chevStyle}}"><path d="M2 3.5 5 6.5 8 3.5"></path></svg>
+    </button>
+    <div style="flex:1"></div>
+    <button onClick="{{togCollapse}}" title="{{collapseTitle}}" style="background:none;border:none;padding:5px;border-radius:7px;color:var(--t3);display:flex" style-hover="background:var(--sunken);color:var(--t2)">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="{{collapseD}}"></path></svg>
+    </button>
+    <sc-if value="{{wsOpen}}" hint-placeholder-val="{{false}}">
+      <div style="position:absolute;top:46px;left:12px;width:230px;background:var(--panel);border:1px solid var(--border);border-radius:10px;box-shadow:var(--sh);padding:6px;z-index:80;animation:fdpop .13s ease">
+        <div style="padding:8px 10px;border-bottom:1px solid var(--border);margin-bottom:4px">
+          <div style="font-weight:600;font-size:13px">Vela Labs</div>
+          <div style="color:var(--t3);font-size:11.5px">flowdesk.app/vela-labs · 12 membros</div>
+        </div>
+        <a href="Administracao.dc.html#configuracoes" style="display:block;padding:7px 10px;border-radius:7px;font-size:12.5px;color:var(--t2)" style-hover="background:var(--sunken);color:var(--text)">Configurações do workspace</a>
+        <button onClick="{{trocarWs}}" style="display:flex;justify-content:space-between;width:100%;background:none;border:none;padding:7px 10px;border-radius:7px;font-size:12.5px;color:var(--t2);text-align:left" style-hover="background:var(--sunken);color:var(--text)"><span>Trocar workspace</span><span style="color:var(--t3);font-size:11px">⌘K</span></button>
+        <a href="Autenticacao.dc.html#login" style="display:block;padding:7px 10px;border-radius:7px;font-size:12.5px;color:var(--t2)" style-hover="background:var(--sunken);color:var(--text)">Sair</a>
+      </div>
+    </sc-if>
+  </div>
+  <div style="padding:{{bodyPad}}">
+    <a href="Inicio e Issues.dc.html#nova" style="display:flex;align-items:center;justify-content:{{novaJust}};gap:8px;border:1px solid var(--border2);background:var(--panel);border-radius:8px;padding:7px 10px;font-size:12.5px;font-weight:550;color:var(--text);box-shadow:0 1px 2px rgba(20,19,15,.05)" style-hover="border-color:var(--t3)">
+      <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M7 2.5v9M2.5 7h9"></path></svg>
+      <span style="{{lblHide}}">Nova issue</span>
+    </a>
+  </div>
+  <nav style="flex:1;overflow-y:auto;overflow-x:hidden;padding:2px 10px">
+    <sc-for list="{{secs}}" as="sec" hint-placeholder-count="3">
+      <div>
+        <div style="{{sec.titleStyle}}">{{sec.title}}</div>
+        <sc-for list="{{sec.items}}" as="it" hint-placeholder-count="3">
+          <a href="{{it.href}}" title="{{it.label}}" style="{{it.style}}" style-hover="background:var(--sunken);color:var(--text)">
+            <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="{{it.d}}"></path></svg>
+            <span style="{{it.lblStyle}}">{{it.label}}</span>
+            <sc-if value="{{it.badge}}" hint-placeholder-val="{{false}}"><span style="{{it.badgeStyle}}">{{it.badge}}</span></sc-if>
+          </a>
+        </sc-for>
+      </div>
+    </sc-for>
+  </nav>
+  <div style="padding:10px;border-top:1px solid var(--border)">
+    <sc-if value="{{expanded}}" hint-placeholder-val="{{true}}">
+      <div style="display:flex;border:1px solid var(--border);border-radius:8px;padding:2px;gap:2px;margin-bottom:10px">
+        <button onClick="{{setLight}}" style="{{lightBtn}}" style-hover="color:var(--text)">
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M8 5.2a2.8 2.8 0 1 0 0 5.6 2.8 2.8 0 0 0 0-5.6ZM8 1.2v1.6M8 13.2v1.6M1.2 8h1.6M13.2 8h1.6M3.2 3.2l1.1 1.1M11.7 11.7l1.1 1.1M12.8 3.2l-1.1 1.1M4.3 11.7l-1.1 1.1"></path></svg>
+          Claro
+        </button>
+        <button onClick="{{setDark}}" style="{{darkBtn}}" style-hover="color:var(--text)">
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 9.5A6 6 0 0 1 6.5 2.5a6 6 0 1 0 7 7Z"></path></svg>
+          Escuro
+        </button>
+      </div>
+    </sc-if>
+    <sc-if value="{{collapsed}}" hint-placeholder-val="{{false}}">
+      <button onClick="{{togTheme}}" title="Alternar tema" style="display:flex;justify-content:center;width:100%;background:none;border:1px solid var(--border);border-radius:8px;padding:6px;color:var(--t2);margin-bottom:10px" style-hover="background:var(--sunken)">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 9.5A6 6 0 0 1 6.5 2.5a6 6 0 1 0 7 7Z"></path></svg>
+      </button>
+    </sc-if>
+    <div style="display:flex;align-items:center;gap:9px;justify-content:{{novaJust}}">
+      <span style="width:27px;height:27px;border-radius:50%;background:var(--sunken);border:1px solid var(--border2);color:var(--t2);font-size:10px;font-weight:650;letter-spacing:.3px;display:inline-flex;align-items:center;justify-content:center;flex:none">MC</span>
+      <span style="{{userColStyle}}">
+        <span style="display:block;font-size:12.5px;font-weight:560;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Marina Costa</span>
+        <span style="display:block;font-size:11px;color:var(--t3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">marina@velalabs.com.br</span>
+      </span>
+      <a href="Autenticacao.dc.html#login" title="Sair" style="{{exitStyle}}" style-hover="background:var(--sunken);color:var(--t2)">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 14H3.5A1.5 1.5 0 0 1 2 12.5v-9A1.5 1.5 0 0 1 3.5 2H6M10.5 11.5 14 8l-3.5-3.5M14 8H6"></path></svg>
+      </a>
+    </div>
+  </div>
+</aside>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;: {&quot;width&quot;: &quot;232px&quot;, &quot;height&quot;: &quot;760px&quot;}, &quot;active&quot;: {&quot;editor&quot;: &quot;enum&quot;, &quot;options&quot;: [&quot;inicio&quot;, &quot;issues&quot;, &quot;board&quot;, &quot;projetos&quot;, &quot;labels&quot;, &quot;config&quot;, &quot;membros&quot;, &quot;convites&quot;], &quot;default&quot;: &quot;inicio&quot;, &quot;tsType&quot;: &quot;string&quot;}}">
+class Component extends DCLogic {
+  state = { c: localStorage.getItem('fd-sb') === '1', theme: document.documentElement.dataset.theme || 'light', ws: false };
+  componentDidMount() {
+    this.onT = () => this.setState({ theme: document.documentElement.dataset.theme });
+    window.addEventListener('fd:theme', this.onT);
+    this.onDoc = e => { if (this.state.ws && !e.target.closest('[data-wsmenu]')) this.setState({ ws: false }); };
+    document.addEventListener('mousedown', this.onDoc);
+  }
+  componentWillUnmount() { window.removeEventListener('fd:theme', this.onT); document.removeEventListener('mousedown', this.onDoc); }
+  setTheme(t) { document.documentElement.dataset.theme = t; localStorage.setItem('fd-theme', t); window.dispatchEvent(new Event('fd:theme')); this.setState({ theme: t }); }
+  renderVals() {
+    const c = this.state.c, a = this.props.active || '', th = this.state.theme;
+    const F1 = 'Inicio e Issues.dc.html', F2 = 'Projetos e Labels.dc.html', F3 = 'Administracao.dc.html';
+    const IC = {
+      home: 'M2.5 6.5 8 2l5.5 4.5V13a1 1 0 0 1-1 1H9.6v-3.8H6.4V14H3.5a1 1 0 0 1-1-1z',
+      issues: 'M5.6 4.2h7.9M5.6 8h7.9M5.6 11.8h7.9M2.5 4.2h.02M2.5 8h.02M2.5 11.8h.02',
+      board: 'M2.5 2.5h4v11h-4zM9.5 2.5h4V9h-4z',
+      folder: 'M2 4.5A1.5 1.5 0 0 1 3.5 3h3L8 5h4.5A1.5 1.5 0 0 1 14 6.5v5a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 11.5z',
+      tag: 'M13.5 8.6 8.6 13.5a1.4 1.4 0 0 1-2 0L2.5 9.4V2.5h6.9l4.1 4.1a1.4 1.4 0 0 1 0 2ZM6 6h.02',
+      users: 'M11 13.5v-1a3 3 0 0 0-3-3H4.5a3 3 0 0 0-3 3v1M6.2 7a2.7 2.7 0 1 0 0-5.4A2.7 2.7 0 0 0 6.2 7ZM14.5 13.5v-1a3 3 0 0 0-2-2.8M10.3 1.8a2.7 2.7 0 0 1 0 5.2',
+      mail: 'M2 4h12v8H2zM2.4 4.6 8 9l5.6-4.4',
+      gear: 'M2 5.3h7M12 5.3h2M2 10.7h2M7 10.7h7M9.5 3.6v3.4M4.5 9v3.4'
+    };
+    const mk = (key, label, href, d, badge) => ({
+      key, label, href, d, badge: badge || false,
+      style: { display: 'flex', alignItems: 'center', gap: '9px', padding: c ? '8px 0' : '6px 9px', justifyContent: c ? 'center' : 'flex-start', borderRadius: '7px', margin: '1px 0', color: a === key ? 'var(--text)' : 'var(--t2)', background: a === key ? 'var(--sunken)' : 'transparent', fontWeight: a === key ? 570 : 440, fontSize: '13px' },
+      lblStyle: { display: c ? 'none' : 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: '1' },
+      badgeStyle: { display: c ? 'none' : 'inline-block', fontSize: '10px', fontWeight: 600, letterSpacing: '.4px', color: 'var(--t3)', border: '1px solid var(--border2)', borderRadius: '999px', padding: '1px 7px' }
+    });
+    const secs = [
+      { title: '', items: [mk('inicio', 'Início', F1 + '#inicio', IC.home), mk('issues', 'Issues', F1 + '#issues', IC.issues), mk('board', 'Board', F1 + '#board', IC.board, 'novo')] },
+      { title: 'Espaço de trabalho', items: [mk('projetos', 'Projetos', F2 + '#projetos', IC.folder), mk('labels', 'Labels', F2 + '#labels', IC.tag)] },
+      { title: 'Administração', items: [mk('config', 'Configurações', F3 + '#configuracoes', IC.gear), mk('membros', 'Membros', F3 + '#membros', IC.users), mk('convites', 'Convites', F3 + '#convites', IC.mail)] }
+    ].map(s => ({ ...s, titleStyle: { display: c || !s.title ? 'none' : 'block', fontSize: '10.5px', letterSpacing: '.8px', textTransform: 'uppercase', color: 'var(--t3)', padding: '14px 9px 4px', fontWeight: 570 } }));
+    const segBtn = on => ({ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', background: on ? 'var(--sunken)' : 'none', border: 'none', borderRadius: '6px', padding: '5px 0', fontSize: '11.5px', fontWeight: on ? 600 : 450, color: on ? 'var(--text)' : 'var(--t3)' });
+    return {
+      sbW: c ? '58px' : '232px', collapsed: c, expanded: !c,
+      headPad: c ? '13px 8px 6px' : '13px 12px 8px',
+      bodyPad: c ? '4px 10px 8px' : '4px 12px 10px',
+      novaJust: c ? 'center' : 'flex-start',
+      lblHide: { display: c ? 'none' : 'inline' },
+      wsNameStyle: { display: c ? 'none' : 'block', fontFamily: "'Fraunces',serif", fontWeight: 620, fontSize: '15px', whiteSpace: 'nowrap' },
+      chevStyle: { display: c ? 'none' : 'block', flex: 'none' },
+      userColStyle: { display: c ? 'none' : 'block', flex: 1, minWidth: 0 },
+      exitStyle: { display: c ? 'none' : 'flex', padding: '5px', borderRadius: '6px', color: 'var(--t3)' },
+      collapseD: c ? 'M6 3l5 5-5 5M3 3v10' : 'M10 3 5 8l5 5M13 3v10',
+      collapseTitle: c ? 'Expandir' : 'Recolher',
+      wsOpen: this.state.ws && !c,
+      togWs: () => this.setState({ ws: !this.state.ws }),
+      togCollapse: () => { const n = !c; localStorage.setItem('fd-sb', n ? '1' : '0'); this.setState({ c: n, ws: false }); },
+      trocarWs: () => { this.setState({ ws: false }); window.dispatchEvent(new Event('fd:palette')); },
+      secs,
+      lightBtn: segBtn(th !== 'dark'), darkBtn: segBtn(th === 'dark'),
+      setLight: () => this.setTheme('light'), setDark: () => this.setTheme('dark'),
+      togTheme: () => this.setTheme(th === 'dark' ? 'light' : 'dark')
+    };
+  }
+}
+</script>
+</body>
+</html>

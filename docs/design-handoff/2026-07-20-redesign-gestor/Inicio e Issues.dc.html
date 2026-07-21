@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300..800&amp;family=Geist:wght@300..800&amp;display=swap" rel="stylesheet">
+<script>document.documentElement.dataset.theme=localStorage.getItem('fd-theme')||'light'</script>
+<style>
+:root{--bg:#FAF8F3;--panel:#FFFDF8;--sunken:#F1EDE1;--text:#14130F;--t2:#575246;--t3:#78715F;--border:#E7E1D2;--border2:#D5CEBC;--red:#C0271C;--redbg:#F8ECEA;--amber:#8F6A11;--green:#50713A;--sh:0 12px 32px rgba(20,19,15,.10)}
+[data-theme="dark"]{--bg:#14130F;--panel:#1C1A14;--sunken:#262319;--text:#FAF8F3;--t2:#B8B1A0;--t3:#918A78;--border:#2B2820;--border2:#3C382A;--red:#F0685E;--redbg:#2C1613;--amber:#D9A73C;--green:#96B471;--sh:0 12px 32px rgba(0,0,0,.5)}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font:400 13.5px/1.45 'Geist',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+*{box-sizing:border-box}a{color:var(--text);text-decoration:none}a:hover{color:var(--t2)}
+input,textarea,button,select{font-family:inherit;color:inherit}button{cursor:pointer}::selection{background:var(--border2)}
+input::placeholder,textarea::placeholder{color:var(--t3)}
+@keyframes fdsh{0%,100%{opacity:.4}50%{opacity:1}}
+@keyframes fdpop{from{opacity:0;transform:translateY(4px) scale(.985)}to{opacity:1;transform:none}}
+@keyframes fdup{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+</style>
+</helmet>
+<div style="display:flex;height:100vh;overflow:hidden;background:var(--bg)">
+<dc-import name="Sidebar" active="{{active}}" hint-size="232px,100%"></dc-import>
+<div style="flex:1;display:flex;flex-direction:column;min-width:0">
+  <header style="height:50px;flex:none;display:flex;align-items:center;gap:8px;padding:0 18px;border-bottom:1px solid var(--border)">
+    <div style="display:flex;align-items:center;gap:7px;font-size:13px;min-width:0">
+      <span style="color:var(--t3)">Vela Labs</span>
+      <span style="color:var(--border2)">/</span>
+      <sc-if value="{{crumbLink}}" hint-placeholder-val="{{false}}">
+        <a href="#issues" style="color:var(--t3)">Issues</a>
+        <span style="color:var(--border2)">/</span>
+      </sc-if>
+      <span style="font-weight:560;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{crumb}}</span>
+    </div>
+    <div style="flex:1"></div>
+    <button onClick="{{openPalette}}" style="display:flex;align-items:center;gap:8px;border:1px solid var(--border);background:var(--panel);border-radius:8px;padding:5px 10px;color:var(--t3);font-size:12.5px" style-hover="border-color:var(--border2);color:var(--t2)">
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="7" cy="7" r="4.6"></circle><path d="m10.6 10.6 3 3"></path></svg>
+      Buscar
+      <span style="border:1px solid var(--border);border-radius:4px;padding:0 5px;font-size:10.5px">⌘K</span>
+    </button>
+    <dc-import name="NotifBell" hint-size="32px,32px"></dc-import>
+  </header>
+  <main style="flex:1;overflow:auto;min-height:0">
+
+    <sc-if value="{{sInicio}}" hint-placeholder-val="{{true}}">
+      <div data-screen-label="Início" style="max-width:1040px;margin:0 auto;padding:36px 30px 56px">
+        <sc-if value="{{ldg}}" hint-placeholder-val="{{true}}">
+          <div>
+            <div style="width:300px;height:30px;border-radius:7px;background:var(--sunken);animation:fdsh 1.3s ease-in-out infinite"></div>
+            <div style="width:420px;max-width:80%;height:14px;border-radius:5px;background:var(--sunken);animation:fdsh 1.3s ease-in-out infinite;margin-top:12px"></div>
+            <div style="display:grid;grid-template-columns:3fr 2fr;gap:16px;margin-top:34px">
+              <div style="height:320px;border-radius:12px;background:var(--sunken);animation:fdsh 1.3s ease-in-out infinite"></div>
+              <div style="height:320px;border-radius:12px;background:var(--sunken);animation:fdsh 1.3s ease-in-out infinite"></div>
+              <div style="height:190px;border-radius:12px;background:var(--sunken);animation:fdsh 1.3s ease-in-out infinite"></div>
+            </div>
+          </div>
+        </sc-if>
+        <sc-if value="{{err}}" hint-placeholder-val="{{false}}">
+          <div style="border:1px solid var(--border);border-radius:14px;background:var(--panel);padding:44px 32px;text-align:center;max-width:520px;margin:60px auto">
+            <div style="font-family:'Fraunces',serif;font-size:20px;font-weight:620;margin-bottom:6px">Não foi possível carregar o seu espaço</div>
+            <div style="color:var(--t2);font-size:13px;margin-bottom:18px">Verifique a conexão e tente de novo. Seus dados continuam seguros no servidor.</div>
+            <button onClick="{{retry}}" style="background:var(--text);color:var(--bg);border:none;border-radius:8px;padding:8px 18px;font-size:13px;font-weight:560">Tentar novamente</button>
+          </div>
+        </sc-if>
+        <sc-if value="{{rdy}}" hint-placeholder-val="{{false}}">
+          <div>
+            <h1 style="font-family:'Fraunces',serif;font-weight:560;font-size:30px;margin:0 0 6px;letter-spacing:-.01em">{{saud}}, Marina.</h1>
+            <div style="color:var(--t2);font-size:13.5px">{{hoje}} — {{resumo}}</div>
+            <div style="display:flex;gap:10px;margin-top:20px">
+              <button onClick="{{abrirNova}}" style="display:flex;align-items:center;gap:8px;background:var(--text);color:var(--bg);border:none;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:560" style-hover="opacity:.88">
+                <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M7 2.5v9M2.5 7h9"></path></svg>
+                Nova issue
+              </button>
+              <a href="Projetos e Labels.dc.html#novo" style="display:flex;align-items:center;gap:8px;border:1px solid var(--border2);background:var(--panel);border-radius:8px;padding:8px 16px;font-size:13px;font-weight:550;color:var(--text)" style-hover="border-color:var(--t3)">Novo projeto</a>
+            </div>
+            <div style="display:grid;grid-template-columns:3fr 2fr;gap:16px;margin-top:30px;align-items:start">
+              <div style="display:grid;gap:16px">
+                <section style="border:1px solid var(--border);border-radius:12px;background:var(--panel);overflow:hidden">
+                  <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border)">
+                    <span style="font-size:11px;letter-spacing:.8px;text-transform:uppercase;color:var(--t3);font-weight:600">Minhas issues</span>
+                    <a href="#issues" style="font-size:12px;color:var(--t3)">Ver todas</a>
+                  </div>
+                  <sc-if value="{{myEmpty}}" hint-placeholder-val="{{false}}">
+                    <div style="padding:30px 20px;text-align:center">
+                      <div style="font-family:'Fraunces',serif;font-size:15px;font-weight:600;margin-bottom:3px">Nada atribuído a você</div>
+                      <div style="color:var(--t3);font-size:12.5px;margin-bottom:14px">Bom sinal — ou hora de puxar algo do backlog.</div>
+                      <a href="#issues" style="font-size:12.5px;font-weight:550;border:1px solid var(--border2);border-radius:7px;padding:6px 12px;display:inline-block">Explorar o backlog</a>
+                    </div>
+                  </sc-if>
+                  <sc-for list="{{myIssues}}" as="r" hint-placeholder-count="4">
+                    <div onClick="{{r.go}}" style="display:grid;grid-template-columns:22px 22px 46px minmax(0,1fr) 60px;align-items:center;gap:9px;padding:0 16px;height:40px;border-bottom:1px solid var(--border);cursor:pointer" style-hover="background:var(--sunken)">
+                      <span style="{{r.pr.outer}}"><span style="{{r.pr.inner}}">{{r.pr.glyph}}</span></span>
+                      <span style="{{r.st.outer}}"><span style="{{r.st.inner}}">{{r.st.glyph}}</span></span>
+                      <span style="color:var(--t3);font-size:12px">{{r.id}}</span>
+                      <span style="font-weight:530;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{r.title}}</span>
+                      <span style="color:var(--t3);font-size:12px;text-align:right">{{r.dueTxt}}</span>
+                    </div>
+                  </sc-for>
+                </section>
+                <section style="border:1px solid var(--border);border-radius:12px;background:var(--panel);overflow:hidden">
+                  <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border)">
+                    <span style="font-size:11px;letter-spacing:.8px;text-transform:uppercase;color:var(--t3);font-weight:600">Projetos ativos</span>
+                    <a href="Projetos e Labels.dc.html#projetos" style="font-size:12px;color:var(--t3)">Ver todos</a>
+                  </div>
+                  <sc-if value="{{projEmpty}}" hint-placeholder-val="{{false}}">
+                    <div style="padding:30px 20px;text-align:center">
+                      <div style="font-family:'Fraunces',serif;font-size:15px;font-weight:600;margin-bottom:3px">Nenhum projeto ativo</div>
+                      <div style="color:var(--t3);font-size:12.5px;margin-bottom:14px">Agrupe issues por objetivo para enxergar progresso.</div>
+                      <a href="Projetos e Labels.dc.html#novo" style="font-size:12.5px;font-weight:550;border:1px solid var(--border2);border-radius:7px;padding:6px 12px;display:inline-block">Criar projeto</a>
+                    </div>
+                  </sc-if>
+                  <sc-for list="{{projRows}}" as="p" hint-placeholder-count="3">
+                    <a href="{{p.href}}" style="display:grid;grid-template-columns:minmax(0,1fr) 120px 74px 26px;align-items:center;gap:12px;padding:11px 16px;border-bottom:1px solid var(--border)" style-hover="background:var(--sunken)">
+                      <span style="min-width:0">
+                        <span style="display:block;font-weight:550;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{p.name}}</span>
+                        <span style="display:block;color:var(--t3);font-size:11.5px">{{p.meta}}</span>
+                      </span>
+                      <span style="height:4px;border-radius:99px;background:var(--sunken);overflow:hidden;display:block"><span style="display:block;height:100%;background:var(--text);width:{{p.pct}}"></span></span>
+                      <span style="color:var(--t3);font-size:11.5px;text-align:right">{{p.target}}</span>
+                      <span style="width:24px;height:24px;border-radius:50%;background:var(--sunken);border:1px solid var(--border2);color:var(--t2);font-size:8.5px;font-weight:650;display:inline-flex;align-items:center;justify-content:center">{{p.lead}}</span>
+                    </a>
+                  </sc-for>
+                </section>
+              </div>
+              <section style="border:1px solid var(--border);border-radius:12px;background:var(--panel);overflow:hidden">
+                <div style="padding:12px 16px;border-bottom:1px solid var(--border)">
+                  <span style="font-size:11px;letter-spacing:.8px;text-transform:uppercase;color:var(--t3);font-weight:600">Atividade recente</span>
+                </div>
+                <sc-if value="{{actEmpty}}" hint-placeholder-val="{{false}}">
+                  <div style="padding:30px 20px;text-align:center;color:var(--t3);font-size:12.5px">A atividade do time aparece aqui conforme o trabalho acontece.</div>
+                </sc-if>
+                <sc-for list="{{act}}" as="a" hint-placeholder-count="5">
+                  <div onClick="{{a.go}}" style="display:flex;gap:10px;padding:11px 16px;border-bottom:1px solid var(--border);cursor:pointer;align-items:flex-start" style-hover="background:var(--sunken)">
+                    <span style="width:24px;height:24px;border-radius:50%;background:var(--sunken);border:1px solid var(--border2);color:var(--t2);font-size:8.5px;font-weight:650;display:inline-flex;align-items:center;justify-content:center;flex:none;margin-top:1px">{{a.ini}}</span>
+                    <span style="flex:1;min-width:0;font-size:12.5px;color:var(--t2);line-height:1.45">
+                      <b style="color:var(--text);font-weight:600">{{a.name}}</b> {{a.what}} <span style="font-weight:600;color:var(--text)">{{a.issue}}</span>
+                      <span style="display:block;color:var(--t3);font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{a.title}}</span>
+                    </span>
+                    <span style="color:var(--t3);font-size:11px;flex:none">{{a.when}}</span>
+                  </div>
+                </sc-for>
+              </section>
+            </div>
+          </div>
+        </sc-if>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{sIssues}}" hint-placeholder-val="{{false}}">
+      <div data-screen-label="Issues">
+        <div style="display:flex;align-items:center;gap:12px;padding:22px 24px 14px">
+          <h2 style="font-family:'Fraunces',serif;font-weight:580;font-size:21px;margin:0;letter-spacing:-.01em">Issues</h2>
+          <span style="color:var(--t3);font-size:12.5px">{{totalTxt}}</span>
+          <div style="flex:1"></div>
+          <div style="display:flex;border:1px solid var(--border);border-radius:8px;padding:2px;gap:2px">
+            <button style="background:var(--sunken);border:none;border-radius:6px;padding:4px 12px;font-size:12px;font-weight:600">Lista</button>
+            <button onClick="{{irBoard}}" style="background:none;border:none;border-radius:6px;padding:4px 12px;font-size:12px;color:var(--t3)" style-hover="color:var(--text)">Board</button>
+          </div>
+          <button onClick="{{abrirNova}}" style="display:flex;align-items:center;gap:7px;background:var(--text);color:var(--bg);border:none;border-radius:8px;padding:7px 14px;font-size:12.5px;font-weight:560" style-hover="opacity:.88">
+            <svg width="11" height="11" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M7 2.5v9M2.5 7h9"></path></svg>
+            Nova issue
+          </button>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;padding:0 24px 12px;flex-wrap:wrap">
+          <span style="position:relative;display:inline-flex;align-items:center">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="var(--t3)" stroke-width="1.5" stroke-linecap="round" style="position:absolute;left:9px"><circle cx="7" cy="7" r="4.6"></circle><path d="m10.6 10.6 3 3"></path></svg>
+            <input value="{{q}}" onChange="{{onQ}}" placeholder="Filtrar por título ou ID…" style="border:1px solid var(--border);background:var(--panel);border-radius:8px;padding:6px 10px 6px 27px;font-size:12.5px;width:225px;outline:none" style-focus="border-color:var(--border2)">
+          </span>
+          <sc-for list="{{filters}}" as="f" hint-placeholder-count="4">
+            <span data-menu="1" style="position:relative">
+              <button onClick="{{f.tog}}" style="{{f.chip}}" style-hover="border-color:var(--border2);color:var(--text)">
+                {{f.label}}
+                <sc-if value="{{f.n}}" hint-placeholder-val="{{false}}"><span style="background:var(--text);color:var(--bg);border-radius:999px;font-size:10px;font-weight:650;padding:1px 6px;line-height:1.4">{{f.n}}</span></sc-if>
+                <svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2 3.5 5 6.5 8 3.5"></path></svg>
+              </button>
+              <sc-if value="{{f.open}}" hint-placeholder-val="{{false}}">
+                <div style="position:absolute;top:33px;left:0;min-width:218px;background:var(--panel);border:1px solid var(--border);border-radius:10px;box-shadow:var(--sh);padding:5px;z-index:70;animation:fdpop .12s ease">
+                  <sc-for list="{{f.rows}}" as="o" hint-placeholder-count="4">
+                    <div onClick="{{o.on}}" style="display:flex;align-items:center;gap:9px;padding:7px 9px;border-radius:7px;font-size:12.5px;color:var(--t2);cursor:pointer" style-hover="background:var(--sunken);color:var(--text)">
+                      <sc-if value="{{o.outer}}" hint-placeholder-val="{{false}}"><span style="{{o.outer}}"><span style="{{o.inner}}">{{o.glyph}}</span></span></sc-if>
+                      <sc-if value="{{o.ini}}" hint-placeholder-val="{{false}}"><span style="width:20px;height:20px;border-radius:50%;background:var(--sunken);border:1px solid var(--border2);color:var(--t2);font-size:8px;font-weight:650;display:inline-flex;align-items:center;justify-content:center;flex:none">{{o.ini}}</span></sc-if>
+                      <sc-if value="{{o.dot}}" hint-placeholder-val="{{false}}"><span style="{{o.dot}}"></span></sc-if>
+                      <span style="flex:1">{{o.label}}</span>
+                      <sc-if value="{{o.checked}}" hint-placeholder-val="{{false}}"><svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="var(--text)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6.4 4.8 9 10 3.4"></path></svg></sc-if>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-if>
+            </span>
+          </sc-for>
+          <sc-if value="{{anyFilter}}" hint-placeholder-val="{{false}}">
+            <button onClick="{{limpar}}" style="background:none;border:none;color:var(--t3);font-size:12px;padding:5px 8px;border-radius:6px" style-hover="color:var(--text);background:var(--sunken)">Limpar</button>
+          </sc-if>
+          <div style="flex:1"></div>
+          <span data-menu="1" style="position:relative">
+            <button onClick="{{sortTog}}" style="display:flex;align-items:center;gap:7px;background:none;border:none;color:var(--t3);font-size:12px;padding:5px 8px;border-radius:6px" style-hover="color:var(--text);background:var(--sunken)">
+              <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M5 2.5v11M5 13.5 2.5 11M5 13.5 7.5 11M11 13.5v-11M11 2.5 8.5 5M11 2.5l2.5 2.5"></path></svg>
+              {{sortLabel}}
+            </button>
+            <sc-if value="{{sortOpen}}" hint-placeholder-val="{{false}}">
+              <div style="position:absolute;top:30px;right:0;min-width:190px;background:var(--panel);border:1px solid var(--border);border-radius:10px;box-shadow:var(--sh);padding:5px;z-index:70;animation:fdpop .12s ease">
+                <sc-for list="{{sortRows}}" as="o" hint-placeholder-count="3">
+                  <div onClick="{{o.on}}" style="display:flex;align-items:center;gap:9px;padding:7px 9px;border-radius:7px;font-size:12.5px;color:var(--t2);cursor:pointer" style-hover="background:var(--sunken);color:var(--text)">
+                    <span style="flex:1">{{o.label}}</span>
+                    <sc-if value="{{o.checked}}" hint-placeholder-val="{{false}}"><svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="var(--text)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6.4 4.8 9 10 3.4"></path></svg></sc-if>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+          </span>
+        </div>
+        <div style="border-top:1px solid var(--border)">
+          <sc-if value="{{ldg}}" hint-placeholder-val="{{false}}">
+            <div>
+              <sc-for list="{{skels}}" as="s" hint-placeholder-count="8">
+                <div style="display:flex;align-items:center;gap:12px;padding:0 24px;height:42px;border-bottom:1px solid var(--border)">
+                  <span style="width:14px;height:14px;border-radius:5px;background:var(--sunken);animation:fdsh 1.3s ease-in-out infinite"></span>
+                  <span style="width:14px;height:14px;border-radius:50%;background:var(--sunken);animation:fdsh 1.3s ease-in-out infinite"></span>
+                  <span style="width:40px;height:10px;border-radius:4px;background:var(--sunken);animation:fdsh 1.3s ease-in-out infinite"></span>
+                  <span style="flex:1;max-width:420px;height:11px;border-radius:4px;background:var(--sunken);animation:fdsh 1.3s ease-in-out infinite"></span>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+          <sc-if value="{{err}}" hint-placeholder-val="{{false}}">
+            <div style="padding:60px 24px;text-align:center;max-width:440px;margin:0 auto">
+              <div style="font-family:'Fraunces',serif;font-size:18px;font-weight:620;margin-bottom:6px">Não foi possível carregar as issues</div>
+              <div style="color:var(--t2);font-size:13px;margin-bottom:16px">O servidor não respondeu a tempo. Nada foi perdido.</div>
+              <button onClick="{{retry}}" style="background:var(--text);color:var(--bg);border:none;border-radius:8px;padding:8px 18px;font-size:13px;font-weight:560">Tentar novamente</button>
+            </div>
+          </sc-if>
+          <sc-if value="{{emptyGlobal}}" hint-placeholder-val="{{false}}">
+            <div style="padding:70px 24px;text-align:center;max-width:460px;margin:0 auto">
+              <svg width="44" height="44" viewBox="0 0 24 24" fill="none" style="color:var(--border2);margin-bottom:14px">
+                <circle cx="12" cy="12" r="7.6" stroke="currentColor" stroke-width="2.4"></circle>
+                <path d="M12 0.8 V8.4 M12 15.6 V23.2" stroke="var(--bg)" stroke-width="6"></path>
+                <path d="M12 0.8 V8.4 M12 15.6 V23.2" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"></path>
+              </svg>
+              <div style="font-family:'Fraunces',serif;font-size:19px;font-weight:620;margin-bottom:6px">Nenhuma issue por aqui</div>
+              <div style="color:var(--t2);font-size:13px;margin-bottom:18px">Todo trabalho do workspace começa com uma issue. Criar a primeira leva segundos.</div>
+              <button onClick="{{abrirNova}}" style="background:var(--text);color:var(--bg);border:none;border-radius:8px;padding:8px 18px;font-size:13px;font-weight:560">Criar a primeira issue</button>
+            </div>
+          </sc-if>
+          <sc-if value="{{emptyFiltro}}" hint-placeholder-val="{{false}}">
+            <div style="padding:56px 24px;text-align:center">
+              <div style="font-family:'Fraunces',serif;font-size:17px;font-weight:620;margin-bottom:5px">Nada com esses filtros</div>
+              <div style="color:var(--t2);font-size:13px;margin-bottom:14px">Nenhuma issue corresponde à combinação atual.</div>
+              <button onClick="{{limpar}}" style="border:1px solid var(--border2);background:var(--panel);border-radius:8px;padding:7px 14px;font-size:12.5px;font-weight:550">Limpar filtros</button>
+            </div>
+          </sc-if>
+          <sc-for list="{{rows}}" as="r" hint-placeholder-count="8">
+            <div onClick="{{r.go}}" style="display:grid;grid-template-columns:24px 22px 50px minmax(0,1fr) auto 28px 56px;align-items:center;gap:10px;padding:0 24px;height:42px;border-bottom:1px solid var(--border);cursor:pointer" style-hover="background:var(--panel)">
+              <span style="{{r.pr.outer}}"><span style="{{r.pr.inner}}">{{r.pr.glyph}}</span></span>
+              <span style="{{r.st.outer}}"><span style="{{r.st.inner}}">{{r.st.glyph}}</span></span>
+              <span style="color:var(--t3);font-size:12px">{{r.id}}</span>
+              <span style="font-weight:530;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{r.title}}</span>
+              <span style="display:flex;gap:5px">
+                <sc-for list="{{r.chips}}" as="c" hint-placeholder-count="1">
+                  <span style="display:inline-flex;align-items:center;gap:5px;border:1px solid var(--border);border-radius:999px;padding:2px 8px;font-size:11px;color:var(--t2)"><span style="{{c.dot}}"></span>{{c.name}}</span>
+                </sc-for>
+              </span>
+              <span style="width:24px;height:24px;border-radius:50%;background:var(--sunken);border:1px solid var(--border2);color:var(--t2);font-size:8.5px;font-weight:650;display:inline-flex;align-items:center;justify-content:center" title="{{r.userName}}">{{r.ini}}</span>
+              <span style="color:var(--t3);font-size:12px;text-align:right">{{r.when}}</span>
+            </div>
+          </sc-for>
+          <sc-if value="{{hasPager}}" hint-placeholder-val="{{false}}">
+            <div style="display:flex;align-items:center;justify-content:flex-end;gap:10px;padding:12px 24px">
+              <span style="color:var(--t3);font-size:12px">{{pagerTxt}}</span>
+              <button onClick="{{prevPg}}" disabled="{{noPrev}}" style="{{prevStyle}}" style-hover="border-color:var(--border2)">‹</button>
+              <button onClick="{{nextPg}}" disabled="{{noNext}}" style="{{nextStyle}}" style-hover="border-color:var(--border2)">›</button>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{sBoard}}" hint-placeholder-val="{{false}}">
+      <div data-screen-label="Board" style="display:flex;flex-direction:column;height:100%">
+        <div style="display:flex;align-items:center;gap:12px;padding:22px 24px 14px;flex:none">
+          <h2 style="font-family:'Fraunces',serif;font-weight:580;font-size:21px;margin:0;letter-spacing:-.01em">Board</h2>
+          <span style="font-size:10.5px;letter-spacing:.6px;text-transform:uppercase;font-weight:600;color:var(--t3);border:1px dashed var(--border2);border-radius:999px;padding:3px 10px">Visão futura</span>
+          <span style="color:var(--t3);font-size:12.5px">Arraste cartões entre colunas para mudar o status.</span>
+          <div style="flex:1"></div>
+          <div style="display:flex;border:1px solid var(--border);border-radius:8px;padding:2px;gap:2px">
+            <button onClick="{{irLista}}" style="background:none;border:none;border-radius:6px;padding:4px 12px;font-size:12px;color:var(--t3)" style-hover="color:var(--text)">Lista</button>
+            <button style="background:var(--sunken);border:none;border-radius:6px;padding:4px 12px;font-size:12px;font-weight:600">Board</button>
+          </div>
+          <button onClick="{{abrirNova}}" style="display:flex;align-items:center;gap:7px;background:var(--text);color:var(--bg);border:none;border-radius:8px;padding:7px 14px;font-size:12.5px;font-weight:560" style-hover="opacity:.88">Nova issue</button>
+        </div>
+        <div style="flex:1;overflow-x:auto;overflow-y:hidden;padding:4px 24px 24px">
+          <div style="display:flex;gap:14px;height:100%;min-width:min-content">
+            <sc-for list="{{cols}}" as="col" hint-placeholder-count="5">
+              <div onDragOver="{{col.over}}" onDragLeave="{{col.leave}}" onDrop="{{col.drop}}" style="{{col.style}}">
+                <div style="display:flex;align-items:center;gap:8px;padding:10px 10px 8px;flex:none">
+                  <span style="{{col.outer}}"><span style="{{col.inner}}">{{col.glyph}}</span></span>
+                  <span style="font-size:12.5px;font-weight:600">{{col.label}}</span>
+                  <span style="color:var(--t3);font-size:12px">{{col.n}}</span>
+                </div>
+                <div style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:2px 8px 10px">
+                  <sc-if value="{{col.empty}}" hint-placeholder-val="{{false}}">
+                    <div style="border:1px dashed var(--border2);border-radius:10px;padding:18px 10px;text-align:center;color:var(--t3);font-size:12px">Solte um cartão aqui</div>
+                  </sc-if>
+                  <sc-for list="{{col.cards}}" as="r" hint-placeholder-count="2">
+                    <div draggable="{{true}}" onDragStart="{{r.drag}}" onClick="{{r.go}}" style="background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:10px 12px;cursor:grab;box-shadow:0 1px 2px rgba(20,19,15,.05)" style-hover="border-color:var(--border2)">
+                      <div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:6px">
+                        <span style="color:var(--t3);font-size:11.5px">{{r.id}}</span>
+                        <span style="{{r.pr.outer}}"><span style="{{r.pr.inner}}">{{r.pr.glyph}}</span></span>
+                      </div>
+                      <div style="font-size:12.5px;font-weight:530;line-height:1.4;margin-bottom:8px">{{r.title}}</div>
+                      <div style="display:flex;align-items:center;gap:5px">
+                        <sc-for list="{{r.chips}}" as="c" hint-placeholder-count="1"><span style="{{c.dot}}" title="{{c.name}}"></span></sc-for>
+                        <span style="flex:1"></span>
+                        <span style="width:20px;height:20px;border-radius:50%;background:var(--sunken);border:1px solid var(--border2);color:var(--t2);font-size:7.5px;font-weight:650;display:inline-flex;align-items:center;justify-content:center" title="{{r.userName}}">{{r.ini}}</span>
+                      </div>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{sDetalhe}}" hint-placeholder-val="{{false}}">
+      <div data-screen-label="Detalhe da issue">
+        <sc-if value="{{notFound}}" hint-placeholder-val="{{false}}">
+          <div style="padding:80px 24px;text-align:center">
+            <div style="font-family:'Fraunces',serif;font-size:19px;font-weight:620;margin-bottom:6px">Issue não encontrada</div>
+            <div style="color:var(--t2);font-size:13px;margin-bottom:16px">Ela pode ter sido excluída ou o link está incorreto.</div>
+            <a href="#issues" style="border:1px solid var(--border2);border-radius:8px;padding:7px 14px;font-size:12.5px;font-weight:550">Voltar para Issues</a>
+          </div>
+        </sc-if>
+        <sc-if value="{{found}}" hint-placeholder-val="{{false}}">
+          <div style="display:flex;align-items:flex-start;min-height:calc(100vh - 50px)">
+            <div style="flex:1;min-width:0">
+              <div style="max-width:720px;margin:0 auto;padding:26px 30px 70px">
+                <a href="#issues" style="display:inline-flex;align-items:center;gap:6px;color:var(--t3);font-size:12.5px;margin-bottom:16px">
+                  <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3 5 8l5 5"></path></svg>
+                  Issues
+                </a>
+                <div style="display:flex;align-items:flex-start;gap:12px">
+                  <div style="flex:1;min-width:0">
+                    <div style="color:var(--t3);font-size:12.5px;margin-bottom:4px">{{det.id}}</div>
+                    <h1 style="font-family:'Fraunces',serif;font-weight:580;font-size:26px;line-height:1.25;margin:0;letter-spacing:-.01em">{{det.title}}</h1>
+                  </div>
+                  <button onClick="{{editarDet}}" style="border:1px solid var(--border2);background:var(--panel);border-radius:8px;padding:6px 13px;font-size:12.5px;font-weight:550;flex:none;margin-top:4px" style-hover="border-color:var(--t3)">Editar</button>
+                </div>
+                <div style="margin-top:22px;font-size:14px;color:var(--t2);line-height:1.65">
+                  <sc-for list="{{det.blocks}}" as="b" hint-placeholder-count="3">
+                    <span>
+                      <sc-if value="{{b.isP}}" hint-placeholder-val="{{true}}"><p style="margin:0 0 12px">{{b.x}}</p></sc-if>
+                      <sc-if value="{{b.isH}}" hint-placeholder-val="{{false}}"><h3 style="font-family:'Geist',sans-serif;font-size:13px;font-weight:650;color:var(--text);margin:18px 0 8px">{{b.x}}</h3></sc-if>
+                      <sc-if value="{{b.isLi}}" hint-placeholder-val="{{false}}"><div style="display:flex;gap:9px;margin:0 0 7px"><span style="width:5px;height:5px;border-radius:50%;background:var(--t3);margin-top:8px;flex:none"></span><span>{{b.x}}</span></div></sc-if>
+                      <sc-if value="{{b.isCode}}" hint-placeholder-val="{{false}}"><pre style="background:var(--sunken);border:1px solid var(--border);border-radius:9px;padding:12px 14px;font-size:12px;line-height:1.6;overflow-x:auto;font-family:ui-monospace,Menlo,monospace;color:var(--text);margin:4px 0 14px">{{b.x}}</pre></sc-if>
+                    </span>
+                  </sc-for>
+                </div>
+                <sc-if value="{{det.hasAtt}}" hint-placeholder-val="{{false}}">
+                  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">
+                    <sc-for list="{{det.atts}}" as="at" hint-placeholder-count="2">
+                      <span style="display:inline-flex;align-items:center;gap:7px;border:1px solid var(--border);background:var(--panel);border-radius:8px;padding:6px 11px;font-size:12px" style-hover="border-color:var(--border2)">
+                        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="var(--t3)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12.5 6.5 7.8 11.2a2.5 2.5 0 0 1-3.5-3.5L9 3a1.8 1.8 0 0 1 2.6 2.6L7 10.2a1 1 0 0 1-1.5-1.5L9.8 4.4"></path></svg>
+                        <span style="font-weight:550">{{at.name}}</span>
+                        <span style="color:var(--t3);font-size:11px">{{at.size}}</span>
+                      </span>
+                    </sc-for>
+                  </div>
+                </sc-if>
+                <div style="border-top:1px solid var(--border);margin-top:26px;padding-top:18px">
+                  <div style="font-size:11px;letter-spacing:.8px;text-transform:uppercase;color:var(--t3);font-weight:600;margin-bottom:12px">Atividade</div>
+                  <sc-for list="{{det.acts}}" as="ev" hint-placeholder-count="3">
+                    <div style="display:flex;gap:10px;font-size:12.5px;color:var(--t2);padding:4px 0;align-items:baseline">
+                      <span style="width:6px;height:6px;border-radius:50%;background:var(--border2);flex:none;position:relative;top:-1px"></span>
+                      <span style="flex:1"><b style="color:var(--text);font-weight:600">{{ev.name}}</b> {{ev.what}}</span>
+                      <span style="color:var(--t3);font-size:11.5px">{{ev.when}}</span>
+                    </div>
+                  </sc-for>
+                </div>
+                <div style="border-top:1px solid var(--border);margin-top:20px;padding-top:18px">
+                  <div style="font-size:11px;letter-spacing:.8px;text-transform:uppercase;color:var(--t3);font-weight:600;margin-bottom:14px">Comentários {{det.nCom}}</div>
+                  <sc-for list="{{det.coms}}" as="cm" hint-placeholder-count="2">
+                    <div style="display:flex;gap:11px;margin-bottom:18px">
+                      <span style="width:27px;height:27px;border-radius:50%;background:var(--sunken);border:1px solid var(--border2);color:var(--t2);font-size:9px;font-weight:650;display:inline-flex;align-items:center;justify-content:center;flex:none">{{cm.ini}}</span>
+                      <div style="flex:1;min-width:0">
+                        <div style="display:flex;gap:8px;align-items:baseline;margin-bottom:3px">
+                          <span style="font-weight:600;font-size:13px">{{cm.name}}</span>
+                          <span style="color:var(--t3);font-size:11.5px">{{cm.when}}</span>
+                        </div>
+                        <div style="font-size:13.5px;color:var(--t2);line-height:1.6">
+                          <sc-for list="{{cm.segs}}" as="sg" hint-placeholder-count="1">
+                            <span>
+                              <sc-if value="{{sg.plain}}" hint-placeholder-val="{{true}}"><span>{{sg.x}}</span></sc-if>
+                              <sc-if value="{{sg.men}}" hint-placeholder-val="{{false}}"><span style="color:var(--text);font-weight:600;background:var(--sunken);border-radius:5px;padding:1px 5px">@{{sg.x}}</span></sc-if>
+                            </span>
+                          </sc-for>
+                        </div>
+                      </div>
+                    </div>
+                  </sc-for>
+                  <div style="display:flex;gap:11px;margin-top:6px">
+                    <span style="width:27px;height:27px;border-radius:50%;background:var(--sunken);border:1px solid var(--border2);color:var(--t2);font-size:9px;font-weight:650;display:inline-flex;align-items:center;justify-content:center;flex:none">MC</span>
+                    <div style="flex:1;position:relative">
+                      <sc-if value="{{menOpen}}" hint-placeholder-val="{{false}}">
+                        <div style="position:absolute;bottom:100%;left:0;margin-bottom:6px;min-width:220px;background:var(--panel);border:1px solid var(--border);border-radius:10px;box-shadow:var(--sh);padding:5px;z-index:60;animation:fdpop .12s ease">
+                          <sc-for list="{{menSugs}}" as="u" hint-placeholder-count="2">
+                            <div onClick="{{u.pick}}" style="display:flex;align-items:center;gap:9px;padding:7px 9px;border-radius:7px;font-size:12.5px;cursor:pointer;color:var(--t2)" style-hover="background:var(--sunken);color:var(--text)">
+                              <span style="width:20px;height:20px;border-radius:50%;background:var(--sunken);border:1px solid var(--border2);font-size:8px;font-weight:650;display:inline-flex;align-items:center;justify-content:center">{{u.ini}}</span>
+                              {{u.name}}
+                            </div>
+                          </sc-for>
+                        </div>
+                      </sc-if>
+                      <textarea value="{{comment}}" onChange="{{onComment}}" placeholder="Escreva um comentário… use @ para mencionar" style="width:100%;min-height:74px;border:1px solid var(--border);background:var(--panel);border-radius:10px;padding:10px 12px;font-size:13px;resize:vertical;outline:none;line-height:1.55" style-focus="border-color:var(--border2)"></textarea>
+                      <div style="display:flex;justify-content:flex-end;margin-top:8px">
+                        <button onClick="{{enviarComment}}" style="background:var(--text);color:var(--bg);border:none;border-radius:8px;padding:7px 16px;font-size:12.5px;font-weight:560" style-hover="opacity:.88">Comentar</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <aside style="width:272px;flex:none;border-left:1px solid var(--border);padding:24px 20px;align-self:stretch">
+              <sc-for list="{{rail}}" as="rr" hint-placeholder-count="6">
+                <div data-menu="1" style="position:relative;margin-bottom:16px">
+                  <div style="font-size:10.5px;letter-spacing:.7px;text-transform:uppercase;color:var(--t3);font-weight:600;margin-bottom:5px">{{rr.label}}</div>
+                  <button onClick="{{rr.tog}}" style="display:flex;align-items:center;gap:8px;width:100%;background:none;border:1px solid transparent;border-radius:7px;padding:5px 7px;font-size:12.5px;color:var(--text);text-align:left;font-weight:530" style-hover="background:var(--sunken)">
+                    <sc-if value="{{rr.valOuter}}" hint-placeholder-val="{{false}}"><span style="{{rr.valOuter}}"><span style="{{rr.valInner}}">{{rr.valGlyph}}</span></span></sc-if>
+                    <sc-if value="{{rr.valIni}}" hint-placeholder-val="{{false}}"><span style="width:20px;height:20px;border-radius:50%;background:var(--sunken);border:1px solid var(--border2);color:var(--t2);font-size:8px;font-weight:650;display:inline-flex;align-items:center;justify-content:center;flex:none">{{rr.valIni}}</span></sc-if>
+                    <span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{rr.valText}}</span>
+                    <svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="var(--t3)" stroke-width="1.5" stroke-linecap="round" style="flex:none"><path d="M2 3.5 5 6.5 8 3.5"></path></svg>
+                  </button>
+                  <sc-if value="{{rr.open}}" hint-placeholder-val="{{false}}">
+                    <div style="position:absolute;top:100%;left:0;right:0;margin-top:4px;background:var(--panel);border:1px solid var(--border);border-radius:10px;box-shadow:var(--sh);padding:5px;z-index:70;animation:fdpop .12s ease;max-height:260px;overflow-y:auto">
+                      <sc-for list="{{rr.rows}}" as="o" hint-placeholder-count="4">
+                        <div onClick="{{o.on}}" style="display:flex;align-items:center;gap:9px;padding:7px 9px;border-radius:7px;font-size:12.5px;color:var(--t2);cursor:pointer" style-hover="background:var(--sunken);color:var(--text)">
+                          <sc-if value="{{o.outer}}" hint-placeholder-val="{{false}}"><span style="{{o.outer}}"><span style="{{o.inner}}">{{o.glyph}}</span></span></sc-if>
+                          <sc-if value="{{o.ini}}" hint-placeholder-val="{{false}}"><span style="width:20px;height:20px;border-radius:50%;background:var(--sunken);border:1px solid var(--border2);color:var(--t2);font-size:8px;font-weight:650;display:inline-flex;align-items:center;justify-content:center;flex:none">{{o.ini}}</span></sc-if>
+                          <sc-if value="{{o.dot}}" hint-placeholder-val="{{false}}"><span style="{{o.dot}}"></span></sc-if>
+                          <span style="flex:1">{{o.label}}</span>
+                          <sc-if value="{{o.checked}}" hint-placeholder-val="{{false}}"><svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="var(--text)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6.4 4.8 9 10 3.4"></path></svg></sc-if>
+                        </div>
+                      </sc-for>
+                    </div>
+                  </sc-if>
+                </div>
+              </sc-for>
+              <div data-menu="1" style="position:relative;margin-bottom:16px">
+                <div style="font-size:10.5px;letter-spacing:.7px;text-transform:uppercase;color:var(--t3);font-weight:600;margin-bottom:7px">Labels</div>
+                <div style="display:flex;gap:6px;flex-wrap:wrap">
+                  <sc-for list="{{det.chips}}" as="c" hint-placeholder-count="2">
+                    <span style="display:inline-flex;align-items:center;gap:5px;border:1px solid var(--border);border-radius:999px;padding:3px 9px;font-size:11.5px;color:var(--t2)"><span style="{{c.dot}}"></span>{{c.name}}</span>
+                  </sc-for>
+                  <button onClick="{{labTog}}" style="border:1px dashed var(--border2);background:none;border-radius:999px;padding:3px 10px;font-size:11.5px;color:var(--t3)" style-hover="color:var(--text);border-color:var(--t3)">+ label</button>
+                </div>
+                <sc-if value="{{labOpen}}" hint-placeholder-val="{{false}}">
+                  <div style="position:absolute;top:100%;left:0;right:0;margin-top:6px;background:var(--panel);border:1px solid var(--border);border-radius:10px;box-shadow:var(--sh);padding:5px;z-index:70;animation:fdpop .12s ease">
+                    <sc-for list="{{labRows}}" as="o" hint-placeholder-count="4">
+                      <div onClick="{{o.on}}" style="display:flex;align-items:center;gap:9px;padding:7px 9px;border-radius:7px;font-size:12.5px;color:var(--t2);cursor:pointer" style-hover="background:var(--sunken);color:var(--text)">
+                        <span style="{{o.dot}}"></span>
+                        <span style="flex:1">{{o.label}}</span>
+                        <sc-if value="{{o.checked}}" hint-placeholder-val="{{false}}"><svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="var(--text)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6.4 4.8 9 10 3.4"></path></svg></sc-if>
+                      </div>
+                    </sc-for>
+                  </div>
+                </sc-if>
+              </div>
+              <div style="border-top:1px solid var(--border);padding-top:14px;color:var(--t3);font-size:11.5px;line-height:1.8">
+                Criada em {{det.createdTxt}}<br>Atualizada {{det.when}}
+              </div>
+            </aside>
+          </div>
+        </sc-if>
+      </div>
+    </sc-if>
+  </main>
+</div>
+<dc-import name="CommandPalette" hint-size="1px,1px"></dc-import>
+<sc-if value="{{modalOpen}}" hint-placeholder-val="{{false}}">
+  <div onMouseDown="{{fecharModal}}" style="position:fixed;inset:0;background:rgba(20,19,15,.38);z-index:200;display:flex;justify-content:center;align-items:flex-start">
+    <div onMouseDown="{{stop}}" style="width:min(620px,92vw);margin-top:11vh;background:var(--panel);border:1px solid var(--border);border-radius:14px;box-shadow:var(--sh);animation:fdpop .14s ease">
+      <div style="display:flex;align-items:center;gap:8px;padding:14px 18px 0">
+        <span style="font-size:11px;font-weight:600;letter-spacing:.5px;color:var(--t3);border:1px solid var(--border);border-radius:6px;padding:2px 8px">Vela Labs</span>
+        <span style="color:var(--t3);font-size:12px">›</span>
+        <span style="color:var(--t2);font-size:12.5px;font-weight:550">{{modalTitle}}</span>
+        <div style="flex:1"></div>
+        <button onClick="{{fecharModal}}" style="background:none;border:none;color:var(--t3);padding:4px;border-radius:6px;display:flex" style-hover="background:var(--sunken);color:var(--text)">
+          <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="m3 3 8 8M11 3l-8 8"></path></svg>
+        </button>
+      </div>
+      <div style="padding:10px 18px 4px">
+        <input value="{{mTitle}}" onChange="{{onMTitle}}" placeholder="Título da issue" style="width:100%;border:none;background:none;outline:none;font-size:17px;font-weight:600;padding:6px 0;color:var(--text)">
+        <textarea value="{{mDesc}}" onChange="{{onMDesc}}" placeholder="Descreva o contexto, o esperado e o observado…" style="width:100%;min-height:84px;border:none;background:none;outline:none;font-size:13.5px;resize:vertical;line-height:1.55;color:var(--t2);padding:2px 0"></textarea>
+        <sc-if value="{{mErr}}" hint-placeholder-val="{{false}}">
+          <div style="color:var(--red);font-size:12.5px;background:var(--redbg);border-radius:7px;padding:7px 11px;margin-bottom:8px">{{mErr}}</div>
+        </sc-if>
+        <div style="display:flex;gap:7px;flex-wrap:wrap;padding:4px 0 12px">
+          <sc-for list="{{pills}}" as="pl" hint-placeholder-count="6">
+            <span data-menu="1" style="position:relative">
+              <button onClick="{{pl.tog}}" style="display:inline-flex;align-items:center;gap:7px;border:1px solid var(--border);background:var(--bg);border-radius:7px;padding:5px 10px;font-size:12px;color:var(--t2)" style-hover="border-color:var(--border2);color:var(--text)">
+                <sc-if value="{{pl.valOuter}}" hint-placeholder-val="{{false}}"><span style="{{pl.valOuter}}"><span style="{{pl.valInner}}">{{pl.valGlyph}}</span></span></sc-if>
+                <sc-if value="{{pl.valIni}}" hint-placeholder-val="{{false}}"><span style="width:17px;height:17px;border-radius:50%;background:var(--sunken);border:1px solid var(--border2);color:var(--t2);font-size:7px;font-weight:650;display:inline-flex;align-items:center;justify-content:center">{{pl.valIni}}</span></sc-if>
+                {{pl.valText}}
+              </button>
+              <sc-if value="{{pl.open}}" hint-placeholder-val="{{false}}">
+                <div style="position:absolute;top:100%;left:0;margin-top:4px;min-width:212px;background:var(--panel);border:1px solid var(--border);border-radius:10px;box-shadow:var(--sh);padding:5px;z-index:70;animation:fdpop .12s ease;max-height:250px;overflow-y:auto">
+                  <sc-for list="{{pl.rows}}" as="o" hint-placeholder-count="4">
+                    <div onClick="{{o.on}}" style="display:flex;align-items:center;gap:9px;padding:7px 9px;border-radius:7px;font-size:12.5px;color:var(--t2);cursor:pointer" style-hover="background:var(--sunken);color:var(--text)">
+                      <sc-if value="{{o.outer}}" hint-placeholder-val="{{false}}"><span style="{{o.outer}}"><span style="{{o.inner}}">{{o.glyph}}</span></span></sc-if>
+                      <sc-if value="{{o.ini}}" hint-placeholder-val="{{false}}"><span style="width:20px;height:20px;border-radius:50%;background:var(--sunken);border:1px solid var(--border2);color:var(--t2);font-size:8px;font-weight:650;display:inline-flex;align-items:center;justify-content:center">{{o.ini}}</span></sc-if>
+                      <sc-if value="{{o.dot}}" hint-placeholder-val="{{false}}"><span style="{{o.dot}}"></span></sc-if>
+                      <span style="flex:1">{{o.label}}</span>
+                      <sc-if value="{{o.checked}}" hint-placeholder-val="{{false}}"><svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="var(--text)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6.4 4.8 9 10 3.4"></path></svg></sc-if>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-if>
+            </span>
+          </sc-for>
+          <input type="date" value="{{mDue}}" onChange="{{onMDue}}" style="border:1px solid var(--border);background:var(--bg);border-radius:7px;padding:4px 10px;font-size:12px;color:var(--t2);outline:none">
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;padding:12px 18px;border-top:1px solid var(--border)">
+        <span style="color:var(--t3);font-size:11.5px">Criar uma issue leva segundos — detalhes podem vir depois.</span>
+        <div style="flex:1"></div>
+        <button onClick="{{fecharModal}}" style="background:none;border:none;color:var(--t2);font-size:13px;padding:7px 10px;border-radius:7px" style-hover="background:var(--sunken)">Cancelar</button>
+        <button onClick="{{salvarModal}}" style="background:var(--text);color:var(--bg);border:none;border-radius:8px;padding:8px 18px;font-size:13px;font-weight:560" style-hover="opacity:.88">{{modalCta}}</button>
+      </div>
+    </div>
+  </div>
+</sc-if>
+<sc-if value="{{hasToasts}}" hint-placeholder-val="{{false}}">
+  <div style="position:fixed;bottom:24px;right:24px;z-index:400;display:flex;flex-direction:column;gap:8px">
+    <sc-for list="{{toasts}}" as="t" hint-placeholder-count="1">
+      <div style="background:var(--panel);border:1px solid var(--border);border-radius:10px;box-shadow:var(--sh);padding:10px 14px;font-size:12.5px;animation:fdup .18s ease">{{t.m}}</div>
+    </sc-for>
+  </div>
+</sc-if>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;estadoDados&quot;: {&quot;editor&quot;: &quot;enum&quot;, &quot;options&quot;: [&quot;auto&quot;, &quot;carregando&quot;, &quot;vazio&quot;, &quot;erro&quot;], &quot;default&quot;: &quot;auto&quot;, &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;Demonstração de estados&quot;}}">
+class Component extends DCLogic {
+  state = { ok: false, issues: [], screen: 'inicio', issueId: null, phase: 'carregando', q: '', fs: [], fp: [], fa: [], fl: [], sort: 'updated', page: 1, menu: null, modal: null, toasts: [], comment: '', dragId: null, over: null };
+  async componentDidMount() {
+    const db = this.db = await import('./data.js');
+    this.setState({ ok: true, issues: db.ISSUES.map(i => ({ ...i })) });
+    this.applyHash();
+    this.onHash = () => this.applyHash();
+    window.addEventListener('hashchange', this.onHash);
+    this.onDoc = e => { if (this.state.menu && !e.target.closest('[data-menu]')) this.setState({ menu: null }); };
+    document.addEventListener('mousedown', this.onDoc);
+    this.onKey = e => {
+      const tag = (e.target.tagName || '').toLowerCase();
+      if (e.key === 'Escape' && this.state.modal) { this.setState({ modal: null }); return; }
+      if (tag === 'input' || tag === 'textarea' || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key === 'c' && !this.state.modal) { e.preventDefault(); this.abrirNova(); }
+    };
+    document.addEventListener('keydown', this.onKey);
+    this.load();
+  }
+  componentWillUnmount() { window.removeEventListener('hashchange', this.onHash); document.removeEventListener('mousedown', this.onDoc); document.removeEventListener('keydown', this.onKey); }
+  load() { this.setState({ phase: 'carregando' }); clearTimeout(this._t); this._t = setTimeout(() => this.setState({ phase: 'pronto' }), 750); }
+  applyHash() {
+    let h = decodeURIComponent((location.hash || '').slice(1)) || 'inicio';
+    if (h === 'nova') { this.setState({ screen: 'issues', issueId: null }); this.abrirNova(); return; }
+    if (h.indexOf('issue/') === 0) { this.setState({ screen: 'detalhe', issueId: h.slice(6), comment: '', menu: null }); return; }
+    if (['inicio', 'issues', 'board'].indexOf(h) < 0) h = 'inicio';
+    this.setState({ screen: h, issueId: null, menu: null });
+  }
+  ph() { const p = this.props.estadoDados; return (p && p !== 'auto') ? p : this.state.phase; }
+  eff() { return this.ph() === 'vazio' ? [] : this.state.issues; }
+  toast(m) { const t = { id: Date.now() + Math.random(), m }; this.setState(s => ({ toasts: [...s.toasts, t] })); setTimeout(() => this.setState(s => ({ toasts: s.toasts.filter(x => x.id !== t.id) })), 3200); }
+  tog(k) { this.setState(s => ({ menu: s.menu === k ? null : k })); }
+  abrirNova() { this.setState({ menu: null, modal: { mode: 'nova', f: { title: '', desc: '', status: 'todo', priority: 'none', assignee: null, project: null, labels: [], estimate: null, due: '' } } }); }
+  abrirEdicao(i) { this.setState({ menu: null, modal: { mode: i.id, f: { title: i.title, desc: i.d || '', status: i.status, priority: i.priority, assignee: i.assignee, project: i.project, labels: [...(i.labels || [])], estimate: i.estimate || null, due: i.due || '' } } }); }
+  setF(k, v) { this.setState(s => ({ modal: { ...s.modal, err: null, f: { ...s.modal.f, [k]: v } } })); }
+  salvarModal() {
+    const { modal, issues } = this.state, f = modal.f;
+    if (!f.title.trim()) { this.setState(s => ({ modal: { ...s.modal, err: 'Dê um título à issue antes de salvar.' } })); return; }
+    const now = new Date().toISOString();
+    if (modal.mode === 'nova') {
+      const num = issues.reduce((m, i) => Math.max(m, parseInt(i.id.slice(3), 10)), 0) + 1;
+      const ni = { id: 'FD-' + num, title: f.title.trim(), d: f.desc.trim() || 'Sem descrição por enquanto.', status: f.status, priority: f.priority, assignee: f.assignee, project: f.project, labels: f.labels, estimate: f.estimate, due: f.due || null, created: now, updated: now, activity: [{ who: 'u1', what: 'criou a issue', when: now }] };
+      this.setState(s => ({ issues: [ni, ...s.issues], modal: null }));
+      this.toast('FD-' + num + ' criada');
+      if (location.hash === '#nova') history.replaceState(null, '', '#issues');
+    } else {
+      this.setState(s => ({ issues: s.issues.map(i => i.id === modal.mode ? { ...i, title: f.title.trim(), d: f.desc, status: f.status, priority: f.priority, assignee: f.assignee, project: f.project, labels: f.labels, estimate: f.estimate, due: f.due || null, updated: now } : i), modal: null }));
+      this.toast(modal.mode + ' atualizada');
+    }
+  }
+  patch(id, p, what) {
+    const now = new Date().toISOString();
+    this.setState(s => ({ menu: null, issues: s.issues.map(i => i.id === id ? { ...i, ...p, updated: now, activity: [...(i.activity || []), { who: 'u1', what, when: now }] } : i) }));
+  }
+  opt(m, checked, on) { return { outer: m.outer, inner: m.inner, glyph: m.glyph, label: m.label, checked, on }; }
+  renderVals() {
+    const db = this.db;
+    if (!db) return { active: 'inicio', crumb: 'Início', sInicio: true, ldg: true, skels: [1, 2, 3, 4, 5, 6, 7, 8] };
+    const S = this.state, ph = this.ph(), issues = this.eff();
+    const ldg = ph === 'carregando', err = ph === 'erro', rdy = !ldg && !err;
+    const H = i => db.hydrate(i);
+    const go = id => () => { location.hash = 'issue/' + id; };
+    const chips = r => r.labs.slice(0, 2).map(l => ({ name: l.name, dot: { width: '7px', height: '7px', borderRadius: '50%', background: l.color, flex: 'none', display: 'inline-block' } }));
+    const active = S.screen === 'detalhe' ? 'issues' : S.screen;
+    const crumb = S.screen === 'inicio' ? 'Início' : S.screen === 'board' ? 'Board' : S.screen === 'detalhe' ? (S.issueId || '') : 'Issues';
+    const out = {
+      active, crumb, crumbLink: S.screen === 'detalhe',
+      sInicio: S.screen === 'inicio', sIssues: S.screen === 'issues', sBoard: S.screen === 'board', sDetalhe: S.screen === 'detalhe',
+      ldg, err, rdy, skels: db.SKELS,
+      retry: () => this.load(),
+      openPalette: () => window.dispatchEvent(new Event('fd:palette')),
+      abrirNova: () => this.abrirNova(),
+      irBoard: () => { location.hash = 'board'; }, irLista: () => { location.hash = 'issues'; },
+      stop: e => e.stopPropagation(),
+      toasts: S.toasts, hasToasts: S.toasts.length > 0
+    };
+    // ---- Início
+    if (S.screen === 'inicio') {
+      const my = issues.filter(i => i.assignee === 'u1' && ['backlog', 'todo', 'in_progress'].includes(i.status)).map(H).sort((a, b) => a.pr.order - b.pr.order).slice(0, 6).map(r => ({ ...r, go: go(r.id) }));
+      const nProg = my.filter(i => i.status === 'in_progress').length, nFila = my.length - nProg;
+      const ativos = issues.length === 0 ? [] : db.PROJECTS.filter(p => p.status === 'ativo').slice(0, 4).map(p => {
+        const rel = issues.filter(i => i.project === p.id), done = rel.filter(i => i.status === 'done').length;
+        return { name: p.name, meta: done + ' de ' + rel.length + ' issues concluídas', pct: (rel.length ? Math.round(done / rel.length * 100) : 0) + '%', target: db.fmtDate(p.target), lead: db.uById(p.lead).ini, href: 'Projetos e Labels.dc.html#projeto/' + p.id };
+      });
+      const act = issues.length === 0 ? [] : db.ACTIVITY.map(a => { const iss = db.ISSUES.find(i => i.id === a.issue); return { ini: db.uById(a.who).ini, name: db.uById(a.who).name, what: a.what, issue: a.issue, title: iss ? iss.title : '', when: db.timeAgo(a.when), go: go(a.issue) }; });
+      Object.assign(out, { saud: db.saudacao(), hoje: db.hojeLongo(), resumo: nProg + ' em andamento e ' + nFila + ' na fila no seu radar.', myIssues: my, myEmpty: my.length === 0, projRows: ativos, projEmpty: ativos.length === 0, act, actEmpty: act.length === 0 });
+    }
+    // ---- Issues (lista)
+    if (S.screen === 'issues') {
+      const nq = S.q.trim().toLowerCase();
+      let list = issues;
+      if (nq) list = list.filter(i => (i.id + ' ' + i.title).toLowerCase().includes(nq));
+      if (S.fs.length) list = list.filter(i => S.fs.includes(i.status));
+      if (S.fp.length) list = list.filter(i => S.fp.includes(i.priority));
+      if (S.fa.length) list = list.filter(i => S.fa.includes(i.assignee));
+      if (S.fl.length) list = list.filter(i => (i.labels || []).some(l => S.fl.includes(l)));
+      const sorters = { updated: (a, b) => b.updated.localeCompare(a.updated), created: (a, b) => b.created.localeCompare(a.created), prio: (a, b) => db.PRIORITY[a.priority].order - db.PRIORITY[b.priority].order, status: (a, b) => db.STATUS[a.status].order - db.STATUS[b.status].order };
+      list = [...list].sort(sorters[S.sort] || sorters.updated);
+      const PSZ = 12, total = list.length, pages = Math.max(1, Math.ceil(total / PSZ)), page = Math.min(S.page, pages);
+      const rows = list.slice((page - 1) * PSZ, page * PSZ).map(H).map(r => ({ ...r, go: go(r.id), chips: chips(r), ini: r.user ? r.user.ini : '–', userName: r.user ? r.user.name : 'Sem responsável' }));
+      const anyFilter = !!(nq || S.fs.length || S.fp.length || S.fa.length || S.fl.length);
+      const users = db.USERS.filter(u => db.ISSUES.some(i => i.assignee === u.id));
+      const togArr = (key, id) => () => { const cur = this.state[key]; this.setState({ [key]: cur.includes(id) ? cur.filter(x => x !== id) : [...cur, id], page: 1 }); };
+      const mkF = (key, label, rows2) => ({ key, label, n: S[key].length, open: S.menu === 'f' + key, tog: () => this.tog('f' + key), rows: rows2, chip: { display: 'inline-flex', alignItems: 'center', gap: '7px', border: '1px ' + (S[key].length ? 'solid var(--border2)' : 'dashed var(--border2)'), background: S[key].length ? 'var(--panel)' : 'transparent', borderRadius: '999px', padding: '5px 11px', fontSize: '12px', color: S[key].length ? 'var(--text)' : 'var(--t3)', fontWeight: S[key].length ? 550 : 450 } });
+      const filters = [
+        mkF('fs', 'Status', db.STATUS_LIST.map(k => ({ ...this.opt(db.STATUS[k], S.fs.includes(k)), on: togArr('fs', k) }))),
+        mkF('fp', 'Prioridade', db.PRIORITY_LIST.map(k => ({ ...this.opt(db.PRIORITY[k], S.fp.includes(k)), on: togArr('fp', k) }))),
+        mkF('fa', 'Responsável', users.map(u => ({ ini: u.ini, label: u.name, checked: S.fa.includes(u.id), on: togArr('fa', u.id) }))),
+        mkF('fl', 'Label', db.LABELS.map(l => ({ dot: { width: '8px', height: '8px', borderRadius: '50%', background: l.color, flex: 'none' }, label: l.name, checked: S.fl.includes(l.id), on: togArr('fl', l.id) })))
+      ];
+      const sorts = [['updated', 'Atualização recente'], ['created', 'Criação recente'], ['prio', 'Prioridade'], ['status', 'Status']];
+      Object.assign(out, {
+        totalTxt: total + (total === 1 ? ' issue' : ' issues'), q: S.q, onQ: e => this.setState({ q: e.target.value, page: 1 }),
+        filters, anyFilter, limpar: () => this.setState({ q: '', fs: [], fp: [], fa: [], fl: [], page: 1, menu: null }),
+        sortLabel: (sorts.find(s2 => s2[0] === S.sort) || sorts[0])[1], sortOpen: S.menu === 'sort', sortTog: () => this.tog('sort'),
+        sortRows: sorts.map(([k, l]) => ({ label: l, checked: S.sort === k, on: () => this.setState({ sort: k, menu: null }) })),
+        rows: rdy ? rows : [], emptyGlobal: rdy && total === 0 && !anyFilter, emptyFiltro: rdy && total === 0 && anyFilter,
+        hasPager: rdy && total > PSZ, pagerTxt: ((page - 1) * PSZ + 1) + '–' + Math.min(page * PSZ, total) + ' de ' + total,
+        noPrev: page <= 1, noNext: page >= pages,
+        prevPg: () => this.setState({ page: Math.max(1, page - 1) }), nextPg: () => this.setState({ page: Math.min(pages, page + 1) }),
+        prevStyle: { border: '1px solid var(--border)', background: 'var(--panel)', borderRadius: '7px', width: '26px', height: '26px', color: page <= 1 ? 'var(--border2)' : 'var(--t2)', cursor: page <= 1 ? 'default' : 'pointer' },
+        nextStyle: { border: '1px solid var(--border)', background: 'var(--panel)', borderRadius: '7px', width: '26px', height: '26px', color: page >= pages ? 'var(--border2)' : 'var(--t2)', cursor: page >= pages ? 'default' : 'pointer' }
+      });
+      if (!rdy) { out.rows = []; out.hasPager = false; }
+    }
+    // ---- Board
+    if (S.screen === 'board') {
+      out.cols = db.STATUS_LIST.map(k => {
+        const m = db.STATUS[k];
+        const cards = issues.filter(i => i.status === k).map(H).map(r => ({ ...r, go: go(r.id), chips: chips(r).map(c => ({ ...c, dot: { ...c.dot, width: '8px', height: '8px' } })), ini: r.user ? r.user.ini : '–', userName: r.user ? r.user.name : 'Sem responsável', drag: e => { this.setState({ dragId: r.id }); e.dataTransfer.effectAllowed = 'move'; } }));
+        return {
+          key: k, label: m.label, n: cards.length, cards, empty: cards.length === 0,
+          outer: m.outer, inner: m.inner, glyph: m.glyph,
+          style: { width: '268px', flex: 'none', display: 'flex', flexDirection: 'column', borderRadius: '12px', background: S.over === k ? 'var(--sunken)' : 'transparent', border: '1px solid ' + (S.over === k ? 'var(--border2)' : 'transparent'), transition: 'background .12s', height: '100%' },
+          over: e => { e.preventDefault(); if (S.over !== k) this.setState({ over: k }); },
+          leave: () => { if (this.state.over === k) this.setState({ over: null }); },
+          drop: e => { e.preventDefault(); const id = this.state.dragId; if (id) { this.patch(id, { status: k }, 'moveu para ' + m.label); this.toast(id + ' → ' + m.label); } this.setState({ dragId: null, over: null }); }
+        };
+      });
+    }
+    // ---- Detalhe
+    if (S.screen === 'detalhe') {
+      const raw = issues.find(i => i.id === S.issueId);
+      out.notFound = !raw; out.found = !!raw;
+      if (raw) {
+        const r = H(raw);
+        const parseSegs = txt => {
+          const segs = []; let rest = txt;
+          const re = /@([A-Za-zÀ-ÿ]+(?: [A-Za-zÀ-ÿ]+)?)/;
+          while (rest) {
+            const m2 = rest.match(re);
+            if (!m2) { segs.push({ plain: true, x: rest }); break; }
+            const cand = m2[1];
+            const user = db.USERS.find(u => cand.indexOf(u.name) === 0) || db.USERS.find(u => u.name.split(' ')[0] === cand.split(' ')[0]);
+            if (m2.index > 0) segs.push({ plain: true, x: rest.slice(0, m2.index) });
+            if (user) { segs.push({ men: true, x: user.name }); rest = rest.slice(m2.index + 1 + user.name.length); }
+            else { segs.push({ plain: true, x: '@' + cand }); rest = rest.slice(m2.index + 1 + cand.length); }
+          }
+          return segs;
+        };
+        const coms = (raw.comments || []).map(c => ({ ini: db.uById(c.who).ini, name: db.uById(c.who).name, when: db.timeAgo(c.when), segs: parseSegs(c.text) }));
+        const acts = (raw.activity || []).map(ev => ({ name: db.uById(ev.who).name, what: ev.what, when: db.timeAgo(ev.when) }));
+        out.det = {
+          id: r.id, title: r.title, when: r.when, createdTxt: db.fmtDate(r.created),
+          blocks: r.descBlocks.map(b => ({ x: b.x, isP: b.t === 'p', isH: b.t === 'h', isLi: b.t === 'li', isCode: b.t === 'code' })),
+          hasAtt: (raw.attachments || []).length > 0, atts: raw.attachments || [],
+          acts, coms, nCom: coms.length ? '· ' + coms.length : '',
+          chips: r.labs.map(l => ({ name: l.name, dot: { width: '7px', height: '7px', borderRadius: '50%', background: l.color, flex: 'none', display: 'inline-block' } }))
+        };
+        out.editarDet = () => this.abrirEdicao(raw);
+        const mkRail = (key, label, val, rows2) => ({ label, open: S.menu === key, tog: () => this.tog(key), rows: rows2, ...val });
+        const quick = n => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
+        out.rail = [
+          mkRail('r-st', 'Status', { valOuter: r.st.outer, valInner: r.st.inner, valGlyph: r.st.glyph, valText: r.st.label }, db.STATUS_LIST.map(k => ({ ...this.opt(db.STATUS[k], raw.status === k), on: () => this.patch(raw.id, { status: k }, 'moveu para ' + db.STATUS[k].label) }))),
+          mkRail('r-pr', 'Prioridade', { valOuter: r.pr.outer, valInner: r.pr.inner, valGlyph: r.pr.glyph, valText: r.pr.label }, db.PRIORITY_LIST.map(k => ({ ...this.opt(db.PRIORITY[k], raw.priority === k), on: () => this.patch(raw.id, { priority: k }, 'alterou a prioridade para ' + db.PRIORITY[k].label) }))),
+          mkRail('r-us', 'Responsável', { valIni: r.user ? r.user.ini : '–', valText: r.user ? r.user.name : 'Sem responsável' }, db.USERS.slice(0, 8).map(u => ({ ini: u.ini, label: u.name, checked: raw.assignee === u.id, on: () => this.patch(raw.id, { assignee: u.id }, 'atribuiu a ' + u.name) }))),
+          mkRail('r-pj', 'Projeto', { valText: r.proj ? r.proj.name : 'Sem projeto' }, db.PROJECTS.filter(p => p.status === 'ativo').map(p => ({ dot: { width: '8px', height: '8px', borderRadius: '2.5px', background: 'var(--t3)', flex: 'none' }, label: p.name, checked: raw.project === p.id, on: () => this.patch(raw.id, { project: p.id }, 'moveu para o projeto ' + p.name) }))),
+          mkRail('r-es', 'Estimativa', { valText: r.estTxt }, db.ESTIMATES.map(n => ({ label: n + ' pts', checked: raw.estimate === n, on: () => this.patch(raw.id, { estimate: n }, 'estimou em ' + n + ' pts') }))),
+          mkRail('r-du', 'Vencimento', { valText: r.dueTxt }, [['Sem vencimento', null], ['Amanhã', quick(1)], ['Em uma semana', quick(7)], ['Em duas semanas', quick(14)]].map(([l, v]) => ({ label: l, checked: raw.due === v, on: () => this.patch(raw.id, { due: v }, v ? 'definiu o vencimento para ' + db.fmtDate(v) : 'removeu o vencimento') })))
+        ];
+        out.labOpen = S.menu === 'r-lb'; out.labTog = () => this.tog('r-lb');
+        out.labRows = db.LABELS.map(l => ({ dot: { width: '8px', height: '8px', borderRadius: '50%', background: l.color, flex: 'none' }, label: l.name, checked: (raw.labels || []).includes(l.id), on: () => { const cur = raw.labels || []; this.patch(raw.id, { labels: cur.includes(l.id) ? cur.filter(x => x !== l.id) : [...cur, l.id] }, 'atualizou as labels'); this.setState({ menu: 'r-lb' }); } }));
+        // composer
+        const m3 = S.comment.match(/@([A-Za-zÀ-ÿ]*)$/);
+        const sugs = m3 ? db.USERS.filter(u => u.name.toLowerCase().indexOf(m3[1].toLowerCase()) === 0).slice(0, 4) : [];
+        out.comment = S.comment;
+        out.onComment = e => this.setState({ comment: e.target.value });
+        out.menOpen = sugs.length > 0; out.menSugs = sugs.map(u => ({ ini: u.ini, name: u.name, pick: () => this.setState({ comment: S.comment.replace(/@[A-Za-zÀ-ÿ]*$/, '@' + u.name + ' ') }) }));
+        out.enviarComment = () => {
+          if (!S.comment.trim()) return;
+          const now = new Date().toISOString();
+          this.setState(s => ({ comment: '', issues: s.issues.map(i => i.id === raw.id ? { ...i, comments: [...(i.comments || []), { who: 'u1', when: now, text: S.comment.trim() }], activity: [...(i.activity || []), { who: 'u1', what: 'comentou', when: now }], updated: now } : i) }));
+        };
+      }
+    }
+    // ---- Modal
+    const M = S.modal;
+    out.modalOpen = !!M;
+    if (M) {
+      const f = M.f;
+      const pv = (key, label, val, rows2) => ({ open: S.menu === key, tog: () => this.tog(key), rows: rows2, ...val });
+      out.modalTitle = M.mode === 'nova' ? 'Nova issue' : 'Editar ' + M.mode;
+      out.modalCta = M.mode === 'nova' ? 'Criar issue' : 'Salvar alterações';
+      out.mTitle = f.title; out.onMTitle = e => this.setF('title', e.target.value);
+      out.mDesc = f.desc; out.onMDesc = e => this.setF('desc', e.target.value);
+      out.mDue = f.due; out.onMDue = e => this.setF('due', e.target.value);
+      out.mErr = M.err || false;
+      out.fecharModal = () => this.setState({ modal: null, menu: null });
+      out.salvarModal = () => this.salvarModal();
+      const stM = this.db.STATUS[f.status], prM = this.db.PRIORITY[f.priority];
+      const usr = f.assignee ? this.db.uById(f.assignee) : null, prj = f.project ? this.db.pById(f.project) : null;
+      out.pills = [
+        pv('m-st', 'Status', { valOuter: stM.outer, valInner: stM.inner, valGlyph: stM.glyph, valText: stM.label }, db.STATUS_LIST.map(k => ({ ...this.opt(db.STATUS[k], f.status === k), on: () => { this.setF('status', k); this.tog('m-st'); } }))),
+        pv('m-pr', 'Prioridade', { valOuter: prM.outer, valInner: prM.inner, valGlyph: prM.glyph, valText: prM.label }, db.PRIORITY_LIST.map(k => ({ ...this.opt(db.PRIORITY[k], f.priority === k), on: () => { this.setF('priority', k); this.tog('m-pr'); } }))),
+        pv('m-us', 'Responsável', { valIni: usr ? usr.ini : '–', valText: usr ? usr.name.split(' ')[0] : 'Responsável' }, db.USERS.slice(0, 8).map(u => ({ ini: u.ini, label: u.name, checked: f.assignee === u.id, on: () => { this.setF('assignee', u.id); this.tog('m-us'); } }))),
+        pv('m-pj', 'Projeto', { valText: prj ? prj.name : 'Projeto' }, db.PROJECTS.filter(p => p.status === 'ativo').map(p => ({ dot: { width: '8px', height: '8px', borderRadius: '2.5px', background: 'var(--t3)', flex: 'none' }, label: p.name, checked: f.project === p.id, on: () => { this.setF('project', p.id); this.tog('m-pj'); } }))),
+        pv('m-lb', 'Labels', { valText: f.labels.length ? f.labels.length + (f.labels.length === 1 ? ' label' : ' labels') : 'Labels' }, db.LABELS.map(l => ({ dot: { width: '8px', height: '8px', borderRadius: '50%', background: l.color, flex: 'none' }, label: l.name, checked: f.labels.includes(l.id), on: () => this.setF('labels', f.labels.includes(l.id) ? f.labels.filter(x => x !== l.id) : [...f.labels, l.id]) }))),
+        pv('m-es', 'Estimativa', { valText: f.estimate ? f.estimate + ' pts' : 'Estimativa' }, db.ESTIMATES.map(n => ({ label: n + ' pts', checked: f.estimate === n, on: () => { this.setF('estimate', n); this.tog('m-es'); } })))
+      ];
+    }
+    return out;
+  }
+}
+</script>
+</body>
+</html>

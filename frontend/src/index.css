@@ -42,6 +42,14 @@
   --color-background: var(--background);
   --color-brand-ink: var(--brand-ink);
   --color-brand-paper: var(--brand-paper);
+  --color-panel: var(--panel);
+  --color-sunken: var(--sunken);
+  --color-t2: var(--t2);
+  --color-t3: var(--t3);
+  --color-border2: var(--border2);
+  --color-redbg: var(--redbg);
+  --color-amber: var(--amber);
+  --color-green: var(--green);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -107,6 +115,22 @@
   --duration-fast: 100ms;
   --duration-base: 150ms;
   --duration-slow: 250ms;
+
+  /* Milestone 7 (redesign, ADR-044) — tokens finos do handoff sem equivalente na
+     rampa atual: hierarquia de texto em 3 níveis (--t2/--t3, além de --foreground),
+     tom de painel elevado distinto de --card, tom "sunken" (hover/skeleton/trilha),
+     borda de hover/foco, fundo tingido de erro, e os hexadecimais literais de
+     status/prioridade especificados pelo design (não derivados da rampa ink/paper —
+     ver design-system/colors.md). --bg/--text/--red do handoff mapeiam para
+     --background/--foreground/--destructive já existentes, não duplicados aqui. */
+  --panel: #fffdf8;
+  --sunken: #f1ede1;
+  --t2: #575246;
+  --t3: #78715f;
+  --border2: #d5cebc;
+  --redbg: #f8ecea;
+  --amber: #8f6a11;
+  --green: #50713a;
 }
 
 .dark {
@@ -141,6 +165,16 @@
   --sidebar-accent-foreground: oklch(0.98 0.006 90);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.58 0.015 92);
+
+  /* Milestone 7 (redesign, ADR-044) — ver nota equivalente em :root. */
+  --panel: #1c1a14;
+  --sunken: #262319;
+  --t2: #b8b1a0;
+  --t3: #918a78;
+  --border2: #3c382a;
+  --redbg: #2c1613;
+  --amber: #d9a73c;
+  --green: #96b471;
 }
 
 @layer base {

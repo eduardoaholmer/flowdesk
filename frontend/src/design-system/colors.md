@@ -51,3 +51,29 @@ inteiramente próprio; nenhuma feature de gráfico existe ainda). Retintados par
 mesma rampa por consistência/baixo custo (só CSS custom properties, não uma
 dependência), não removidos — se um consumidor real aparecer (`ui/sidebar.tsx`
 shadcn, um gráfico futuro), já nascem no tom certo.
+
+## Tokens finos do Milestone 7 (redesign, ADR-044)
+
+O handoff de design em `docs/design-handoff/2026-07-20-redesign-gestor/` (README +
+protótipos `.dc.html`) especifica uma paleta mais fina do que a rampa semântica atual
+cobre — oito tokens novos, valores hexadecimais literais do handoff (não derivados
+matematicamente da rampa ink/paper, ao contrário de `background`/`foreground`/etc.):
+
+| Token       | Uso pretendido                              | Claro     | Escuro    |
+| ----------- | ------------------------------------------- | --------- | --------- |
+| `--panel`   | cards/modais/popovers, distinto de `--card` | `#FFFDF8` | `#1C1A14` |
+| `--sunken`  | hover, skeleton, trilha de progresso        | `#F1EDE1` | `#262319` |
+| `--t2`      | texto secundário (2º nível da hierarquia)   | `#575246` | `#B8B1A0` |
+| `--t3`      | texto terciário/placeholder (3º nível)      | `#78715F` | `#918A78` |
+| `--border2` | borda em hover/foco, inputs                 | `#D5CEBC` | `#3C382A` |
+| `--redbg`   | fundo de alerta de erro                     | `#F8ECEA` | `#2C1613` |
+| `--amber`   | status "Em andamento"/"Em revisão"          | `#8F6A11` | `#D9A73C` |
+| `--green`   | status "Concluída"                          | `#50713A` | `#96B471` |
+
+O handoff também define `--bg`/`--text`/`--red`, que **não** viraram tokens novos —
+mapeiam diretamente para `--background`/`--foreground`/`--destructive` já existentes
+(evita duplicar o mesmo valor sob dois nomes). `--panel`/`--sunken`/`--redbg` ainda
+não têm consumidor real (primeiro uso é `IssueStatusIcon`/`IssuePriorityIcon` para
+`--amber`/`--green`/`--t2`/`--t3`/`--border2` — as sub-sprints seguintes de M7
+adotam os demais ao redesenhar cada tela) — mesmo precedente de `chart-*`/`sidebar-*`
+acima: preparados de uma vez por baixo custo, adotados incrementalmente.

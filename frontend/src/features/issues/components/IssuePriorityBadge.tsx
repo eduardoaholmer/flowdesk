@@ -1,29 +1,12 @@
-import { AlertTriangle, ChevronDown, ChevronsDown, ChevronsUp, Minus } from "lucide-react";
-
+import { ISSUE_PRIORITY_LABELS } from "../constants";
 import type { IssuePriority } from "../types";
-
-const LABELS: Record<IssuePriority, string> = {
-  NO_PRIORITY: "No priority",
-  LOW: "Low",
-  MEDIUM: "Medium",
-  HIGH: "High",
-  URGENT: "Urgent",
-};
-
-const ICONS: Record<IssuePriority, React.ComponentType<{ className?: string }>> = {
-  NO_PRIORITY: Minus,
-  LOW: ChevronsDown,
-  MEDIUM: ChevronDown,
-  HIGH: ChevronsUp,
-  URGENT: AlertTriangle,
-};
+import { IssuePriorityIcon } from "./IssuePriorityIcon";
 
 export function IssuePriorityBadge({ priority }: { priority: IssuePriority }) {
-  const Icon = ICONS[priority];
   return (
     <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
-      <Icon className="size-3.5" />
-      {LABELS[priority]}
+      <IssuePriorityIcon priority={priority} />
+      {ISSUE_PRIORITY_LABELS[priority]}
     </span>
   );
 }

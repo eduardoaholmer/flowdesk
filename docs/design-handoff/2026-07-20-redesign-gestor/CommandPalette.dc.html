@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300..800&amp;family=Geist:wght@300..800&amp;display=swap" rel="stylesheet">
+<script>document.documentElement.dataset.theme=localStorage.getItem('fd-theme')||'light'</script>
+<style>
+:root{--bg:#FAF8F3;--panel:#FFFDF8;--sunken:#F1EDE1;--text:#14130F;--t2:#575246;--t3:#78715F;--border:#E7E1D2;--border2:#D5CEBC;--red:#C0271C;--redbg:#F8ECEA;--amber:#8F6A11;--green:#50713A;--sh:0 12px 32px rgba(20,19,15,.10)}
+[data-theme="dark"]{--bg:#14130F;--panel:#1C1A14;--sunken:#262319;--text:#FAF8F3;--t2:#B8B1A0;--t3:#918A78;--border:#2B2820;--border2:#3C382A;--red:#F0685E;--redbg:#2C1613;--amber:#D9A73C;--green:#96B471;--sh:0 12px 32px rgba(0,0,0,.5)}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font:400 13.5px/1.45 'Geist',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+*{box-sizing:border-box}a{color:var(--text);text-decoration:none}a:hover{color:var(--t2)}
+input,textarea,button,select{font-family:inherit;color:inherit}button{cursor:pointer}::selection{background:var(--border2)}
+input::placeholder{color:var(--t3)}
+@keyframes fdsh{0%,100%{opacity:.4}50%{opacity:1}}
+@keyframes fdpop{from{opacity:0;transform:translateY(6px) scale(.985)}to{opacity:1;transform:none}}
+@keyframes fdup{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+</style>
+</helmet>
+<span>
+  <sc-if value="{{open}}" hint-placeholder-val="{{false}}">
+    <div onMouseDown="{{close}}" style="position:fixed;inset:0;background:rgba(20,19,15,.38);z-index:300;display:flex;justify-content:center;align-items:flex-start">
+      <div onMouseDown="{{stop}}" style="width:min(640px,92vw);margin-top:13vh;background:var(--panel);border:1px solid var(--border);border-radius:14px;box-shadow:var(--sh);overflow:hidden;animation:fdpop .14s ease">
+        <div style="display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid var(--border)">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="var(--t3)" stroke-width="1.5" stroke-linecap="round" style="flex:none"><circle cx="7" cy="7" r="4.6"></circle><path d="m10.6 10.6 3 3"></path></svg>
+          <input ref="{{setInp}}" value="{{q}}" onChange="{{onQ}}" placeholder="{{placeholder}}" style="flex:1;background:none;border:none;outline:none;font-size:14.5px;color:var(--text)">
+          <span style="border:1px solid var(--border);border-radius:5px;padding:1px 6px;font-size:10.5px;color:var(--t3);flex:none">esc</span>
+        </div>
+        <div style="max-height:388px;overflow-y:auto;padding:6px">
+          <sc-if value="{{loading}}" hint-placeholder-val="{{false}}">
+            <div style="padding:4px">
+              <sc-for list="{{skels}}" as="s" hint-placeholder-count="3">
+                <div style="display:flex;align-items:center;gap:10px;padding:9px 10px">
+                  <span style="width:15px;height:15px;border-radius:5px;background:var(--sunken);animation:fdsh 1.3s ease-in-out infinite"></span>
+                  <span style="height:11px;border-radius:4px;background:var(--sunken);animation:fdsh 1.3s ease-in-out infinite;flex:1;max-width:320px"></span>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+          <sc-if value="{{noResults}}" hint-placeholder-val="{{false}}">
+            <div style="padding:28px 16px;text-align:center;color:var(--t3);font-size:13px">Nada encontrado para “{{q}}”.<br>Tente pelo identificador, ex.: FD-12.</div>
+          </sc-if>
+          <sc-if value="{{showGroups}}" hint-placeholder-val="{{false}}">
+            <sc-for list="{{groups}}" as="g" hint-placeholder-count="2">
+              <div style="padding:2px 0 6px">
+                <div style="font-size:10.5px;letter-spacing:.8px;text-transform:uppercase;color:var(--t3);font-weight:570;padding:7px 10px 3px">{{g.title}}</div>
+                <sc-for list="{{g.items}}" as="it" hint-placeholder-count="3">
+                  <div onClick="{{it.run}}" onMouseEnter="{{it.hov}}" style="{{it.style}}">
+                    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" style="flex:none;opacity:.75"><path d="{{it.d}}"></path></svg>
+                    <span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{it.label}}</span>
+                    <span style="color:var(--t3);font-size:11px;flex:none">{{it.meta}}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-for>
+          </sc-if>
+        </div>
+        <div style="display:flex;gap:14px;padding:9px 16px;border-top:1px solid var(--border);color:var(--t3);font-size:11px">
+          <span>↑↓ navegar</span><span>↵ abrir</span><span>esc fechar</span>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+  <sc-if value="{{toast}}" hint-placeholder-val="{{false}}">
+    <div style="position:fixed;bottom:24px;right:24px;z-index:400;background:var(--panel);border:1px solid var(--border);border-radius:10px;box-shadow:var(--sh);padding:10px 14px;font-size:12.5px;animation:fdup .18s ease">{{toast}}</div>
+  </sc-if>
+</span>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;: {&quot;width&quot;: &quot;900px&quot;, &quot;height&quot;: &quot;620px&quot;}}">
+class Component extends DCLogic {
+  state = { open: false, q: '', mode: 'root', loading: false, groups: [], sel: 0, toast: '' };
+  async componentDidMount() {
+    this.db = await import('./data.js');
+    this.onKey = e => {
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) { e.preventDefault(); this.state.open ? this.close() : this.open(); return; }
+      if (!this.state.open) return;
+      if (e.key === 'Escape') { e.preventDefault(); this.close(); }
+      else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        const n = this.flat().length; if (!n) return;
+        this.setState({ sel: (this.state.sel + (e.key === 'ArrowDown' ? 1 : n - 1)) % n });
+      } else if (e.key === 'Enter') { const it = this.flat()[this.state.sel]; if (it) this.run(it); }
+    };
+    document.addEventListener('keydown', this.onKey);
+    this.onOpen = () => this.open();
+    window.addEventListener('fd:palette', this.onOpen);
+  }
+  componentWillUnmount() { document.removeEventListener('keydown', this.onKey); window.removeEventListener('fd:palette', this.onOpen); }
+  flat() { return this.state.groups.reduce((a, g) => a.concat(g.items), []); }
+  open() { this.prevFocus = document.activeElement; this.setState({ open: true, q: '', mode: 'root', sel: 0, loading: false, groups: this.build('', 'root') }); setTimeout(() => this.inp && this.inp.focus(), 30); }
+  close() { this.setState({ open: false }); if (this.prevFocus && this.prevFocus.focus) this.prevFocus.focus({ preventScroll: true }); }
+  flash(m) { this.setState({ toast: m }); clearTimeout(this._tt); this._tt = setTimeout(() => this.setState({ toast: '' }), 2800); }
+  saveRecent(it) {
+    const rec = JSON.parse(localStorage.getItem('fd-rec') || '[]').filter(r => r.label !== it.label);
+    rec.unshift({ label: it.label, meta: it.meta, href: it.href, d: it.d });
+    localStorage.setItem('fd-rec', JSON.stringify(rec.slice(0, 4)));
+  }
+  run(it) {
+    if (it.act) { it.act(); return; }
+    if (it.href) { this.saveRecent(it); this.close(); location.href = it.href; }
+  }
+  build(q, mode) {
+    const db = this.db; if (!db) return [];
+    const F1 = 'Inicio e Issues.dc.html', F2 = 'Projetos e Labels.dc.html', F3 = 'Administracao.dc.html';
+    const IC = {
+      issue: 'M8 1.6a6.4 6.4 0 1 0 0 12.8A6.4 6.4 0 0 0 8 1.6Z', proj: 'M2 4.5A1.5 1.5 0 0 1 3.5 3h3L8 5h4.5A1.5 1.5 0 0 1 14 6.5v5a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 11.5z',
+      nav: 'M3 8h10M9 4l4 4-4 4', act: 'M8.8 1.5 3.2 9h3.6l-.8 5.5L11.6 7H8z', ws: 'M8 2.2a5.8 5.8 0 1 0 0 11.6A5.8 5.8 0 0 0 8 2.2ZM8 .8v2.8M8 12.4v2.8', clock: 'M8 1.6a6.4 6.4 0 1 0 0 12.8A6.4 6.4 0 0 0 8 1.6ZM8 4.5V8l2.3 1.4'
+    };
+    if (mode === 'ws') return [{ title: 'Trocar workspace', items: [
+      { d: IC.ws, label: 'Vela Labs', meta: 'atual', act: () => { this.close(); this.flash('Você já está na Vela Labs.'); } },
+      { d: IC.ws, label: 'Faro Interno', meta: 'workspace', act: () => { this.close(); this.flash('Troca de workspace simulada nesta demonstração.'); } }
+    ] }];
+    const norm = s => s.toLowerCase();
+    const nav = [
+      { d: 'M2.5 6.5 8 2l5.5 4.5V13a1 1 0 0 1-1 1H9.6v-3.8H6.4V14H3.5a1 1 0 0 1-1-1z', label: 'Início', meta: 'ir para', href: F1 + '#inicio' },
+      { d: 'M5.6 4.2h7.9M5.6 8h7.9M5.6 11.8h7.9M2.5 4.2h.02M2.5 8h.02M2.5 11.8h.02', label: 'Issues', meta: 'ir para', href: F1 + '#issues' },
+      { d: 'M2.5 2.5h4v11h-4zM9.5 2.5h4V9h-4z', label: 'Board', meta: 'ir para', href: F1 + '#board' },
+      { d: IC.proj, label: 'Projetos', meta: 'ir para', href: F2 + '#projetos' },
+      { d: 'M13.5 8.6 8.6 13.5a1.4 1.4 0 0 1-2 0L2.5 9.4V2.5h6.9l4.1 4.1a1.4 1.4 0 0 1 0 2ZM6 6h.02', label: 'Labels', meta: 'ir para', href: F2 + '#labels' },
+      { d: 'M11 13.5v-1a3 3 0 0 0-3-3H4.5a3 3 0 0 0-3 3v1M6.2 7a2.7 2.7 0 1 0 0-5.4A2.7 2.7 0 0 0 6.2 7Z', label: 'Membros', meta: 'ir para', href: F3 + '#membros' },
+      { d: 'M2 5.3h7M12 5.3h2M2 10.7h2M7 10.7h7M9.5 3.6v3.4M4.5 9v3.4', label: 'Configurações do workspace', meta: 'ir para', href: F3 + '#configuracoes' }
+    ];
+    const acts = [
+      { d: 'M7 2.5v9M2.5 7h9', label: 'Nova issue', meta: 'ação · C', href: F1 + '#nova' },
+      { d: 'M13.5 9.5A6 6 0 0 1 6.5 2.5a6 6 0 1 0 7 7Z', label: 'Alternar tema', meta: 'ação', act: () => { const t = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'; document.documentElement.dataset.theme = t; localStorage.setItem('fd-theme', t); window.dispatchEvent(new Event('fd:theme')); this.close(); } },
+      { d: IC.ws, label: 'Trocar workspace', meta: 'ação', act: () => this.setState({ mode: 'ws', sel: 0, groups: this.build('', 'ws') }) }
+    ];
+    if (!q) {
+      const rec = JSON.parse(localStorage.getItem('fd-rec') || '[]');
+      const gs = [];
+      if (rec.length) gs.push({ title: 'Recentes', items: rec.map(r => ({ ...r, d: r.d || IC.clock })) });
+      gs.push({ title: 'Navegação', items: nav });
+      gs.push({ title: 'Ações', items: acts });
+      return gs;
+    }
+    const nq = norm(q), gs = [];
+    const iss = db.ISSUES.filter(i => norm(i.id + ' ' + i.title).includes(nq)).slice(0, 6)
+      .map(i => ({ d: IC.issue, label: i.title, meta: i.id, href: F1 + '#issue/' + i.id }));
+    const prj = db.PROJECTS.filter(p => norm(p.name).includes(nq)).slice(0, 3)
+      .map(p => ({ d: IC.proj, label: p.name, meta: 'projeto', href: F2 + '#projeto/' + p.id }));
+    const nv = nav.filter(n => norm(n.label).includes(nq));
+    const ac = acts.filter(a => norm(a.label).includes(nq));
+    if (iss.length) gs.push({ title: 'Issues', items: iss });
+    if (prj.length) gs.push({ title: 'Projetos', items: prj });
+    if (nv.length) gs.push({ title: 'Navegação', items: nv });
+    if (ac.length) gs.push({ title: 'Ações', items: ac });
+    return gs;
+  }
+  onQ = e => {
+    const q = e.target.value;
+    this.setState({ q, sel: 0, loading: !!q });
+    clearTimeout(this._t);
+    if (!q) { this.setState({ loading: false, groups: this.build('', this.state.mode) }); return; }
+    this._t = setTimeout(() => this.setState({ loading: false, groups: this.build(q, this.state.mode) }), 260);
+  };
+  renderVals() {
+    const { open, q, loading, groups, sel, toast, mode } = this.state;
+    let idx = -1;
+    const gs = groups.map(g => ({ ...g, items: g.items.map(it => {
+      idx++; const me = idx;
+      return { ...it, hov: () => this.setState({ sel: me }),
+        run: () => this.run(it),
+        style: { display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 10px', borderRadius: '8px', fontSize: '13px', cursor: 'pointer', color: sel === me ? 'var(--text)' : 'var(--t2)', background: sel === me ? 'var(--sunken)' : 'transparent' } };
+    }) }));
+    return {
+      open, q, loading, toast, groups: gs,
+      skels: [1, 2, 3, 4],
+      noResults: !loading && !!q && gs.length === 0,
+      showGroups: !loading && gs.length > 0,
+      placeholder: mode === 'ws' ? 'Escolha um workspace…' : 'Buscar issues, projetos ou digitar um comando…',
+      setInp: el => this.inp = el,
+      close: () => this.close(), stop: e => e.stopPropagation(),
+      onQ: this.onQ
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300..800&amp;family=Geist:wght@300..800&amp;display=swap" rel="stylesheet">
+<script>document.documentElement.dataset.theme=localStorage.getItem('fd-theme')||'light'</script>
+<style>
+:root{--bg:#FAF8F3;--panel:#FFFDF8;--sunken:#F1EDE1;--text:#14130F;--t2:#575246;--t3:#78715F;--border:#E7E1D2;--border2:#D5CEBC;--red:#C0271C;--redbg:#F8ECEA;--amber:#8F6A11;--green:#50713A;--sh:0 12px 32px rgba(20,19,15,.10)}
+[data-theme="dark"]{--bg:#14130F;--panel:#1C1A14;--sunken:#262319;--text:#FAF8F3;--t2:#B8B1A0;--t3:#918A78;--border:#2B2820;--border2:#3C382A;--red:#F0685E;--redbg:#2C1613;--amber:#D9A73C;--green:#96B471;--sh:0 12px 32px rgba(0,0,0,.5)}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font:400 13.5px/1.45 'Geist',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+*{box-sizing:border-box}a{color:var(--text);text-decoration:none}a:hover{color:var(--t2)}
+input,textarea,button,select{font-family:inherit;color:inherit}button{cursor:pointer}::selection{background:var(--border2)}
+input::placeholder{color:var(--t3)}
+@keyframes fdup{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@keyframes fdspin{to{transform:rotate(360deg)}}
+</style>
+</helmet>
+<div style="min-height:100vh;display:flex;flex-direction:column;background:var(--bg)">
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:22px 28px">
+    <span style="display:flex;align-items:center;gap:10px">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
+        <circle cx="12" cy="12" r="7.6" stroke="currentColor" stroke-width="2.4"></circle>
+        <path d="M12 0.8 V8.4 M12 15.6 V23.2" stroke="var(--bg)" stroke-width="6"></path>
+        <path d="M12 0.8 V8.4 M12 15.6 V23.2" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"></path>
+      </svg>
+      <span style="font-family:'Fraunces',serif;font-weight:640;font-size:17px;letter-spacing:-.01em">FlowDesk</span>
+    </span>
+    <button onClick="{{togTheme}}" title="Alternar tema" style="background:none;border:1px solid var(--border);border-radius:8px;padding:6px 8px;color:var(--t2);display:flex" style-hover="background:var(--sunken)">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="{{themeD}}"></path></svg>
+    </button>
+  </div>
+  <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:20px 24px 60px">
+    <div style="width:400px;max-width:100%;animation:fdup .25s ease">
+
+      <sc-if value="{{sLogin}}" hint-placeholder-val="{{true}}">
+        <div data-screen-label="Login">
+          <h1 style="font-family:'Fraunces',serif;font-weight:580;font-size:27px;margin:0 0 6px;letter-spacing:-.01em;text-align:center">Bem-vinda de volta</h1>
+          <div style="color:var(--t2);font-size:13.5px;text-align:center;margin-bottom:26px">Entre para ver o estado real do trabalho.</div>
+          <div style="border:1px solid var(--border);border-radius:14px;background:var(--panel);padding:24px;display:grid;gap:14px;box-shadow:0 1px 3px rgba(20,19,15,.04)">
+            <label style="display:grid;gap:5px;font-size:12px;font-weight:600;color:var(--t2)">E-mail
+              <input value="{{fEmail}}" onChange="{{onEmail}}" placeholder="voce@empresa.com.br" type="email" style="{{fieldStyle}}" style-focus="border-color:var(--border2)">
+            </label>
+            <label style="display:grid;gap:5px;font-size:12px;font-weight:600;color:var(--t2)">
+              <span style="display:flex;justify-content:space-between"><span>Senha</span><a href="#recuperar" style="color:var(--t3);font-weight:450">Esqueci minha senha</a></span>
+              <span style="position:relative;display:flex">
+                <input value="{{fPass}}" onChange="{{onPass}}" type="{{passType}}" placeholder="••••••••" style="{{fieldStyle}}" style-focus="border-color:var(--border2)">
+                <button onClick="{{togPass}}" tabIndex="-1" style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--t3);padding:5px;display:flex" style-hover="color:var(--text)">
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 8s2.4-4.5 6.5-4.5S14.5 8 14.5 8s-2.4 4.5-6.5 4.5S1.5 8 1.5 8Z"></path><circle cx="8" cy="8" r="2"></circle></svg>
+                </button>
+              </span>
+            </label>
+            <sc-if value="{{err}}" hint-placeholder-val="{{false}}">
+              <div style="color:var(--red);font-size:12.5px;background:var(--redbg);border-radius:8px;padding:8px 12px;line-height:1.5">{{err}}</div>
+            </sc-if>
+            <button onClick="{{entrar}}" style="display:flex;align-items:center;justify-content:center;gap:9px;background:var(--text);color:var(--bg);border:none;border-radius:9px;padding:10px;font-size:13.5px;font-weight:580;margin-top:2px" style-hover="opacity:.88">
+              <sc-if value="{{busy}}" hint-placeholder-val="{{false}}"><span style="width:13px;height:13px;border:2px solid var(--bg);border-top-color:transparent;border-radius:50%;animation:fdspin .7s linear infinite"></span></sc-if>
+              {{loginCta}}
+            </button>
+          </div>
+          <div style="text-align:center;color:var(--t2);font-size:13px;margin-top:18px">Ainda não tem conta? <a href="#cadastro" style="font-weight:580">Criar conta</a></div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{sCadastro}}" hint-placeholder-val="{{false}}">
+        <div data-screen-label="Cadastro">
+          <h1 style="font-family:'Fraunces',serif;font-weight:580;font-size:27px;margin:0 0 6px;letter-spacing:-.01em;text-align:center">Crie sua conta</h1>
+          <div style="color:var(--t2);font-size:13.5px;text-align:center;margin-bottom:26px">Da conta à primeira issue em menos de dois minutos.</div>
+          <div style="border:1px solid var(--border);border-radius:14px;background:var(--panel);padding:24px;display:grid;gap:14px;box-shadow:0 1px 3px rgba(20,19,15,.04)">
+            <label style="display:grid;gap:5px;font-size:12px;font-weight:600;color:var(--t2)">Nome completo
+              <input value="{{fNome}}" onChange="{{onNome}}" placeholder="Ana Beltrão" style="{{fieldStyle}}" style-focus="border-color:var(--border2)">
+            </label>
+            <label style="display:grid;gap:5px;font-size:12px;font-weight:600;color:var(--t2)">E-mail de trabalho
+              <input value="{{fEmail}}" onChange="{{onEmail}}" placeholder="voce@empresa.com.br" type="email" style="{{fieldStyle}}" style-focus="border-color:var(--border2)">
+            </label>
+            <label style="display:grid;gap:5px;font-size:12px;font-weight:600;color:var(--t2)">Senha
+              <input value="{{fPass}}" onChange="{{onPass}}" type="password" placeholder="Mínimo de 8 caracteres" style="{{fieldStyle}}" style-focus="border-color:var(--border2)">
+              <span style="display:flex;gap:4px;margin-top:3px">
+                <span style="{{str1}}"></span><span style="{{str2}}"></span><span style="{{str3}}"></span>
+              </span>
+              <span style="color:var(--t3);font-weight:450;font-size:11.5px">{{strTxt}}</span>
+            </label>
+            <sc-if value="{{err}}" hint-placeholder-val="{{false}}">
+              <div style="color:var(--red);font-size:12.5px;background:var(--redbg);border-radius:8px;padding:8px 12px;line-height:1.5">{{err}}</div>
+            </sc-if>
+            <button onClick="{{cadastrar}}" style="display:flex;align-items:center;justify-content:center;gap:9px;background:var(--text);color:var(--bg);border:none;border-radius:9px;padding:10px;font-size:13.5px;font-weight:580;margin-top:2px" style-hover="opacity:.88">
+              <sc-if value="{{busy}}" hint-placeholder-val="{{false}}"><span style="width:13px;height:13px;border:2px solid var(--bg);border-top-color:transparent;border-radius:50%;animation:fdspin .7s linear infinite"></span></sc-if>
+              {{cadastroCta}}
+            </button>
+            <div style="color:var(--t3);font-size:11.5px;text-align:center;line-height:1.5">Ao continuar você concorda com os Termos e a Política de Privacidade.</div>
+          </div>
+          <div style="text-align:center;color:var(--t2);font-size:13px;margin-top:18px">Já tem conta? <a href="#login" style="font-weight:580">Entrar</a></div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{sRecuperarPedido}}" hint-placeholder-val="{{false}}">
+        <div data-screen-label="Esqueci a senha — pedido">
+          <h1 style="font-family:'Fraunces',serif;font-weight:580;font-size:25px;margin:0 0 6px;letter-spacing:-.01em;text-align:center">Redefinir senha</h1>
+          <div style="color:var(--t2);font-size:13.5px;text-align:center;margin-bottom:26px">Envie um link de redefinição para o seu e-mail.</div>
+          <div style="border:1px solid var(--border);border-radius:14px;background:var(--panel);padding:24px;display:grid;gap:14px;box-shadow:0 1px 3px rgba(20,19,15,.04)">
+            <label style="display:grid;gap:5px;font-size:12px;font-weight:600;color:var(--t2)">E-mail
+              <input value="{{fEmail}}" onChange="{{onEmail}}" placeholder="voce@empresa.com.br" type="email" style="{{fieldStyle}}" style-focus="border-color:var(--border2)">
+            </label>
+            <sc-if value="{{err}}" hint-placeholder-val="{{false}}">
+              <div style="color:var(--red);font-size:12.5px;background:var(--redbg);border-radius:8px;padding:8px 12px;line-height:1.5">{{err}}</div>
+            </sc-if>
+            <button onClick="{{enviarRecuperacao}}" style="display:flex;align-items:center;justify-content:center;gap:9px;background:var(--text);color:var(--bg);border:none;border-radius:9px;padding:10px;font-size:13.5px;font-weight:580;margin-top:2px" style-hover="opacity:.88">
+              <sc-if value="{{busy}}" hint-placeholder-val="{{false}}"><span style="width:13px;height:13px;border:2px solid var(--bg);border-top-color:transparent;border-radius:50%;animation:fdspin .7s linear infinite"></span></sc-if>
+              Enviar link de redefinição
+            </button>
+          </div>
+          <div style="text-align:center;color:var(--t2);font-size:13px;margin-top:18px"><a href="#login" style="font-weight:580">Voltar para o login</a></div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{sRecuperarEnviado}}" hint-placeholder-val="{{false}}">
+        <div data-screen-label="Esqueci a senha — enviado" style="text-align:center">
+          <div style="width:52px;height:52px;border-radius:50%;background:var(--sunken);border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;margin:0 auto 18px">
+            <svg width="22" height="22" viewBox="0 0 16 16" fill="none" stroke="var(--text)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h12v8H2zM2.4 4.6 8 9l5.6-4.4"></path></svg>
+          </div>
+          <h1 style="font-family:'Fraunces',serif;font-weight:580;font-size:22px;margin:0 0 8px;letter-spacing:-.01em">Verifique seu e-mail</h1>
+          <div style="color:var(--t2);font-size:13.5px;line-height:1.6;margin-bottom:22px">Enviamos um link de redefinição para<br><b style="color:var(--text)">{{fEmail}}</b>. O link expira em 30 minutos.</div>
+          <button onClick="{{irRedefinir}}" style="background:var(--text);color:var(--bg);border:none;border-radius:9px;padding:10px 20px;font-size:13.5px;font-weight:580" style-hover="opacity:.88">Simular clique no link do e-mail</button>
+          <div style="color:var(--t3);font-size:12.5px;margin-top:16px">Não recebeu? <button onClick="{{enviarRecuperacao}}" style="background:none;border:none;color:var(--text);font-weight:580;padding:0">Reenviar</button></div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{sRedefinir}}" hint-placeholder-val="{{false}}">
+        <div data-screen-label="Redefinir senha">
+          <h1 style="font-family:'Fraunces',serif;font-weight:580;font-size:25px;margin:0 0 6px;letter-spacing:-.01em;text-align:center">Escolha uma nova senha</h1>
+          <div style="color:var(--t2);font-size:13.5px;text-align:center;margin-bottom:26px">Para a conta {{fEmail}}.</div>
+          <div style="border:1px solid var(--border);border-radius:14px;background:var(--panel);padding:24px;display:grid;gap:14px;box-shadow:0 1px 3px rgba(20,19,15,.04)">
+            <label style="display:grid;gap:5px;font-size:12px;font-weight:600;color:var(--t2)">Nova senha
+              <input value="{{fPass}}" onChange="{{onPass}}" type="password" placeholder="Mínimo de 8 caracteres" style="{{fieldStyle}}" style-focus="border-color:var(--border2)">
+            </label>
+            <label style="display:grid;gap:5px;font-size:12px;font-weight:600;color:var(--t2)">Confirmar nova senha
+              <input value="{{fPass2}}" onChange="{{onPass2}}" type="password" placeholder="Repita a senha" style="{{fieldStyle}}" style-focus="border-color:var(--border2)">
+            </label>
+            <sc-if value="{{err}}" hint-placeholder-val="{{false}}">
+              <div style="color:var(--red);font-size:12.5px;background:var(--redbg);border-radius:8px;padding:8px 12px;line-height:1.5">{{err}}</div>
+            </sc-if>
+            <button onClick="{{redefinir}}" style="display:flex;align-items:center;justify-content:center;gap:9px;background:var(--text);color:var(--bg);border:none;border-radius:9px;padding:10px;font-size:13.5px;font-weight:580;margin-top:2px" style-hover="opacity:.88">
+              <sc-if value="{{busy}}" hint-placeholder-val="{{false}}"><span style="width:13px;height:13px;border:2px solid var(--bg);border-top-color:transparent;border-radius:50%;animation:fdspin .7s linear infinite"></span></sc-if>
+              Redefinir senha
+            </button>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{sConviteDeslogado}}" hint-placeholder-val="{{false}}">
+        <div data-screen-label="Convite — deslogado" style="text-align:center">
+          <div style="width:52px;height:52px;border-radius:50%;background:var(--sunken);border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;margin:0 auto 16px">
+            <svg width="22" height="22" viewBox="0 0 16 16" fill="none" stroke="var(--text)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h12v8H2zM2.4 4.6 8 9l5.6-4.4"></path></svg>
+          </div>
+          <h1 style="font-family:'Fraunces',serif;font-weight:580;font-size:22px;margin:0 0 6px;letter-spacing:-.01em">Convite para a Vela Labs</h1>
+          <div style="color:var(--t2);font-size:13.5px;line-height:1.6;margin-bottom:24px"><b style="color:var(--text)">Marina Costa</b> convidou <b style="color:var(--text)">ana.beltrao@estudiopau.com.br</b> para entrar como <b style="color:var(--text)">Membro</b>.</div>
+          <div style="border:1px solid var(--border);border-radius:14px;background:var(--panel);padding:22px;display:grid;gap:12px;text-align:left;box-shadow:0 1px 3px rgba(20,19,15,.04)">
+            <div style="font-size:12.5px;color:var(--t2)">Crie uma senha para aceitar o convite com este e-mail.</div>
+            <label style="display:grid;gap:5px;font-size:12px;font-weight:600;color:var(--t2)">Nome completo
+              <input value="{{fNome}}" onChange="{{onNome}}" placeholder="Ana Beltrão" style="{{fieldStyle}}" style-focus="border-color:var(--border2)">
+            </label>
+            <label style="display:grid;gap:5px;font-size:12px;font-weight:600;color:var(--t2)">Senha
+              <input value="{{fPass}}" onChange="{{onPass}}" type="password" placeholder="Mínimo de 8 caracteres" style="{{fieldStyle}}" style-focus="border-color:var(--border2)">
+            </label>
+            <sc-if value="{{err}}" hint-placeholder-val="{{false}}">
+              <div style="color:var(--red);font-size:12.5px;background:var(--redbg);border-radius:8px;padding:8px 12px;line-height:1.5">{{err}}</div>
+            </sc-if>
+            <button onClick="{{aceitarDeslogado}}" style="display:flex;align-items:center;justify-content:center;gap:9px;background:var(--text);color:var(--bg);border:none;border-radius:9px;padding:10px;font-size:13.5px;font-weight:580">
+              <sc-if value="{{busy}}" hint-placeholder-val="{{false}}"><span style="width:13px;height:13px;border:2px solid var(--bg);border-top-color:transparent;border-radius:50%;animation:fdspin .7s linear infinite"></span></sc-if>
+              Criar conta e entrar no workspace
+            </button>
+          </div>
+          <div style="color:var(--t3);font-size:12px;margin-top:14px">Já tem conta com este e-mail? <a href="#convite-logado" style="font-weight:580;color:var(--text)">Entrar e aceitar</a></div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{sConviteLogado}}" hint-placeholder-val="{{false}}">
+        <div data-screen-label="Convite — logado" style="text-align:center">
+          <span style="width:44px;height:44px;border-radius:50%;background:var(--sunken);border:1px solid var(--border2);color:var(--t2);font-size:14px;font-weight:650;display:inline-flex;align-items:center;justify-content:center;margin-bottom:14px">MC</span>
+          <h1 style="font-family:'Fraunces',serif;font-weight:580;font-size:22px;margin:0 0 6px;letter-spacing:-.01em">Convite para a Vela Labs</h1>
+          <div style="color:var(--t2);font-size:13.5px;line-height:1.6;margin-bottom:22px">Você está conectada como <b style="color:var(--text)">marina@velalabs.com.br</b>.<br>Aceitar como <b style="color:var(--text)">Membro</b>?</div>
+          <div style="display:flex;gap:10px;justify-content:center">
+            <button onClick="{{recusarLogado}}" style="border:1px solid var(--border2);background:var(--panel);border-radius:9px;padding:9px 18px;font-size:13px;font-weight:550" style-hover="border-color:var(--t3)">Recusar</button>
+            <button onClick="{{aceitarLogado}}" style="background:var(--text);color:var(--bg);border:none;border-radius:9px;padding:9px 20px;font-size:13px;font-weight:580" style-hover="opacity:.88">Aceitar convite</button>
+          </div>
+        </div>
+      </sc-if>
+
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { screen: 'login', theme: document.documentElement.dataset.theme || 'light', fEmail: '', fPass: '', fPass2: '', fNome: '', err: null, busy: false, showPass: false };
+  componentDidMount() {
+    this.applyHash();
+    this.onHash = () => this.applyHash();
+    window.addEventListener('hashchange', this.onHash);
+    this.onT = () => this.setState({ theme: document.documentElement.dataset.theme });
+    window.addEventListener('fd:theme', this.onT);
+  }
+  componentWillUnmount() { window.removeEventListener('hashchange', this.onHash); window.removeEventListener('fd:theme', this.onT); }
+  applyHash() {
+    let h = decodeURIComponent((location.hash || '').slice(1)) || 'login';
+    const valid = ['login', 'cadastro', 'recuperar', 'recuperar-enviado', 'redefinir', 'convite-deslogado', 'convite-logado'];
+    if (valid.indexOf(h) < 0) h = 'login';
+    this.setState({ screen: h, err: null, busy: false });
+  }
+  togTheme() { const t = (document.documentElement.dataset.theme === 'dark') ? 'light' : 'dark'; document.documentElement.dataset.theme = t; localStorage.setItem('fd-theme', t); window.dispatchEvent(new Event('fd:theme')); this.setState({ theme: t }); }
+  busyThen(fn, ms) { this.setState({ busy: true, err: null }); clearTimeout(this._t); this._t = setTimeout(() => { this.setState({ busy: false }); fn(); }, ms || 700); }
+  renderVals() {
+    const S = this.state;
+    const fieldStyle = { border: '1px solid var(--border)', background: 'var(--bg)', borderRadius: '8px', padding: '9px 38px 9px 11px', fontSize: '13.5px', outline: 'none', width: '100%' };
+    const passStrength = pw => { let n = 0; if (pw.length >= 8) n++; if (/[0-9]/.test(pw) && /[A-Za-z]/.test(pw)) n++; if (/[^A-Za-z0-9]/.test(pw)) n++; return n; };
+    const str = passStrength(S.fPass);
+    const bar = (i) => ({ flex: 1, height: '3px', borderRadius: '2px', background: str > i ? (str === 1 ? 'var(--red)' : str === 2 ? 'var(--amber)' : 'var(--green)') : 'var(--border)' });
+    return {
+      themeD: S.theme === 'dark' ? 'M13.5 9.5A6 6 0 0 1 6.5 2.5a6 6 0 1 0 7 7Z' : 'M8 5.2a2.8 2.8 0 1 0 0 5.6 2.8 2.8 0 0 0 0-5.6ZM8 1.2v1.6M8 13.2v1.6M1.2 8h1.6M13.2 8h1.6M3.2 3.2l1.1 1.1M11.7 11.7l1.1 1.1M12.8 3.2l-1.1 1.1M4.3 11.7l-1.1 1.1',
+      togTheme: () => this.togTheme(),
+      sLogin: S.screen === 'login', sCadastro: S.screen === 'cadastro',
+      sRecuperarPedido: S.screen === 'recuperar', sRecuperarEnviado: S.screen === 'recuperar-enviado', sRedefinir: S.screen === 'redefinir',
+      sConviteDeslogado: S.screen === 'convite-deslogado', sConviteLogado: S.screen === 'convite-logado',
+      fEmail: S.fEmail, onEmail: e => this.setState({ fEmail: e.target.value, err: null }),
+      fPass: S.fPass, onPass: e => this.setState({ fPass: e.target.value, err: null }),
+      fPass2: S.fPass2, onPass2: e => this.setState({ fPass2: e.target.value, err: null }),
+      fNome: S.fNome, onNome: e => this.setState({ fNome: e.target.value, err: null }),
+      fieldStyle, passType: S.showPass ? 'text' : 'password', togPass: () => this.setState({ showPass: !S.showPass }),
+      err: S.err, busy: S.busy,
+      str1: bar(0), str2: bar(1), str3: bar(2),
+      strTxt: S.fPass ? (str <= 1 ? 'Senha fraca' : str === 2 ? 'Senha razoável' : 'Senha forte') : 'Use letras, números e um símbolo',
+      loginCta: S.busy ? 'Entrando…' : 'Entrar',
+      cadastroCta: S.busy ? 'Criando conta…' : 'Criar conta',
+      entrar: () => {
+        if (!S.fEmail.trim() || !S.fPass) { this.setState({ err: 'Informe e-mail e senha.' }); return; }
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(S.fEmail)) { this.setState({ err: 'E-mail em formato inválido.' }); return; }
+        this.busyThen(() => { if (S.fPass.length < 6) { this.setState({ err: 'E-mail ou senha incorretos.' }); return; } location.href = 'Inicio e Issues.dc.html#inicio'; }, 800);
+      },
+      cadastrar: () => {
+        if (!S.fNome.trim()) { this.setState({ err: 'Informe seu nome completo.' }); return; }
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(S.fEmail)) { this.setState({ err: 'E-mail em formato inválido.' }); return; }
+        if (S.fPass.length < 8) { this.setState({ err: 'A senha precisa de ao menos 8 caracteres.' }); return; }
+        this.busyThen(() => { location.href = 'Inicio e Issues.dc.html#inicio'; }, 900);
+      },
+      enviarRecuperacao: () => {
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(S.fEmail)) { this.setState({ err: 'Informe um e-mail válido.' }); return; }
+        this.busyThen(() => { location.hash = 'recuperar-enviado'; }, 700);
+      },
+      irRedefinir: () => { location.hash = 'redefinir'; },
+      redefinir: () => {
+        if (S.fPass.length < 8) { this.setState({ err: 'A senha precisa de ao menos 8 caracteres.' }); return; }
+        if (S.fPass !== S.fPass2) { this.setState({ err: 'As senhas não coincidem.' }); return; }
+        this.busyThen(() => { location.hash = 'login'; this.setState({ fPass: '', fPass2: '' }); }, 700);
+      },
+      aceitarDeslogado: () => {
+        if (!S.fNome.trim()) { this.setState({ err: 'Informe seu nome completo.' }); return; }
+        if (S.fPass.length < 8) { this.setState({ err: 'A senha precisa de ao menos 8 caracteres.' }); return; }
+        this.busyThen(() => { location.href = 'Inicio e Issues.dc.html#inicio'; }, 900);
+      },
+      aceitarLogado: () => { location.href = 'Inicio e Issues.dc.html#inicio'; },
+      recusarLogado: () => { location.href = 'Inicio e Issues.dc.html#inicio'; }
+    };
+  }
+}
+</script>
+</body>
+</html>
