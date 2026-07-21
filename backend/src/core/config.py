@@ -89,6 +89,27 @@ class Settings(BaseSettings):
         alias="ALLOWED_UPLOAD_CONTENT_TYPES",
     )
 
+    # E-mail transacional — `core/mail.py::MailSender` é o ponto de extensão,
+    # `mail_provider` escolhe qual implementação `get_mail_sender()` devolve
+    # (Sprint 17.3/M6, ADR-039). "logging" (default) só loga um preview
+    # truncado do token (`CLAUDE.md` §9) — nenhum e-mail real sai. "smtp" usa
+    # `smtplib` (stdlib, síncrono envolvido em `asyncio.to_thread`, mesmo
+    # padrão do `S3StorageProvider`) contra um servidor SMTP real. Diferente de
+    # `s3_*`, credenciais SMTP viram campo deste `Settings` — não existe uma
+    # cadeia de credenciais padrão de indústria para SMTP genérico como a do
+    # boto3 para AWS.
+    mail_provider: Literal["logging", "smtp"] = "logging"
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_from_email: str | None = None
+    smtp_use_tls: bool = True
+    # Base do link enviado por e-mail (`{frontend_base_url}/reset-password/{token}`,
+    # `frontend/src/shared/lib/routes.ts::resetPasswordRoute`) — mesmo default de
+    # `cors_origins_raw` para o ambiente local.
+    frontend_base_url: str = "http://localhost:5173"
+
     @property
     def allowed_upload_content_types(self) -> frozenset[str]:
         return frozenset(
@@ -132,6 +153,12 @@ class Settings(BaseSettings):
         """
         if self.storage_provider == "s3" and not self.s3_bucket_name:
             raise ValueError("STORAGE_PROVIDER=s3 exige S3_BUCKET_NAME configurado.")
+        return self
+
+    @model_validator(mode="after")
+    def _require_smtp_config_when_smtp_provider(self) -> "Settings":
+        if self.mail_provider == "smtp" and not (self.smtp_host and self.smtp_from_email):
+            raise ValueError("MAIL_PROVIDER=smtp exige SMTP_HOST e SMTP_FROM_EMAIL configurados.")
         return self
 
 

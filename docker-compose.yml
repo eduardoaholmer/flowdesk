@@ -53,6 +53,24 @@ services:
       timeout: 5s
       retries: 10
 
+  # MailHog — servidor SMTP de teste com API HTTP para inspecionar mensagens
+  # recebidas, só consumido de fato quando `MAIL_PROVIDER=smtp` está setado
+  # (default do backend é "logging"); existe aqui sobretudo para `poetry run
+  # pytest` exercitar `tests/integration/test_smtp_mail_sender.py` contra um
+  # serviço real, mesmo padrão de MinIO/Postgres/Redis acima (Sprint 17.3/M6,
+  # ADR-039).
+  # Sem `healthcheck`, de propósito: a imagem oficial não tem garantia de
+  # `curl`/`wget` disponível para uma sonda interna, e nenhum outro serviço
+  # deste compose depende de MailHog para subir (`backend` continua
+  # `MAIL_PROVIDER=logging` por padrão) — só é usado sob demanda por quem for
+  # rodar o teste de integração de SMTP manualmente.
+  mailhog:
+    image: mailhog/mailhog:latest
+    restart: unless-stopped
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
   backend:
     build:
       context: ./backend

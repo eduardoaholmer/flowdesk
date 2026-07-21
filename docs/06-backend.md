@@ -114,6 +114,13 @@ Ver `CLAUDE.md` §9 para o padrão. Implementação: `structlog` configurado em 
 | `S3_BUCKET_NAME` | condicional | — | Obrigatório quando `STORAGE_PROVIDER=s3` (`Settings` falha na inicialização sem ele). |
 | `S3_REGION` | não | `us-east-1` | Região do bucket — MinIO/R2/Spaces ignoram o valor, mas o boto3 exige alguma região configurada. |
 | `S3_ENDPOINT_URL` | não | — (resolve o endpoint padrão da AWS) | Só para S3-compatible não-AWS (MinIO, R2, Spaces). Credenciais nunca são uma variável deste `Settings` — vêm da cadeia padrão do boto3 (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/IAM role). |
+| `MAIL_PROVIDER` | não | `logging` | `logging` \| `smtp` — escolhe a implementação devolvida por `core/mail.py::get_mail_sender` (Sprint 17.3/M6, ADR-039). |
+| `SMTP_HOST` | condicional | — | Obrigatório quando `MAIL_PROVIDER=smtp` (`Settings` falha na inicialização sem ele). |
+| `SMTP_PORT` | não | `587` | Porta STARTTLS — `SMTPMailSender` não suporta SMTPS implícito (porta 465). |
+| `SMTP_USERNAME` / `SMTP_PASSWORD` | não | — | Credenciais de autenticação SMTP — diferente de S3, não há cadeia de credenciais padrão de indústria, então são campos deste `Settings` (nunca logados, `CLAUDE.md` §9). |
+| `SMTP_FROM_EMAIL` | condicional | — | Obrigatório quando `MAIL_PROVIDER=smtp`. |
+| `SMTP_USE_TLS` | não | `true` | Liga/desliga STARTTLS (desligar só para um servidor de teste local, ex. MailHog). |
+| `FRONTEND_BASE_URL` | não | `http://localhost:5173` | Base do link de reset de senha enviado por e-mail (`{FRONTEND_BASE_URL}/reset-password/{token}`). |
 
 ## 11. Projetos (implementação, Sprint 6)
 
