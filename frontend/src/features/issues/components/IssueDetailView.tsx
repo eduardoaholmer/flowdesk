@@ -1,22 +1,19 @@
-import { useNavigate } from "react-router-dom";
+import { ArrowLeft } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
 
 import { AttachmentList } from "@/features/attachments/components/AttachmentList";
 import { CommentList } from "@/features/comments/components/CommentList";
-import { IssueLabelPicker } from "@/features/labels/components/IssueLabelPicker";
-import { useProjects } from "@/features/projects/hooks";
-import { useWorkspaceMembers } from "@/features/workspaces/hooks";
 import { ErrorState } from "@/shared/components/feedback/ErrorState";
 import { Separator } from "@/shared/components/ui/separator";
 import { Skeleton } from "@/shared/components/ui/skeleton";
-import { MAX_PICKER_PAGE_SIZE } from "@/shared/lib/constants";
-import { formatDate } from "@/shared/lib/date";
 import { workspaceRoutes } from "@/shared/lib/routes";
 
 import { useIssue } from "../hooks";
 import { IssueActivityTimeline } from "./IssueActivityTimeline";
-import { IssuePriorityBadge } from "./IssuePriorityBadge";
+import { IssueDetailRail } from "./IssueDetailRail";
 import { IssueRowActions } from "./IssueRowActions";
-import { IssueStatusBadge } from "./IssueStatusBadge";
+
+const SECTION_HEADING = "mb-3 text-[11px] font-semibold tracking-wide text-t3 uppercase";
 
 export function IssueDetailView({
   workspaceId,
@@ -29,11 +26,6 @@ export function IssueDetailView({
 }) {
   const navigate = useNavigate();
   const { data: issue, isLoading, isError, refetch } = useIssue(workspaceId, issueId);
-  const { data: members } = useWorkspaceMembers(workspaceId);
-  const { data: projects } = useProjects(workspaceId, {
-    page: 1,
-    per_page: MAX_PICKER_PAGE_SIZE,
-  });
 
   if (isLoading) {
     return (
@@ -49,82 +41,56 @@ export function IssueDetailView({
     return <ErrorState message="Issue não encontrada ou indisponível." onRetry={() => refetch()} />;
   }
 
-  const assignee = members?.find((member) => member.user.id === issue.assignee_id)?.user;
-  const project = projects?.data.find((p) => p.id === issue.project_id);
-
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="font-mono text-xs text-muted-foreground">{issue.identifier}</p>
-          <h1 className="text-lg font-semibold">{issue.title}</h1>
-          <div className="mt-2 flex items-center gap-2">
-            <IssueStatusBadge status={issue.status} />
-            <IssuePriorityBadge priority={issue.priority} />
+    <div className="flex flex-col items-start gap-8 md:flex-row">
+      <div className="w-full min-w-0 md:max-w-3xl">
+        <Link
+          to={workspaceRoutes.issues(workspaceSlug)}
+          className="mb-4 inline-flex items-center gap-1.5 text-xs text-t3 hover:text-foreground"
+        >
+          <ArrowLeft className="size-3.5" />
+          Issues
+        </Link>
+
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="mb-1 text-xs text-t3">{issue.identifier}</p>
+            <h1 className="font-heading text-2xl leading-tight font-semibold">{issue.title}</h1>
           </div>
-          <div className="mt-2">
-            <IssueLabelPicker workspaceId={workspaceId} issueId={issue.id} />
-          </div>
+          <IssueRowActions
+            workspaceId={workspaceId}
+            issue={issue}
+            onDeleted={() => navigate(workspaceRoutes.issues(workspaceSlug), { replace: true })}
+          />
         </div>
-        <IssueRowActions
-          workspaceId={workspaceId}
-          issue={issue}
-          onDeleted={() => navigate(workspaceRoutes.issues(workspaceSlug), { replace: true })}
-        />
+
+        <p className="mt-5 text-sm leading-relaxed whitespace-pre-wrap text-t2">
+          {issue.description || "Sem descrição."}
+        </p>
+
+        <Separator className="my-6" />
+
+        <div>
+          <h2 className={SECTION_HEADING}>Anexos</h2>
+          <AttachmentList workspaceId={workspaceId} issueId={issue.id} />
+        </div>
+
+        <Separator className="my-6" />
+
+        <div>
+          <h2 className={SECTION_HEADING}>Atividade</h2>
+          <IssueActivityTimeline workspaceId={workspaceId} issueId={issue.id} />
+        </div>
+
+        <Separator className="my-6" />
+
+        <div>
+          <h2 className={SECTION_HEADING}>Comentários</h2>
+          <CommentList workspaceId={workspaceId} issueId={issue.id} />
+        </div>
       </div>
 
-      <div>
-        <h2 className="mb-1 text-sm font-medium text-muted-foreground">Descrição</h2>
-        <p className="text-sm whitespace-pre-wrap">{issue.description || "Sem descrição."}</p>
-      </div>
-
-      <dl className="grid grid-cols-2 gap-4 text-sm sm:grid-cols-3">
-        <div>
-          <dt className="text-muted-foreground">Responsável</dt>
-          <dd>{assignee?.name ?? "Sem responsável"}</dd>
-        </div>
-        <div>
-          <dt className="text-muted-foreground">Projeto</dt>
-          <dd>{project?.name ?? "Sem projeto"}</dd>
-        </div>
-        <div>
-          <dt className="text-muted-foreground">Estimativa</dt>
-          <dd>{issue.estimate ?? "—"}</dd>
-        </div>
-        <div>
-          <dt className="text-muted-foreground">Vencimento</dt>
-          <dd>{issue.due_date ? formatDate(issue.due_date) : "—"}</dd>
-        </div>
-        <div>
-          <dt className="text-muted-foreground">Criado em</dt>
-          <dd>{formatDate(issue.created_at)}</dd>
-        </div>
-        <div>
-          <dt className="text-muted-foreground">Atualizado em</dt>
-          <dd>{formatDate(issue.updated_at)}</dd>
-        </div>
-      </dl>
-
-      <Separator />
-
-      <div>
-        <h2 className="mb-3 text-sm font-medium text-muted-foreground">Anexos</h2>
-        <AttachmentList workspaceId={workspaceId} issueId={issue.id} />
-      </div>
-
-      <Separator />
-
-      <div>
-        <h2 className="mb-3 text-sm font-medium text-muted-foreground">Comentários</h2>
-        <CommentList workspaceId={workspaceId} issueId={issue.id} />
-      </div>
-
-      <Separator />
-
-      <div>
-        <h2 className="mb-3 text-sm font-medium text-muted-foreground">Atividade</h2>
-        <IssueActivityTimeline workspaceId={workspaceId} issueId={issue.id} />
-      </div>
+      <IssueDetailRail workspaceId={workspaceId} issue={issue} />
     </div>
   );
 }

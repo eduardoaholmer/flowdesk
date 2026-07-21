@@ -13,6 +13,12 @@ elevação de `ui/dialog.tsx`/`ui/select.tsx`, ver `elevation.md`/`shadow.md`).
 - `features/labels/components/IssueLabelPicker.tsx` — único consumidor de
   `DropdownMenuCheckboxItem` hoje: aplicar/remover labels de uma issue sem fechar o
   menu a cada clique (multi-seleção via toggle, não navegação).
+- `features/issues/components/IssueDetailRail.tsx` (`RailField`, Sprint 18.3/M7) —
+  seis campos editáveis inline (Status/Prioridade/Responsável/Projeto/Estimativa/
+  Vencimento) no rail de detalhe da issue. Cada `DropdownMenuItem` já é a ação (clicar
+  numa opção chama `useUpdateIssue().mutate(...)` imediatamente, sem passo de
+  confirmar/salvar) — por isso é `DropdownMenu`, não `Select`, apesar de "parecer"
+  escolha de valor de formulário: não há estado de rascunho, o clique já é a mutação.
 - `shared/components/navigation/ActionMenu.tsx` — casca genérica (`items` + ícone
   `MoreHorizontal`) para menu de ações "⋮" quando uma linha tem 3+ ações. Preparado na
   Sprint 8.5, **ainda sem call site**: `IssueRowActions`/`ProjectRowActions`/

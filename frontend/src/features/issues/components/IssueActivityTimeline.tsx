@@ -35,17 +35,22 @@ export function IssueActivityTimeline({
   }
 
   return (
-    <ul className="flex flex-col gap-3">
+    <ul className="flex flex-col gap-1">
       {entries.map((entry) => (
-        <li key={entry.id} className="border-l-2 pl-3 text-sm">
-          <span className="font-medium">{ACTION_LABELS[entry.action] ?? entry.action}</span>
-          {entry.field && (
-            <span className="text-muted-foreground">
-              {" "}
-              — {entry.field}: {entry.old_value ?? "—"} → {entry.new_value ?? "—"}
+        <li key={entry.id} className="flex items-baseline gap-2.5 py-1 text-[12.5px] text-t2">
+          <span className="relative top-[-1px] size-1.5 shrink-0 rounded-full bg-border2" />
+          <span className="flex-1">
+            <span className="font-semibold text-foreground">
+              {ACTION_LABELS[entry.action] ?? entry.action}
             </span>
-          )}
-          <div className="text-xs text-muted-foreground">{formatDateTime(entry.created_at)}</div>
+            {entry.field && (
+              <span>
+                {" "}
+                — {entry.field}: {entry.old_value ?? "—"} → {entry.new_value ?? "—"}
+              </span>
+            )}
+          </span>
+          <span className="shrink-0 text-[11.5px] text-t3">{formatDateTime(entry.created_at)}</span>
         </li>
       ))}
     </ul>
