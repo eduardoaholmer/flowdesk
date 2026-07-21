@@ -5,7 +5,7 @@ from src.core.security import CurrentUser
 from src.features.labels.exceptions import LabelNameTakenError, LabelNotFoundError
 from src.features.labels.models import Label, LabelActivityLog
 from src.features.labels.repository import LabelRepositoryProtocol
-from src.features.labels.schemas import LabelCreateRequest, LabelUpdateRequest
+from src.features.labels.schemas import LabelCreateRequest, LabelUpdateRequest, LabelView
 
 
 class LabelService:
@@ -19,7 +19,7 @@ class LabelService:
 
     async def create(
         self, current_user: CurrentUser, workspace_id: uuid.UUID, payload: LabelCreateRequest
-    ) -> Label:
+    ) -> LabelView:
         if await self._label_repo.get_by_name(workspace_id, payload.name) is not None:
             raise LabelNameTakenError()
 
@@ -34,13 +34,14 @@ class LabelService:
         await self._record_activity(
             workspace_id, label.id, current_user.id, "label.created", {"name": label.name}
         )
-        return label
+        return LabelView(label=label, issue_count=0)
 
-    async def list_for_workspace(self, workspace_id: uuid.UUID) -> Sequence[Label]:
-        return await self._label_repo.list_by_workspace(workspace_id)
+    async def list_for_workspace(self, workspace_id: uuid.UUID) -> list[LabelView]:
+        labels = await self._label_repo.list_by_workspace(workspace_id)
+        return await self._build_views(labels)
 
-    async def get(self, workspace_id: uuid.UUID, label_id: uuid.UUID) -> Label:
-        return await self._get_active_label(workspace_id, label_id)
+    async def get(self, workspace_id: uuid.UUID, label_id: uuid.UUID) -> LabelView:
+        return await self._build_view(await self._get_active_label(workspace_id, label_id))
 
     async def update(
         self,
@@ -48,7 +49,7 @@ class LabelService:
         workspace_id: uuid.UUID,
         label_id: uuid.UUID,
         payload: LabelUpdateRequest,
-    ) -> Label:
+    ) -> LabelView:
         label = await self._get_active_label(workspace_id, label_id)
 
         changes: dict[str, dict[str, object]] = {}
@@ -70,7 +71,7 @@ class LabelService:
             await self._record_activity(
                 workspace_id, label.id, current_user.id, "label.updated", changes
             )
-        return label
+        return await self._build_view(label)
 
     async def delete(
         self, current_user: CurrentUser, workspace_id: uuid.UUID, label_id: uuid.UUID
@@ -86,6 +87,13 @@ class LabelService:
         if label is None:
             raise LabelNotFoundError()
         return label
+
+    async def _build_view(self, label: Label) -> LabelView:
+        return (await self._build_views([label]))[0]
+
+    async def _build_views(self, labels: Sequence[Label]) -> list[LabelView]:
+        counts = await self._label_repo.issue_counts([label.id for label in labels])
+        return [LabelView(label=label, issue_count=counts.get(label.id, 0)) for label in labels]
 
     async def _record_activity(
         self,

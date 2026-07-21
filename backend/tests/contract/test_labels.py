@@ -73,6 +73,31 @@ async def test_create_label_succeeds(client: AsyncClient) -> None:
     assert body["name"] == "bug"
     assert body["color"] == "#FF0000"
     assert body["description"] == "Algo quebrado"
+    assert body["issue_count"] == 0
+
+
+async def test_label_issue_count_reflects_applied_issues(client: AsyncClient) -> None:
+    _, owner_token = await _register_and_login(client)
+    workspace_id = await _create_workspace(client, owner_token)
+    label = await _create_label(client, workspace_id, owner_token)
+
+    created_issue = await client.post(
+        f"/api/v1/workspaces/{workspace_id}/issues",
+        json={"title": "Corrigir login"},
+        headers=_auth(owner_token),
+    )
+    issue_id = created_issue.json()["data"]["id"]
+    await client.post(
+        f"/api/v1/workspaces/{workspace_id}/issues/{issue_id}/labels",
+        json={"label_id": label["id"]},
+        headers=_auth(owner_token),
+    )
+
+    listed = await client.get(
+        f"/api/v1/workspaces/{workspace_id}/labels", headers=_auth(owner_token)
+    )
+    counts = {item["id"]: item["issue_count"] for item in listed.json()["data"]}
+    assert counts[label["id"]] == 1
 
 
 async def test_create_label_rejects_invalid_color(client: AsyncClient) -> None:

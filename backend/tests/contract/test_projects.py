@@ -43,6 +43,27 @@ async def _create_project(
     return data
 
 
+async def _me_id(client: AsyncClient, token: str) -> str:
+    response = await client.get("/api/v1/users/me", headers=_auth(token))
+    user_id: str = response.json()["data"]["id"]
+    return user_id
+
+
+async def _invite_and_accept_member(
+    client: AsyncClient, workspace_id: str, owner_token: str, role: str = "MEMBER"
+) -> tuple[str, str]:
+    member_email, member_token = await _register_and_login(client)
+    invite = await client.post(
+        f"/api/v1/workspaces/{workspace_id}/invitations",
+        json={"email": member_email, "role": role},
+        headers=_auth(owner_token),
+    )
+    await client.post(
+        f"/api/v1/invitations/{invite.json()['data']['token']}/accept", headers=_auth(member_token)
+    )
+    return member_token, await _me_id(client, member_token)
+
+
 async def test_create_project_generates_slug_and_records_creator(client: AsyncClient) -> None:
     _, owner_token = await _register_and_login(client)
     workspace_id = await _create_workspace(client, owner_token)
@@ -57,9 +78,129 @@ async def test_create_project_generates_slug_and_records_creator(client: AsyncCl
     body = response.json()["data"]
     assert body["name"] == "Public Roadmap"
     assert body["slug"].startswith("public-roadmap")
+    assert body["key"] == "PR"
     assert body["status"] == "ACTIVE"
     assert body["color"] == "#4F46E5"
     assert body["workspace_id"] == workspace_id
+    assert body["member_ids"] == []
+    assert body["issue_count"] == 0
+    assert body["done_issue_count"] == 0
+
+
+async def test_create_project_accepts_explicit_key_and_rejects_duplicate(
+    client: AsyncClient,
+) -> None:
+    _, owner_token = await _register_and_login(client)
+    workspace_id = await _create_workspace(client, owner_token)
+
+    created = await client.post(
+        f"/api/v1/workspaces/{workspace_id}/projects",
+        json={"name": "Onboarding", "key": "onb"},
+        headers=_auth(owner_token),
+    )
+    assert created.status_code == 201
+    assert created.json()["data"]["key"] == "ONB"
+
+    duplicate = await client.post(
+        f"/api/v1/workspaces/{workspace_id}/projects",
+        json={"name": "Other", "key": "ONB"},
+        headers=_auth(owner_token),
+    )
+    assert duplicate.status_code == 409
+    assert duplicate.json()["error"]["code"] == "project_key_taken"
+
+
+async def test_create_project_rejects_malformed_key(client: AsyncClient) -> None:
+    _, owner_token = await _register_and_login(client)
+    workspace_id = await _create_workspace(client, owner_token)
+
+    response = await client.post(
+        f"/api/v1/workspaces/{workspace_id}/projects",
+        json={"name": "Roadmap", "key": "TOOLONG"},
+        headers=_auth(owner_token),
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "validation_error"
+
+
+async def test_add_and_remove_project_member(client: AsyncClient) -> None:
+    _, owner_token = await _register_and_login(client)
+    workspace_id = await _create_workspace(client, owner_token)
+    project = await _create_project(client, workspace_id, owner_token)
+    _, member_id = await _invite_and_accept_member(client, workspace_id, owner_token)
+
+    added = await client.post(
+        f"/api/v1/workspaces/{workspace_id}/projects/{project['id']}/members",
+        json={"user_id": member_id},
+        headers=_auth(owner_token),
+    )
+    assert added.status_code == 201
+    assert added.json()["data"]["member_ids"] == [member_id]
+
+    # Idempotente: adicionar de novo não duplica nem erra.
+    again = await client.post(
+        f"/api/v1/workspaces/{workspace_id}/projects/{project['id']}/members",
+        json={"user_id": member_id},
+        headers=_auth(owner_token),
+    )
+    assert again.status_code == 201
+    assert again.json()["data"]["member_ids"] == [member_id]
+
+    removed = await client.delete(
+        f"/api/v1/workspaces/{workspace_id}/projects/{project['id']}/members/{member_id}",
+        headers=_auth(owner_token),
+    )
+    assert removed.status_code == 200
+    assert removed.json()["data"]["member_ids"] == []
+
+
+async def test_add_member_rejects_non_workspace_user(client: AsyncClient) -> None:
+    _, owner_token = await _register_and_login(client)
+    workspace_id = await _create_workspace(client, owner_token)
+    project = await _create_project(client, workspace_id, owner_token)
+    _, outsider_token = await _register_and_login(client)
+    outsider_id = await _me_id(client, outsider_token)
+
+    response = await client.post(
+        f"/api/v1/workspaces/{workspace_id}/projects/{project['id']}/members",
+        json={"user_id": outsider_id},
+        headers=_auth(owner_token),
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "project_member_not_in_workspace"
+
+
+async def test_add_member_requires_admin_or_owner(client: AsyncClient) -> None:
+    _, owner_token = await _register_and_login(client)
+    workspace_id = await _create_workspace(client, owner_token)
+    project = await _create_project(client, workspace_id, owner_token)
+    member_token, member_id = await _invite_and_accept_member(client, workspace_id, owner_token)
+
+    response = await client.post(
+        f"/api/v1/workspaces/{workspace_id}/projects/{project['id']}/members",
+        json={"user_id": member_id},
+        headers=_auth(member_token),
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "permission_denied"
+
+
+async def test_add_member_on_missing_project_returns_404(client: AsyncClient) -> None:
+    _, owner_token = await _register_and_login(client)
+    workspace_id = await _create_workspace(client, owner_token)
+    owner_id = await _me_id(client, owner_token)
+
+    response = await client.post(
+        f"/api/v1/workspaces/{workspace_id}/projects/{uuid.uuid4()}/members",
+        json={"user_id": owner_id},
+        headers=_auth(owner_token),
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "project_not_found"
 
 
 async def test_create_project_rejects_duplicate_name_case_insensitive(client: AsyncClient) -> None:

@@ -23,8 +23,8 @@ async def create_label(
     _member: WorkspaceMember = Depends(require_permission(Permission.LABEL_CREATE)),
     service: LabelService = Depends(get_label_service),
 ) -> DataEnvelope[LabelResponse]:
-    label = await service.create(current_user, workspace_id, payload)
-    return DataEnvelope(data=LabelResponse.model_validate(label))
+    view = await service.create(current_user, workspace_id, payload)
+    return DataEnvelope(data=LabelResponse.from_view(view))
 
 
 @router.get("", response_model=DataEnvelope[list[LabelResponse]])
@@ -33,8 +33,8 @@ async def list_labels(
     _member: WorkspaceMember = Depends(require_permission(Permission.LABEL_READ)),
     service: LabelService = Depends(get_label_service),
 ) -> DataEnvelope[list[LabelResponse]]:
-    labels = await service.list_for_workspace(workspace_id)
-    return DataEnvelope(data=[LabelResponse.model_validate(label) for label in labels])
+    views = await service.list_for_workspace(workspace_id)
+    return DataEnvelope(data=[LabelResponse.from_view(view) for view in views])
 
 
 @router.get("/{label_id}", response_model=DataEnvelope[LabelResponse])
@@ -44,8 +44,8 @@ async def get_label(
     _member: WorkspaceMember = Depends(require_permission(Permission.LABEL_READ)),
     service: LabelService = Depends(get_label_service),
 ) -> DataEnvelope[LabelResponse]:
-    label = await service.get(workspace_id, label_id)
-    return DataEnvelope(data=LabelResponse.model_validate(label))
+    view = await service.get(workspace_id, label_id)
+    return DataEnvelope(data=LabelResponse.from_view(view))
 
 
 @router.patch("/{label_id}", response_model=DataEnvelope[LabelResponse])
@@ -57,8 +57,8 @@ async def update_label(
     _member: WorkspaceMember = Depends(require_permission(Permission.LABEL_UPDATE)),
     service: LabelService = Depends(get_label_service),
 ) -> DataEnvelope[LabelResponse]:
-    label = await service.update(current_user, workspace_id, label_id, payload)
-    return DataEnvelope(data=LabelResponse.model_validate(label))
+    view = await service.update(current_user, workspace_id, label_id, payload)
+    return DataEnvelope(data=LabelResponse.from_view(view))
 
 
 @router.delete("/{label_id}", status_code=status.HTTP_204_NO_CONTENT)

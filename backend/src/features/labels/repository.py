@@ -3,10 +3,17 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Protocol
 
-from sqlalchemy import select, update
+from sqlalchemy import column, func, select, table, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.features.labels.models import Label, LabelActivityLog
+
+# Referências Core (não ORM) às tabelas do domínio de Issues — só o suficiente
+# para a agregação de uso (`issue_counts`), sem importar `features/issues/models`
+# e arrastar o mapper de `Issue` para dentro de Labels (mesmo racional de
+# `ProjectRepository._issues_table`).
+_issue_labels_table = table("issue_labels", column("issue_id"), column("label_id"))
+_issues_table = table("issues", column("id"), column("deleted_at"))
 
 
 class LabelRepositoryProtocol(Protocol):
@@ -16,6 +23,7 @@ class LabelRepositoryProtocol(Protocol):
     async def list_by_workspace(self, workspace_id: uuid.UUID) -> Sequence[Label]: ...
     async def update(self, label: Label) -> Label: ...
     async def soft_delete(self, label_id: uuid.UUID) -> None: ...
+    async def issue_counts(self, label_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, int]: ...
     async def record_activity(self, entry: LabelActivityLog) -> LabelActivityLog: ...
 
 
@@ -66,6 +74,31 @@ class LabelRepository:
         await self._session.execute(
             update(Label).where(Label.id == label_id).values(deleted_at=datetime.now(UTC))
         )
+
+    async def issue_counts(self, label_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, int]:
+        """Uma agregação para uma página inteira de labels (evita N+1): conta as
+        issues não deletadas que carregam cada label, via a tabela de junção
+        `issue_labels`. Devolve 0 para labels sem nenhuma issue.
+        """
+        counts: dict[uuid.UUID, int] = {label_id: 0 for label_id in label_ids}
+        if not label_ids:
+            return counts
+        stmt = (
+            select(_issue_labels_table.c.label_id, func.count())
+            .select_from(
+                _issue_labels_table.join(
+                    _issues_table, _issues_table.c.id == _issue_labels_table.c.issue_id
+                )
+            )
+            .where(
+                _issue_labels_table.c.label_id.in_(label_ids),
+                _issues_table.c.deleted_at.is_(None),
+            )
+            .group_by(_issue_labels_table.c.label_id)
+        )
+        for label_id, count in (await self._session.execute(stmt)).all():
+            counts[label_id] = count
+        return counts
 
     async def record_activity(self, entry: LabelActivityLog) -> LabelActivityLog:
         self._session.add(entry)

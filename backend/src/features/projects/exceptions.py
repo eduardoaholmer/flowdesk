@@ -1,4 +1,4 @@
-from src.core.exceptions import ConflictError, NotFoundError
+from src.core.exceptions import ConflictError, NotFoundError, ValidationError
 
 
 class ProjectNotFoundError(NotFoundError):
@@ -9,6 +9,22 @@ class ProjectNotFoundError(NotFoundError):
 class ProjectSlugTakenError(ConflictError):
     code = "project_slug_taken"
     message = "Este slug já está em uso neste workspace."
+
+
+class ProjectKeyTakenError(ConflictError):
+    code = "project_key_taken"
+    message = "Esta key já está em uso neste workspace."
+
+
+class ProjectMemberNotInWorkspaceError(ValidationError):
+    """O usuário precisa ser membro do workspace para ser vinculado a um projeto:
+    membership de projeto é informativa (`ProjectMember`), mas só faz sentido
+    para quem já pertence ao tenant — evita também que a FK `RESTRICT` para
+    `users.id` estoure como 500 diante de um `user_id` arbitrário.
+    """
+
+    code = "project_member_not_in_workspace"
+    message = "O usuário não é membro deste workspace."
 
 
 class ProjectNameTakenError(ConflictError):

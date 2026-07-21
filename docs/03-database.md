@@ -98,6 +98,12 @@ O pedido explícito do usuário ao final da Sprint 7 apontou esta sprint para Co
 
 - **`PasswordResetToken`** (`password_reset_tokens`, migration `f4c36aa63332`) — nova tabela, RF-AUTH-06. Uso único (`used_at`, não uma cadeia de rotação como `RefreshToken.replaced_by_id`) e vida curta (`Settings.password_reset_token_expire_minutes`, default 30 min — bem menor que `refresh_tokens`/`invitations`, ver ADR-017). `user_id` FK `RESTRICT` para `users`, `token_hash` único (SHA-256 do token opaco, mesmo padrão de `refresh_tokens`/`invitations`).
 
+### 6.6 Adições da Sprint 19.1 (M7 fase 2 — Projetos e Labels)
+
+- **`projects.key`** (`string`, `NOT NULL`, migration `b3e7c1a9d240`) — sigla curta (2–4 letras maiúsculas, ex.: "ONB") exibida no card de projeto, **decorativa** e sem relação com o identificador `FD-{n}` de uma Issue (esse é workspace-scoped desde a Sprint 7/ADR-012). Auto-derivada do nome quando não informada, única por workspace via índice parcial `uq_projects_workspace_id_key_active` (`deleted_at IS NULL`), mesmo padrão de `projects.slug`. Adicionada `NOT NULL` direto (sem *expand → backfill → contract*), mesma justificativa de `projects.slug`/`created_by` na Sprint 6 (ADR-011/ADR-049): a suíte de migração roda contra banco limpo.
+- **`ProjectMember`** (`project_members`, migration `c8f4a2b6e130`) — nova tabela: associação **informativa** usuário↔projeto (avatares no card, "meus projetos"), **não** um mecanismo de controle de acesso — RBAC de projeto está fora de escopo, a autorização continua sendo o RBAC de workspace (`core/authorization.py`, ADR-010). Colunas `id`/`workspace_id`/`project_id`/`user_id`/`created_at`, FKs `RESTRICT`, índice único `(project_id, user_id)`. **Sem soft delete** e sem `updated_at` — membership é add/remove, não arquivada (o histórico fica em `project_activity_logs`, ações `project.member_added`/`project.member_removed`). Ver ADR-049.
+- **Agregações expostas na API (não são colunas)** — `ProjectResponse` passa a carregar `member_ids`, `issue_count` (issues não deletadas do projeto) e `done_issue_count` (status `DONE`); `LabelResponse` passa a carregar `issue_count` (issues não deletadas que carregam a label, via `issue_labels`). Todas calculadas por **uma agregação por página** (`GROUP BY`, nunca N+1) no repository — não persistidas, não desnormalizadas.
+
 ```mermaid
 erDiagram
     USER ||--o{ SESSION : autentica
@@ -416,7 +422,9 @@ Desde a Sprint 7 (ADR-012 em `docs/09-decision-log.md`), `Issue` não depende ma
 - `projects.slug`: `UNIQUE (workspace_id, slug) WHERE deleted_at IS NULL` (índice `uq_projects_workspace_id_slug_active`, Sprint 6, migration `fc0a10c66145`) — mesmo padrão parcial de `workspaces.slug`, slug fica livre de novo após soft delete.
 - `projects.name`: `UNIQUE (workspace_id, lower(name)) WHERE deleted_at IS NULL` (índice `uq_projects_workspace_id_name_active`, Sprint 6) — unicidade case-insensitive por workspace, checada também no service antes do insert/update (defesa em profundidade, mesmo racional de `docs/03-database.md` §4).
 - `issues`: `UNIQUE (workspace_id, number)` **sem** filtro parcial (Sprint 7 — antes `(team_id, number)`, ver ADR-012) — ao contrário de slug/key/name, o número não pode ser reciclado após soft delete (evita `FD-123` apontar para duas issues diferentes ao longo do tempo). Gerado via `WorkspaceIssueCounter` com `INSERT ... ON CONFLICT DO UPDATE ... RETURNING` no repository, atômico sem exigir uma linha pré-criada nem depender de `SERIAL` global.
+- `projects.key`: `UNIQUE (workspace_id, key) WHERE deleted_at IS NULL` (índice `uq_projects_workspace_id_key_active`, Sprint 19.1, migration `b3e7c1a9d240`) — mesmo padrão parcial de `slug`/`name`, key fica livre de novo após soft delete.
 - `labels.name`: `UNIQUE (workspace_id, name) WHERE deleted_at IS NULL`.
+- `project_members`: `UNIQUE (project_id, user_id)` (índice `uq_project_members_project_id_user_id`, Sprint 19.1) **sem** filtro parcial — a tabela não tem soft delete (membership é add/remove); a unicidade torna `add_member` idempotente no banco (`ON CONFLICT DO NOTHING`).
 - `attachments`: `CHECK (num_nonnulls(issue_id, comment_id) = 1)` — exatamente um dos dois nunca os dois, nunca nenhum.
 - `comment_mentions`: `PRIMARY KEY (comment_id, mentioned_user_id)` (Sprint 8) — um usuário mencionado no máximo uma vez por comentário; `ON DELETE CASCADE` em ambas as FKs, por não ter ciclo de vida próprio (mesmo racional de `issue_labels`).
 - Todas as FKs usam `ON DELETE RESTRICT` por padrão (exclusão física nunca deveria acontecer via cascade automático dado o soft delete; a única exceção é `issue_labels`, `ON DELETE CASCADE`, por não ter ciclo de vida próprio — os relacionamentos ORM correspondentes usam `passive_deletes=True` para não competir com a constraint do banco).
@@ -444,6 +452,7 @@ Desde a Sprint 7 (ADR-012 em `docs/09-decision-log.md`), `Issue` não depende ma
 | `attachments` | `(issue_id)`, `(comment_id)` | listar anexos do pai |
 | `workspace_activity_logs` | `(workspace_id, created_at)` | timeline de auditoria por workspace (Sprint 4) |
 | `project_activity_logs` | `(project_id, created_at)` | timeline de auditoria por projeto (Sprint 6) |
+| `project_members` | único `(project_id, user_id)` | membership informativa única + `add_member` idempotente (Sprint 19.1) |
 | `label_activity_logs` | `(label_id, created_at)` | timeline de auditoria por label (Sprint 8) |
 
 Todo índice composto tem `deleted_at` como parte da chave (não como filtro pós-scan) porque o soft delete filter está presente em praticamente 100% das queries de leitura — colocá-lo no índice evita scan de linhas mortas.
@@ -502,3 +511,8 @@ Mais 1 migration da Sprint 9, encadeada sobre a 21 (`3113f34f2a20`):
 22. `f4c36aa63332` — `create_password_reset_tokens`: nova tabela (`user_id` FK `RESTRICT`, `token_hash` único, `expires_at`, `used_at` nullable) + índice `(user_id)`. Aditiva, sem impacto em tabela existente (RF-AUTH-06, ADR-017).
 
 Validadas com `alembic upgrade head` → `alembic downgrade base` → `alembic upgrade head` sem erro contra Postgres real.
+
+Mais 2 migrations da Sprint 19.1, encadeadas sobre a 22 (`f4c36aa63332`), pequenas e separadas (§6.6, ADR-049):
+
+23. `b3e7c1a9d240` — `add_key_to_projects`: coluna `key` (`NOT NULL` direto, banco de migração é limpo — mesma justificativa de `slug`/`created_by` da migration 15) + índice único parcial `uq_projects_workspace_id_key_active` (`deleted_at IS NULL`).
+24. `c8f4a2b6e130` — `create_project_members`: nova tabela `project_members` (`id`/`workspace_id`/`project_id`/`user_id`/`created_at`, FKs `RESTRICT`) + índice único `(project_id, user_id)`. Sem soft delete.

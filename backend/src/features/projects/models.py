@@ -46,6 +46,7 @@ class Project(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
     )
     name: Mapped[str] = mapped_column(nullable=False)
     slug: Mapped[str] = mapped_column(nullable=False)
+    key: Mapped[str] = mapped_column(nullable=False)
     description: Mapped[str | None] = mapped_column(default=None)
     icon: Mapped[str | None] = mapped_column(default=None)
     color: Mapped[str | None] = mapped_column(default=None)
@@ -77,6 +78,49 @@ Index(
     func.lower(Project.name),
     unique=True,
     postgresql_where=text("deleted_at IS NULL"),
+)
+
+Index(
+    "uq_projects_workspace_id_key_active",
+    Project.workspace_id,
+    Project.key,
+    unique=True,
+    postgresql_where=text("deleted_at IS NULL"),
+)
+
+
+class ProjectMember(UUIDPrimaryKeyMixin, Base):
+    """Associação informativa de um usuário a um projeto (RF-PROJ-06) — NÃO é
+    mecanismo de controle de acesso. A única camada de autorização do sistema
+    continua sendo o RBAC de workspace (`core/authorization.py`); pertencer a um
+    projeto não concede nem nega nenhuma permissão, só alimenta a UI (avatares,
+    "meus projetos"). Ver ADR-049 em `docs/09-decision-log.md`.
+
+    Sem soft delete: membership é adicionada/removida, nunca arquivada — ao
+    contrário de `Project`/`Label`, "remover do projeto" não tem histórico a
+    preservar (o evento fica em `ProjectActivityLog`). Sem `updated_at` pela
+    mesma razão (a linha nunca é atualizada in-place, só criada/apagada).
+    """
+
+    __tablename__ = "project_members"
+
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="RESTRICT"), nullable=False
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="RESTRICT"), nullable=False
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+Index(
+    "uq_project_members_project_id_user_id",
+    ProjectMember.project_id,
+    ProjectMember.user_id,
+    unique=True,
 )
 
 

@@ -12,6 +12,7 @@ from src.features.projects.models import ProjectStatus
 from src.features.projects.repository import ProjectSort
 from src.features.projects.schemas import (
     ProjectCreateRequest,
+    ProjectMemberAddRequest,
     ProjectResponse,
     ProjectUpdateRequest,
 )
@@ -29,8 +30,8 @@ async def create_project(
     _member: WorkspaceMember = Depends(require_permission(Permission.PROJECT_CREATE)),
     service: ProjectService = Depends(get_project_service),
 ) -> DataEnvelope[ProjectResponse]:
-    project = await service.create(current_user, workspace_id, payload)
-    return DataEnvelope(data=ProjectResponse.model_validate(project))
+    view = await service.create(current_user, workspace_id, payload)
+    return DataEnvelope(data=ProjectResponse.from_view(view))
 
 
 @router.get("", response_model=CollectionEnvelope[ProjectResponse])
@@ -44,11 +45,11 @@ async def list_projects(
     _member: WorkspaceMember = Depends(require_permission(Permission.PROJECT_READ)),
     service: ProjectService = Depends(get_project_service),
 ) -> CollectionEnvelope[ProjectResponse]:
-    projects, total = await service.list_for_workspace(
+    views, total = await service.list_for_workspace(
         workspace_id, page=page, per_page=per_page, search=search, status=status_filter, sort=sort
     )
     return CollectionEnvelope(
-        data=[ProjectResponse.model_validate(p) for p in projects],
+        data=[ProjectResponse.from_view(view) for view in views],
         meta=PaginationMeta.build(page=page, per_page=per_page, total=total),
     )
 
@@ -60,8 +61,8 @@ async def get_project(
     _member: WorkspaceMember = Depends(require_permission(Permission.PROJECT_READ)),
     service: ProjectService = Depends(get_project_service),
 ) -> DataEnvelope[ProjectResponse]:
-    project = await service.get(workspace_id, project_id)
-    return DataEnvelope(data=ProjectResponse.model_validate(project))
+    view = await service.get(workspace_id, project_id)
+    return DataEnvelope(data=ProjectResponse.from_view(view))
 
 
 @router.patch("/{project_id}", response_model=DataEnvelope[ProjectResponse])
@@ -73,8 +74,8 @@ async def update_project(
     _member: WorkspaceMember = Depends(require_permission(Permission.PROJECT_UPDATE)),
     service: ProjectService = Depends(get_project_service),
 ) -> DataEnvelope[ProjectResponse]:
-    project = await service.update(current_user, workspace_id, project_id, payload)
-    return DataEnvelope(data=ProjectResponse.model_validate(project))
+    view = await service.update(current_user, workspace_id, project_id, payload)
+    return DataEnvelope(data=ProjectResponse.from_view(view))
 
 
 @router.post("/{project_id}/archive", response_model=DataEnvelope[ProjectResponse])
@@ -85,8 +86,8 @@ async def archive_project(
     _member: WorkspaceMember = Depends(require_permission(Permission.PROJECT_UPDATE)),
     service: ProjectService = Depends(get_project_service),
 ) -> DataEnvelope[ProjectResponse]:
-    project = await service.archive(current_user, workspace_id, project_id)
-    return DataEnvelope(data=ProjectResponse.model_validate(project))
+    view = await service.archive(current_user, workspace_id, project_id)
+    return DataEnvelope(data=ProjectResponse.from_view(view))
 
 
 @router.post("/{project_id}/restore", response_model=DataEnvelope[ProjectResponse])
@@ -97,8 +98,38 @@ async def restore_project(
     _member: WorkspaceMember = Depends(require_permission(Permission.PROJECT_UPDATE)),
     service: ProjectService = Depends(get_project_service),
 ) -> DataEnvelope[ProjectResponse]:
-    project = await service.restore(current_user, workspace_id, project_id)
-    return DataEnvelope(data=ProjectResponse.model_validate(project))
+    view = await service.restore(current_user, workspace_id, project_id)
+    return DataEnvelope(data=ProjectResponse.from_view(view))
+
+
+@router.post(
+    "/{project_id}/members",
+    status_code=status.HTTP_201_CREATED,
+    response_model=DataEnvelope[ProjectResponse],
+)
+async def add_project_member(
+    workspace_id: uuid.UUID,
+    project_id: uuid.UUID,
+    payload: ProjectMemberAddRequest,
+    current_user: CurrentUser = Depends(get_current_user),
+    _member: WorkspaceMember = Depends(require_permission(Permission.PROJECT_UPDATE)),
+    service: ProjectService = Depends(get_project_service),
+) -> DataEnvelope[ProjectResponse]:
+    view = await service.add_member(current_user, workspace_id, project_id, payload.user_id)
+    return DataEnvelope(data=ProjectResponse.from_view(view))
+
+
+@router.delete("/{project_id}/members/{user_id}", response_model=DataEnvelope[ProjectResponse])
+async def remove_project_member(
+    workspace_id: uuid.UUID,
+    project_id: uuid.UUID,
+    user_id: uuid.UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+    _member: WorkspaceMember = Depends(require_permission(Permission.PROJECT_UPDATE)),
+    service: ProjectService = Depends(get_project_service),
+) -> DataEnvelope[ProjectResponse]:
+    view = await service.remove_member(current_user, workspace_id, project_id, user_id)
+    return DataEnvelope(data=ProjectResponse.from_view(view))
 
 
 @router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)

@@ -256,7 +256,7 @@ Implementado na Sprint 8 (ADR-013).
 | Atualizar | `PATCH .../labels/{label_id}` | `label.update` (`ADMIN`+, sem posse-como-exceção) | `{ name?, color?, description? }` | `{ data: { label } }` | 200, 401, 403, 404, 409, 422 |
 | Excluir | `DELETE .../labels/{label_id}` | `label.delete` (`ADMIN`+) | — | 204 (desvincula de issues via `ON DELETE CASCADE` em `issue_labels`) | 204, 401, 403, 404 |
 
-`color` é validado como hex (`^#(?:[0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$`, `core/validators.py::validate_hex_color` — extraído de `Project` na Sprint 6 para reuso entre as duas features, ver ADR-013). `description` é opcional, até 280 caracteres. Diferente de comentário/anexo, editar ou excluir uma label **não** tem posse-como-exceção — só `ADMIN`+, por ser um recurso compartilhado do workspace, não de quem a criou (ADR-013).
+`color` é validado como hex (`^#(?:[0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$`, `core/validators.py::validate_hex_color` — extraído de `Project` na Sprint 6 para reuso entre as duas features, ver ADR-013). `description` é opcional, até 280 caracteres. Diferente de comentário/anexo, editar ou excluir uma label **não** tem posse-como-exceção — só `ADMIN`+, por ser um recurso compartilhado do workspace, não de quem a criou (ADR-013). Desde a Sprint 19.1, `LabelResponse` (nos endpoints de Labels do workspace: criar/listar/detalhe/atualizar) carrega `issue_count` — nº de issues não deletadas que carregam a label, calculado por **uma** agregação por página (nunca N+1). Na listagem de labels *de uma issue* (`.../issues/{id}/labels`, abaixo) o mesmo schema é reusado como chips e `issue_count` fica `0` (ali a contagem global de uso não é exibida). Ver ADR-049.
 
 ### Labels de uma issue (`/workspaces/{workspace_id}/issues/{issue_id}/labels`)
 
@@ -289,13 +289,17 @@ Implementado na Sprint 6 (`docs/09-decision-log.md` ADR-011 tem o racional de ca
 
 | Ação | Endpoint | Autorização | Request | Response | Códigos |
 |---|---|---|---|---|---|
-| Criar | `POST .../projects` | `project.create` (`OWNER`/`ADMIN`) | `{ name, slug?, description?, icon?, color?, target_date?, lead_id? }` | `{ data: { project } }` — `slug` omitido é gerado a partir de `name` | 201, 401, 403, 404, 409 (`project_name_taken`, `project_slug_taken`), 422 |
+| Criar | `POST .../projects` | `project.create` (`OWNER`/`ADMIN`) | `{ name, slug?, key?, description?, icon?, color?, target_date?, lead_id? }` | `{ data: { project } }` — `slug`/`key` omitidos são gerados a partir de `name` | 201, 401, 403, 404, 409 (`project_name_taken`, `project_slug_taken`, `project_key_taken`), 422 |
 | Listar | `GET .../projects?page=&per_page=&search=&status=&sort=` | `project.read` (qualquer papel) | — | `{ data: [project], meta }` | 200, 401, 404 |
 | Detalhe | `GET .../projects/{project_id}` | `project.read` | — | `{ data: { project } }` | 200, 401, 404 (`project_not_found`) |
-| Atualizar | `PATCH .../projects/{project_id}` | `project.update` (`OWNER`/`ADMIN`) | `{ name?, slug?, description?, icon?, color?, target_date?, lead_id? }` — **sem** `status` | `{ data: { project } }` | 200, 401, 403, 404, 409 (`project_name_taken`, `project_slug_taken`), 422 |
+| Atualizar | `PATCH .../projects/{project_id}` | `project.update` (`OWNER`/`ADMIN`) | `{ name?, slug?, key?, description?, icon?, color?, target_date?, lead_id? }` — **sem** `status` | `{ data: { project } }` | 200, 401, 403, 404, 409 (`project_name_taken`, `project_slug_taken`, `project_key_taken`), 422 |
 | Arquivar | `POST .../projects/{project_id}/archive` | `project.update` | — | `{ data: { project } }` (`status: "ARCHIVED"`) | 200, 401, 403, 404, 409 (`project_already_archived`) |
 | Restaurar | `POST .../projects/{project_id}/restore` | `project.update` | — | `{ data: { project } }` (`status: "ACTIVE"`) | 200, 401, 403, 404, 409 (`project_not_archived`) |
+| Adicionar membro | `POST .../projects/{project_id}/members` | `project.update` (`OWNER`/`ADMIN`) | `{ user_id }` | `{ data: { project } }` (`member_ids` atualizado) | 201, 401, 403, 404 (`project_not_found`), 422 (`project_member_not_in_workspace`) |
+| Remover membro | `DELETE .../projects/{project_id}/members/{user_id}` | `project.update` | — | `{ data: { project } }` (`member_ids` atualizado) | 200, 401, 403, 404 |
 | Excluir | `DELETE .../projects/{project_id}` | `project.delete` (`OWNER`/`ADMIN`) | — | 204 (soft delete) | 204, 401, 403, 404, 409 (`project_has_active_issues`) |
+
+`key` é uma sigla decorativa de 2–4 letras maiúsculas (validada `^[A-Z]{2,4}$`), exibida no card do projeto — **sem** relação com o identificador `FD-{n}` de uma Issue (esse é workspace-scoped, `docs/03-database.md` §8). Omitida, é derivada de `name` (iniciais/prefixo); única por workspace (`project_key_taken` em colisão), mesmo tratamento de `slug`. `ProjectResponse` carrega, além dos campos persistidos, três agregados calculados: `member_ids` (lista de `user_id` vinculados via `project_members`), `issue_count` (total de issues não deletadas do projeto) e `done_issue_count` (issues em `DONE`) — suficientes para a barra de progresso "concluídas/total" do frontend. As duas contagens vêm de **uma** agregação por página (nunca N+1). **Membership de projeto (`project_members`) é informativa** (avatares no card, "meus projetos"), **não** controle de acesso: adicionar/remover membro reusa a permissão `project.update` (a mesma do `PATCH`), o alvo precisa já ser membro do workspace (`422 project_member_not_in_workspace`), e adicionar duas vezes o mesmo usuário é idempotente (não erra). Ver ADR-049.
 
 `status` nunca é aceito pelo `PATCH` genérico — a única forma de transicionar é `.../archive`/`.../restore`, cada um idempotency-guarded (arquivar um projeto já arquivado, ou restaurar um que não está arquivado, é `409`, nunca um no-op silencioso), para que toda mudança de estado seja intencional e auditável via `project_activity_logs`. Arquivar/restaurar/atualizar reaproveitam a mesma permissão `project.update` — não existe uma permissão dedicada para arquivar, já que quem pode editar um projeto é exatamente quem pode transicionar seu status. Não há ownership override para Projetos (ao contrário de Comentários/Issues, `docs/07-security.md` §8.5): qualquer `OWNER`/`ADMIN` gerencia qualquer projeto do workspace, não só os que criou.
 
@@ -318,6 +322,7 @@ Implementado na Sprint 6 (`docs/09-decision-log.md` ADR-011 tem o racional de ca
     "workspace_id": "8c2e...",
     "name": "Migração de Infraestrutura",
     "slug": "migracao-de-infraestrutura",
+    "key": "MI",
     "description": "Mover workloads para o novo cluster.",
     "icon": "🚀",
     "color": "#4F46E5",
@@ -325,6 +330,9 @@ Implementado na Sprint 6 (`docs/09-decision-log.md` ADR-011 tem o racional de ca
     "target_date": "2026-09-30",
     "lead_id": null,
     "created_by": "3fa2...",
+    "member_ids": [],
+    "issue_count": 0,
+    "done_issue_count": 0,
     "created_at": "2026-07-13T19:00:00Z",
     "updated_at": "2026-07-13T19:00:00Z"
   }

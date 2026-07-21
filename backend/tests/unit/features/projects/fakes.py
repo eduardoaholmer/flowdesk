@@ -2,7 +2,12 @@ import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime
 
-from src.features.projects.models import Project, ProjectActivityLog, ProjectStatus
+from src.features.projects.models import (
+    Project,
+    ProjectActivityLog,
+    ProjectMember,
+    ProjectStatus,
+)
 from src.features.projects.repository import ProjectSort
 from uuid6 import uuid7
 
@@ -21,6 +26,10 @@ class FakeProjectRepository:
         # um projeto sem precisar de um `IssueRepository` real (a feature de
         # Issues ainda não existe nesta sprint, ver `ProjectHasActiveIssuesError`).
         self.projects_with_active_issues: set[uuid.UUID] = set()
+        self.members: dict[uuid.UUID, ProjectMember] = {}
+        # (total, done) por project_id — controlado pelo teste para exercitar a
+        # agregação de progresso sem um `IssueRepository` real.
+        self.issue_count_by_project: dict[uuid.UUID, tuple[int, int]] = {}
 
     async def create(self, project: Project) -> Project:
         if project.id is None:
@@ -46,6 +55,16 @@ class FakeProjectRepository:
             if (
                 project.workspace_id == workspace_id
                 and project.slug == slug
+                and project.deleted_at is None
+            ):
+                return project
+        return None
+
+    async def get_by_key(self, workspace_id: uuid.UUID, key: str) -> Project | None:
+        for project in self.projects.values():
+            if (
+                project.workspace_id == workspace_id
+                and project.key == key
                 and project.deleted_at is None
             ):
                 return project
@@ -112,6 +131,37 @@ class FakeProjectRepository:
 
     async def has_active_issues(self, project_id: uuid.UUID) -> bool:
         return project_id in self.projects_with_active_issues
+
+    async def add_member(self, member: ProjectMember) -> bool:
+        for existing in self.members.values():
+            if existing.project_id == member.project_id and existing.user_id == member.user_id:
+                return False
+        if member.id is None:
+            member.id = uuid7()
+        member.created_at = member.created_at or datetime.now(UTC)
+        self.members[member.id] = member
+        return True
+
+    async def remove_member(self, project_id: uuid.UUID, user_id: uuid.UUID) -> bool:
+        for member_id, member in list(self.members.items()):
+            if member.project_id == project_id and member.user_id == user_id:
+                del self.members[member_id]
+                return True
+        return False
+
+    async def list_member_ids(
+        self, project_ids: Sequence[uuid.UUID]
+    ) -> dict[uuid.UUID, list[uuid.UUID]]:
+        result: dict[uuid.UUID, list[uuid.UUID]] = {pid: [] for pid in project_ids}
+        for member in sorted(self.members.values(), key=lambda m: m.created_at):
+            if member.project_id in result:
+                result[member.project_id].append(member.user_id)
+        return result
+
+    async def issue_counts(
+        self, project_ids: Sequence[uuid.UUID]
+    ) -> dict[uuid.UUID, tuple[int, int]]:
+        return {pid: self.issue_count_by_project.get(pid, (0, 0)) for pid in project_ids}
 
     async def record_activity(self, entry: ProjectActivityLog) -> ProjectActivityLog:
         if entry.id is None:

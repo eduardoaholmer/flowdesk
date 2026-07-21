@@ -14,6 +14,9 @@ class FakeLabelRepository:
     def __init__(self) -> None:
         self.labels: dict[uuid.UUID, Label] = {}
         self.activity_log: list[LabelActivityLog] = []
+        # Contagem de issues por label — controlada pelo teste para exercitar a
+        # agregação de uso sem um `IssueRepository` real.
+        self.issue_count_by_label: dict[uuid.UUID, int] = {}
 
     async def create(self, label: Label) -> Label:
         if label.id is None:
@@ -57,6 +60,9 @@ class FakeLabelRepository:
         label = self.labels.get(label_id)
         if label is not None:
             label.deleted_at = datetime.now(UTC)
+
+    async def issue_counts(self, label_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, int]:
+        return {label_id: self.issue_count_by_label.get(label_id, 0) for label_id in label_ids}
 
     async def record_activity(self, entry: LabelActivityLog) -> LabelActivityLog:
         if entry.id is None:

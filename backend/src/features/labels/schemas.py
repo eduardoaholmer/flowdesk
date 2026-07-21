@@ -1,9 +1,11 @@
 import uuid
+from dataclasses import dataclass
 from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
 from src.core.validators import validate_hex_color
+from src.features.labels.models import Label
 
 _NAME_MIN_LENGTH = 1
 _NAME_MAX_LENGTH = 50
@@ -67,6 +69,17 @@ class LabelUpdateRequest(BaseModel):
         return _validate_description(value) if value is not None else None
 
 
+@dataclass(frozen=True)
+class LabelView:
+    """Label + contagem de issues que a carregam. Devolvido pelo service no lugar
+    do `Label` cru porque `issue_count` não é coluna do model (mesmo racional de
+    `ProjectView`) — mantém o service devolvendo DTO de domínio, não schema HTTP.
+    """
+
+    label: Label
+    issue_count: int
+
+
 class LabelResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -75,5 +88,24 @@ class LabelResponse(BaseModel):
     name: str
     color: str
     description: str | None
+    # Uso da label (nº de issues não deletadas que a carregam). Autoritativo
+    # apenas quando construído via `from_view` (endpoints de Labels do workspace).
+    # A listagem de labels *de uma issue* (`GET /issues/{id}/labels`) reaproveita
+    # este schema como chips e deixa em 0 — ali a contagem global não é exibida.
+    issue_count: int = 0
     created_at: datetime
     updated_at: datetime
+
+    @classmethod
+    def from_view(cls, view: LabelView) -> "LabelResponse":
+        label = view.label
+        return cls(
+            id=label.id,
+            workspace_id=label.workspace_id,
+            name=label.name,
+            color=label.color,
+            description=label.description,
+            issue_count=view.issue_count,
+            created_at=label.created_at,
+            updated_at=label.updated_at,
+        )
