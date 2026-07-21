@@ -20,7 +20,6 @@ export function DashboardPage() {
     <DashboardView
       workspaceId={workspace.id}
       workspaceSlug={workspace.slug}
-      workspaceName={workspace.name}
       userId={profile.id}
       userName={profile.name}
     />

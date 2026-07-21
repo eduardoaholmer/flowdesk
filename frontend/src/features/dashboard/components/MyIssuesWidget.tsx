@@ -2,17 +2,16 @@ import { ListTodo } from "lucide-react";
 import { Link } from "react-router-dom";
 
 import { CreateIssueDialog } from "@/features/issues/components/CreateIssueDialog";
-import { IssuePriorityBadge } from "@/features/issues/components/IssuePriorityBadge";
-import { IssueStatusBadge } from "@/features/issues/components/IssueStatusBadge";
-import { useIssues } from "@/features/issues/hooks";
+import { IssuePriorityIcon } from "@/features/issues/components/IssuePriorityIcon";
+import { IssueStatusIcon } from "@/features/issues/components/IssueStatusIcon";
 import { EmptyState } from "@/shared/components/feedback/EmptyState";
 import { ErrorState } from "@/shared/components/feedback/ErrorState";
 import { ListSkeleton } from "@/shared/components/skeletons/ListSkeleton";
-import { Button } from "@/shared/components/ui/button";
-import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/shared/components/ui/card";
+import { formatDate } from "@/shared/lib/date";
 import { workspaceRoutes } from "@/shared/lib/routes";
 
-const WIDGET_PAGE_SIZE = 5;
+import { useMyRadarIssues } from "../hooks";
+import { DashboardWidgetCard } from "./DashboardWidgetCard";
 
 export function MyIssuesWidget({
   workspaceId,
@@ -23,62 +22,60 @@ export function MyIssuesWidget({
   workspaceSlug: string;
   userId: string;
 }) {
-  const { data, isLoading, isError, refetch } = useIssues(workspaceId, {
-    page: 1,
-    per_page: WIDGET_PAGE_SIZE,
-    assignee_id: userId,
-    sort: "-updated_at",
-  });
+  const { issues, isLoading, isError, refetch } = useMyRadarIssues(workspaceId, userId);
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Minhas issues</CardTitle>
-        <CardAction>
-          <Button variant="ghost" size="sm" asChild>
-            <Link to={workspaceRoutes.issues(workspaceSlug)}>Ver todas</Link>
-          </Button>
-        </CardAction>
-      </CardHeader>
-      <CardContent>
-        {isLoading ? (
-          <ListSkeleton rows={WIDGET_PAGE_SIZE} />
-        ) : isError ? (
+    <DashboardWidgetCard
+      title="Minhas issues"
+      action={
+        <Link
+          to={workspaceRoutes.issues(workspaceSlug)}
+          className="text-xs text-t3 hover:text-foreground"
+        >
+          Ver todas
+        </Link>
+      }
+    >
+      {isLoading ? (
+        <div className="p-4">
+          <ListSkeleton rows={4} />
+        </div>
+      ) : isError ? (
+        <div className="p-4">
           <ErrorState message="Não foi possível carregar suas issues." onRetry={() => refetch()} />
-        ) : data && data.data.length > 0 ? (
-          <ul className="flex flex-col divide-y">
-            {data.data.map((issue) => (
-              <li
-                key={issue.id}
-                className="flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0"
+        </div>
+      ) : issues.length > 0 ? (
+        <ul>
+          {issues.map((issue) => (
+            <li key={issue.id} className="border-b border-border last:border-b-0">
+              <Link
+                to={workspaceRoutes.issueDetail(workspaceSlug, issue.id)}
+                className="flex h-10 items-center gap-2.5 px-4 hover:bg-sunken"
               >
-                <Link
-                  to={workspaceRoutes.issueDetail(workspaceSlug, issue.id)}
-                  className="min-w-0 flex-1"
-                >
-                  <span className="mr-2 font-mono text-xs text-muted-foreground">
-                    {issue.identifier}
-                  </span>
-                  <span className="truncate text-sm font-medium hover:underline">
-                    {issue.title}
-                  </span>
-                </Link>
-                <div className="flex shrink-0 items-center gap-3">
-                  <IssuePriorityBadge priority={issue.priority} />
-                  <IssueStatusBadge status={issue.status} />
-                </div>
-              </li>
-            ))}
-          </ul>
-        ) : (
+                <IssuePriorityIcon priority={issue.priority} />
+                <IssueStatusIcon status={issue.status} />
+                <span className="font-mono text-xs text-t3">{issue.identifier}</span>
+                <span className="min-w-0 flex-1 truncate text-[13px] font-medium">
+                  {issue.title}
+                </span>
+                <span className="shrink-0 text-xs text-t3">
+                  {issue.due_date ? formatDate(issue.due_date) : "—"}
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <div className="p-4">
           <EmptyState
+            className="border-none py-10"
             icon={ListTodo}
-            title="Nenhuma issue atribuída a você"
-            description="Issues atribuídas a você aparecem aqui."
+            title="Nada atribuído a você"
+            description="Bom sinal — ou hora de puxar algo do backlog."
             action={<CreateIssueDialog workspaceId={workspaceId} />}
           />
-        )}
-      </CardContent>
-    </Card>
+        </div>
+      )}
+    </DashboardWidgetCard>
   );
 }

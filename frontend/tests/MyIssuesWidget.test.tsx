@@ -65,11 +65,11 @@ describe("MyIssuesWidget", () => {
   it("shows an empty state when the user has no assigned issues", async () => {
     listIssuesMock.mockResolvedValue({
       data: [],
-      meta: { page: 1, per_page: 5, total: 0, total_pages: 0 },
+      meta: { page: 1, per_page: 20, total: 0, total_pages: 0 },
     } satisfies CollectionEnvelope<Issue>);
 
     renderWidget();
 
-    expect(await screen.findByText("Nenhuma issue atribuída a você")).toBeInTheDocument();
+    expect(await screen.findByText("Nada atribuído a você")).toBeInTheDocument();
   });
 });
