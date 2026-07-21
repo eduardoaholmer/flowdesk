@@ -29,11 +29,18 @@ class TestRolePermissionsMatrix:
     def test_owner_has_every_permission(self) -> None:
         assert ROLE_PERMISSIONS[WorkspaceRole.OWNER] == frozenset(Permission)
 
-    def test_admin_has_every_permission_except_workspace_delete(self) -> None:
+    def test_admin_has_every_permission_except_delete_and_transfer_ownership(self) -> None:
+        """As duas únicas ações irreversíveis/de posse do domínio (Sprint 17.1/M6,
+        ADR-037) são reservadas ao OWNER — nem ADMIN as tem.
+        """
         admin_permissions = ROLE_PERMISSIONS[WorkspaceRole.ADMIN]
 
         assert Permission.WORKSPACE_DELETE not in admin_permissions
-        assert admin_permissions == frozenset(Permission) - {Permission.WORKSPACE_DELETE}
+        assert Permission.WORKSPACE_TRANSFER_OWNERSHIP not in admin_permissions
+        assert admin_permissions == frozenset(Permission) - {
+            Permission.WORKSPACE_DELETE,
+            Permission.WORKSPACE_TRANSFER_OWNERSHIP,
+        }
 
     def test_member_cannot_manage_workspace_or_members(self) -> None:
         member_permissions = ROLE_PERMISSIONS[WorkspaceRole.MEMBER]

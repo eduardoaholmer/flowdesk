@@ -83,9 +83,7 @@ async def download_attachment(
     attachment = await service.get(workspace_id, attachment_id)
     path = await storage.open(attachment.storage_key)
     cleanup = (
-        BackgroundTask(path.unlink, missing_ok=True)
-        if storage.provider_name != "local"
-        else None
+        BackgroundTask(path.unlink, missing_ok=True) if storage.provider_name != "local" else None
     )
     return FileResponse(
         path,

@@ -139,9 +139,7 @@ async def transfer_ownership(
     workspace_id: uuid.UUID,
     member_id: uuid.UUID,
     current_user: CurrentUser = Depends(get_current_user),
-    _member: WorkspaceMember = Depends(
-        require_permission(Permission.WORKSPACE_TRANSFER_OWNERSHIP)
-    ),
+    _member: WorkspaceMember = Depends(require_permission(Permission.WORKSPACE_TRANSFER_OWNERSHIP)),
     service: WorkspaceService = Depends(get_workspace_service),
 ) -> DataEnvelope[WorkspaceResponse]:
     workspace = await service.transfer_ownership(current_user, workspace_id, member_id)

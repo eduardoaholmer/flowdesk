@@ -101,7 +101,7 @@ class S3StorageProvider:
                 self._client.download_file, self._bucket_name, storage_key, str(destination)
             )
         except Exception:
-            destination.unlink(missing_ok=True)
+            await asyncio.to_thread(destination.unlink, True)
             raise
         return destination
 
