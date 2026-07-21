@@ -135,6 +135,27 @@ async def test_create_auto_key_avoids_collision(service: ProjectService) -> None
     assert second.project.key != first.project.key
 
 
+async def test_create_with_lead_auto_adds_lead_as_member(
+    service: ProjectService, workspace_repo: FakeWorkspaceRepository
+) -> None:
+    workspace_id = _workspace_id()
+    lead = _user("grace@example.com")
+    _add_workspace_member(workspace_repo, workspace_id, lead.id)
+
+    view = await service.create(
+        _user(), workspace_id, ProjectCreateRequest(name="Roadmap", lead_id=lead.id)
+    )
+
+    assert view.member_ids == [lead.id]
+
+
+async def test_create_rejects_lead_outside_workspace(service: ProjectService) -> None:
+    with pytest.raises(ProjectMemberNotInWorkspaceError):
+        await service.create(
+            _user(), _workspace_id(), ProjectCreateRequest(name="Roadmap", lead_id=uuid.uuid4())
+        )
+
+
 async def test_get_raises_not_found_for_missing_project(service: ProjectService) -> None:
     with pytest.raises(ProjectNotFoundError):
         await service.get(_workspace_id(), uuid.uuid4())
@@ -244,6 +265,20 @@ async def test_update_with_no_changes_does_not_record_activity(
     )
 
     assert project_repo.activity_log == []
+
+
+async def test_update_lead_rejects_lead_outside_workspace(service: ProjectService) -> None:
+    workspace_id = _workspace_id()
+    actor = _user()
+    created = await service.create(actor, workspace_id, ProjectCreateRequest(name="Roadmap"))
+
+    with pytest.raises(ProjectMemberNotInWorkspaceError):
+        await service.update(
+            actor,
+            workspace_id,
+            created.project.id,
+            ProjectUpdateRequest(lead_id=uuid.uuid4()),
+        )
 
 
 async def test_archive_transitions_status_and_rejects_double_archive(

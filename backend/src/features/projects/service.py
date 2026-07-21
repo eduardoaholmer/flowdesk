@@ -47,6 +47,10 @@ class ProjectService:
     ) -> ProjectView:
         if await self._project_repo.get_by_name(workspace_id, payload.name) is not None:
             raise ProjectNameTakenError()
+        if payload.lead_id is not None and (
+            await self._workspace_repo.get_member(workspace_id, payload.lead_id) is None
+        ):
+            raise ProjectMemberNotInWorkspaceError()
         slug = await self._resolve_slug(workspace_id, payload.name, payload.slug)
         key = await self._resolve_key(workspace_id, payload.name, payload.key)
 
@@ -65,6 +69,12 @@ class ProjectService:
                 status=ProjectStatus.ACTIVE,
             )
         )
+        if project.lead_id is not None:
+            await self._project_repo.add_member(
+                ProjectMember(
+                    workspace_id=workspace_id, project_id=project.id, user_id=project.lead_id
+                )
+            )
         await self._record_activity(
             workspace_id, project.id, current_user.id, "project.created", {"name": project.name}
         )
@@ -135,11 +145,18 @@ class ProjectService:
             }
             project.target_date = payload.target_date
         if payload.lead_id is not None and payload.lead_id != project.lead_id:
+            if await self._workspace_repo.get_member(workspace_id, payload.lead_id) is None:
+                raise ProjectMemberNotInWorkspaceError()
             changes["lead_id"] = {
                 "old": str(project.lead_id) if project.lead_id else None,
                 "new": str(payload.lead_id),
             }
             project.lead_id = payload.lead_id
+            await self._project_repo.add_member(
+                ProjectMember(
+                    workspace_id=workspace_id, project_id=project.id, user_id=payload.lead_id
+                )
+            )
 
         if changes:
             await self._project_repo.update(project)
