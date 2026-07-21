@@ -1,5 +1,7 @@
 import { Outlet } from "react-router-dom";
 
+import { CreateIssueDialog } from "@/features/issues/components/CreateIssueDialog";
+import { useWorkspace } from "@/features/workspaces/useWorkspace";
 import { CommandPalette } from "@/shared/components/command-palette/CommandPalette";
 import { PageContainer } from "@/shared/components/layout/PageContainer";
 import { Sidebar } from "@/shared/components/layout/Sidebar";
@@ -13,6 +15,8 @@ import { Topbar } from "@/shared/components/layout/Topbar";
  * solitário) usa `ContentContainer` por dentro, sem declarar seu próprio `max-w-*`.
  */
 export function AppLayout() {
+  const { workspace } = useWorkspace();
+
   return (
     <div className="flex h-screen flex-col">
       <Topbar />
@@ -25,6 +29,7 @@ export function AppLayout() {
         </main>
       </div>
       <CommandPalette />
+      {workspace && <CreateIssueDialog workspaceId={workspace.id} />}
     </div>
   );
 }

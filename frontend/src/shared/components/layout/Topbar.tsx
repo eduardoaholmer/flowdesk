@@ -31,7 +31,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/shared/components/ui/dropdown-menu";
-import { Empty, EmptyDescription, EmptyMedia, EmptyTitle } from "@/shared/components/ui/empty";
+import { Empty, EmptyDescription, EmptyTitle } from "@/shared/components/ui/empty";
 import { Popover, PopoverContent, PopoverTrigger } from "@/shared/components/ui/popover";
 import { useCurrentUser } from "@/shared/hooks/useCurrentUser";
 import { workspaceRoutes } from "@/shared/lib/routes";
@@ -136,7 +136,7 @@ function TopbarSearch() {
       <Button
         variant="outline"
         size="sm"
-        className="hidden gap-2 text-muted-foreground sm:flex"
+        className="hidden gap-2 border-border bg-panel text-t3 hover:border-border2 hover:text-t2 sm:flex"
         onClick={() => setCommandPaletteOpen(true)}
       >
         <Search className="size-4" />
@@ -181,18 +181,20 @@ function TopbarNotifications() {
         <Button variant="ghost" size="icon" className="relative" aria-label="Notificações">
           <Bell className="size-4" />
           {hasUnread && (
-            <span className="absolute right-1.5 top-1.5 size-2 rounded-full bg-primary" />
+            <span className="absolute -top-0.5 -right-0.5 flex min-w-3.5 items-center justify-center rounded-full bg-destructive px-0.5 text-[9px] leading-3.5 font-bold text-white">
+              {unreadCount}
+            </span>
           )}
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-80 p-2">
-        <div className="flex items-center justify-between px-1 pb-1">
-          <span className="text-sm font-medium">Notificações</span>
+      <PopoverContent align="end" className="w-80 border-border bg-panel p-0">
+        <div className="flex items-center justify-between px-3 py-2.5">
+          <span className="font-heading text-[15px] font-semibold">Notificações</span>
           {hasUnread && (
             <Button
               variant="ghost"
               size="sm"
-              className="h-auto p-1 text-xs"
+              className="h-auto p-1 text-xs text-t3 hover:text-foreground"
               onClick={() => markAllRead.mutate()}
             >
               Marcar todas como lidas
@@ -201,11 +203,11 @@ function TopbarNotifications() {
         </div>
         {isLoading ? (
           <div className="flex flex-col gap-2 p-2">
-            <div className="h-10 animate-pulse rounded-md bg-muted" />
-            <div className="h-10 animate-pulse rounded-md bg-muted" />
+            <div className="h-10 animate-pulse rounded-md bg-sunken" />
+            <div className="h-10 animate-pulse rounded-md bg-sunken" />
           </div>
         ) : notifications && notifications.data.length > 0 ? (
-          <div className="flex max-h-80 flex-col gap-0.5 overflow-y-auto">
+          <div className="flex max-h-80 flex-col gap-0.5 overflow-y-auto p-2">
             {notifications.data.map((notification) => (
               <NotificationItem
                 key={notification.id}
@@ -216,13 +218,10 @@ function TopbarNotifications() {
             ))}
           </div>
         ) : (
-          <Empty className="border-none p-2 py-6">
-            <EmptyMedia>
-              <Bell className="size-6 text-muted-foreground" />
-            </EmptyMedia>
-            <EmptyTitle>Nenhuma notificação</EmptyTitle>
-            <EmptyDescription>
-              Você será avisado aqui sobre menções e mudanças de status.
+          <Empty className="border-none p-4 py-8">
+            <EmptyTitle>Tudo em dia</EmptyTitle>
+            <EmptyDescription className="text-t3">
+              Menções, atribuições e mudanças de status aparecem aqui.
             </EmptyDescription>
           </Empty>
         )}

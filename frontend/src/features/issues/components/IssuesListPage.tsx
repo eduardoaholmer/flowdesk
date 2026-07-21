@@ -4,12 +4,13 @@ import { useSearchParams } from "react-router-dom";
 import { ErrorState } from "@/shared/components/feedback/ErrorState";
 import { Pagination } from "@/shared/components/navigation/Pagination";
 import { ListSkeleton } from "@/shared/components/skeletons/ListSkeleton";
+import { Button } from "@/shared/components/ui/button";
 import { useDebouncedValue } from "@/shared/hooks/useDebouncedValue";
+import { useUiStore } from "@/shared/stores/uiStore";
 import { cn } from "@/shared/lib/utils";
 
 import { useIssues } from "../hooks";
 import type { IssuePriority, IssueSort, IssueStatus } from "../types";
-import { CreateIssueDialog } from "./CreateIssueDialog";
 import { IssuesEmptyState } from "./IssuesEmptyState";
 import { IssuesTable } from "./IssuesTable";
 import { IssuesToolbar } from "./IssuesToolbar";
@@ -23,6 +24,7 @@ export function IssuesListPage({
   workspaceId: string;
   workspaceSlug: string;
 }) {
+  const setCreateIssueOpen = useUiStore((state) => state.setCreateIssueOpen);
   const [searchParams, setSearchParams] = useSearchParams();
   const [searchInput, setSearchInput] = useState(searchParams.get("q") ?? "");
   const debouncedSearch = useDebouncedValue(searchInput);
@@ -94,7 +96,7 @@ export function IssuesListPage({
         <h1 className="font-heading text-xl font-semibold">Issues</h1>
         {data && <span className="text-xs text-t3">{data.meta.total} issues</span>}
         <div className="flex-1" />
-        <CreateIssueDialog workspaceId={workspaceId} />
+        <Button onClick={() => setCreateIssueOpen(true)}>Nova issue</Button>
       </div>
 
       <IssuesToolbar
@@ -128,7 +130,7 @@ export function IssuesListPage({
           />
         </div>
       ) : (
-        <IssuesEmptyState workspaceId={workspaceId} hasFilters={hasFilters} />
+        <IssuesEmptyState hasFilters={hasFilters} />
       )}
     </div>
   );

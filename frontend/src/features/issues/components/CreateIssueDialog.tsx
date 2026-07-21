@@ -1,5 +1,5 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useState } from "react";
+import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 
@@ -10,8 +10,9 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/shared/components/ui/dialog";
+import { isTypingTarget } from "@/shared/lib/dom";
+import { useUiStore } from "@/shared/stores/uiStore";
 
 import { useCreateIssue } from "../hooks";
 import { IssueFormFields, type IssueFormValues } from "./IssueFormFields";
@@ -27,8 +28,16 @@ const schema = z.object({
   due_date: z.string().optional(),
 });
 
+/**
+ * Montado uma única vez em `AppLayout` (não por página) — controlado por
+ * `uiStore.isCreateIssueOpen`, aberto pelo botão "Nova issue" da Sidebar, pelo
+ * comando de mesmo nome na paleta, pelo atalho global `C`, ou pelos gatilhos
+ * locais em `IssuesListPage`/`IssuesEmptyState` (todos só chamam
+ * `setCreateIssueOpen(true)`, nenhum tem seu próprio estado/dialog).
+ */
 export function CreateIssueDialog({ workspaceId }: { workspaceId: string }) {
-  const [open, setOpen] = useState(false);
+  const open = useUiStore((state) => state.isCreateIssueOpen);
+  const setOpen = useUiStore((state) => state.setCreateIssueOpen);
   const {
     register,
     handleSubmit,
@@ -40,6 +49,22 @@ export function CreateIssueDialog({ workspaceId }: { workspaceId: string }) {
     defaultValues: { status: "BACKLOG", priority: "NO_PRIORITY" },
   });
   const createIssue = useCreateIssue(workspaceId);
+
+  // Atalho global "C" (sem modificador) — mesmo gesto do handoff (`Sidebar.dc.html`/
+  // `CommandPalette.dc.html`, "Nova issue · C"). Ignora quando o foco está num campo
+  // de digitação (inclui o próprio input da paleta) para não interceptar a letra "c"
+  // sendo digitada em um título/busca.
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (open || event.metaKey || event.ctrlKey || event.altKey) return;
+      if (event.key.toLowerCase() !== "c") return;
+      if (isTypingTarget(event.target)) return;
+      event.preventDefault();
+      setOpen(true);
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [open, setOpen]);
 
   async function onSubmit(values: IssueFormValues) {
     await createIssue.mutateAsync({
@@ -64,9 +89,6 @@ export function CreateIssueDialog({ workspaceId }: { workspaceId: string }) {
         if (!next) reset();
       }}
     >
-      <DialogTrigger asChild>
-        <Button>Nova issue</Button>
-      </DialogTrigger>
       <DialogContent className="sm:max-w-lg">
         <form onSubmit={handleSubmit(onSubmit)}>
           <DialogHeader>

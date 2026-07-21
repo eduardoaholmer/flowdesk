@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { WorkspaceMembershipSummary } from "@/features/auth/types";
 import {
+  buildCreateIssueCommands,
   buildNavigationCommands,
   buildUtilityCommands,
   buildWorkspaceSwitchCommands,
@@ -49,6 +50,18 @@ describe("buildWorkspaceSwitchCommands", () => {
 
     commands[0]?.perform();
     expect(navigate).toHaveBeenCalledWith("/w/beta/issues");
+  });
+});
+
+describe("buildCreateIssueCommands", () => {
+  it("performs the given callback and carries the C shortcut hint", () => {
+    const onCreateIssue = vi.fn();
+    const commands = buildCreateIssueCommands(onCreateIssue);
+
+    expect(commands).toHaveLength(1);
+    expect(commands[0]?.shortcut).toBe("C");
+    commands[0]?.perform();
+    expect(onCreateIssue).toHaveBeenCalledOnce();
   });
 });
 

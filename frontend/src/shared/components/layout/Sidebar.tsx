@@ -6,6 +6,7 @@ import {
   ListTodo,
   PanelLeftClose,
   PanelLeftOpen,
+  Plus,
   Settings,
   Tags,
   type LucideIcon,
@@ -63,11 +64,11 @@ function getNavGroups(workspaceSlug: string): NavGroup[] {
 function SidebarNav({ workspaceSlug, collapsed }: { workspaceSlug: string; collapsed: boolean }) {
   const linkClassName = ({ isActive }: { isActive: boolean }) =>
     cn(
-      "flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm font-medium transition-[color,background-color,transform]",
+      "flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm transition-[color,background-color,transform]",
       collapsed && "justify-center px-0",
       isActive
-        ? "bg-muted text-foreground"
-        : "text-muted-foreground hover:translate-x-0.5 hover:bg-muted/50",
+        ? "bg-sunken font-semibold text-foreground"
+        : "font-medium text-t2 hover:translate-x-0.5 hover:bg-sunken hover:text-foreground",
     );
 
   return (
@@ -75,7 +76,9 @@ function SidebarNav({ workspaceSlug, collapsed }: { workspaceSlug: string; colla
       {getNavGroups(workspaceSlug).map((group) => (
         <div key={group.label} className="flex flex-col gap-1">
           {!collapsed && (
-            <span className="px-2.5 text-xs font-medium text-muted-foreground">{group.label}</span>
+            <span className="px-2.5 text-[10.5px] font-semibold tracking-wide text-t3 uppercase">
+              {group.label}
+            </span>
           )}
           {group.items.map((item) => {
             const link = (
@@ -122,19 +125,21 @@ function WorkspaceSwitcher({
         <Button
           variant="ghost"
           className={cn(
-            "h-auto justify-start gap-2 px-2 py-1.5",
+            "h-auto justify-start gap-2 px-2 py-1.5 hover:bg-sunken",
             collapsed && "justify-center px-0",
           )}
         >
-          <Avatar size="sm">
-            <AvatarFallback>{getInitials(activeWorkspace?.name ?? "?")}</AvatarFallback>
+          <Avatar size="sm" className="border border-border2 bg-sunken">
+            <AvatarFallback className="bg-transparent text-t2">
+              {getInitials(activeWorkspace?.name ?? "?")}
+            </AvatarFallback>
           </Avatar>
           {!collapsed && (
             <>
-              <span className="flex-1 truncate text-left text-sm font-medium">
+              <span className="flex-1 truncate text-left font-heading text-[15px] font-semibold">
                 {activeWorkspace?.name ?? "Workspace"}
               </span>
-              <ChevronsUpDown className="size-3.5 shrink-0 text-muted-foreground" />
+              <ChevronsUpDown className="size-3.5 shrink-0 text-t3" />
             </>
           )}
         </Button>
@@ -146,9 +151,7 @@ function WorkspaceSwitcher({
           <DropdownMenuItem key={workspace.id} asChild>
             <Link to={workspaceRoutes.issues(workspace.slug)}>
               <span className="flex-1 truncate">{workspace.name}</span>
-              {workspace.slug === workspaceSlug && (
-                <span className="text-xs text-muted-foreground">Ativo</span>
-              )}
+              {workspace.slug === workspaceSlug && <span className="text-xs text-t3">Ativo</span>}
             </Link>
           </DropdownMenuItem>
         ))}
@@ -166,16 +169,47 @@ function SidebarFooter({ collapsed }: { collapsed: boolean }) {
 
   return (
     <div className={cn("flex items-center gap-2 border-t pt-3", collapsed && "justify-center")}>
-      <Avatar size="sm">
-        <AvatarFallback>{getInitials(profile.name)}</AvatarFallback>
+      <Avatar size="sm" className="border border-border2 bg-sunken">
+        <AvatarFallback className="bg-transparent text-t2">
+          {getInitials(profile.name)}
+        </AvatarFallback>
       </Avatar>
       {!collapsed && (
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium">{profile.name}</p>
-          <p className="truncate text-xs text-muted-foreground">{profile.email}</p>
+          <p className="truncate text-xs text-t3">{profile.email}</p>
         </div>
       )}
     </div>
+  );
+}
+
+function SidebarNewIssueButton({ collapsed }: { collapsed: boolean }) {
+  const setCreateIssueOpen = useUiStore((state) => state.setCreateIssueOpen);
+
+  const button = (
+    <Button
+      variant="outline"
+      className={cn(
+        "h-auto justify-start gap-2 border-border2 bg-panel px-2.5 py-1.5 font-medium shadow-xs hover:border-t3",
+        collapsed && "justify-center px-0",
+      )}
+      onClick={() => setCreateIssueOpen(true)}
+    >
+      <Plus className="size-3.5 shrink-0" />
+      {!collapsed && "Nova issue"}
+    </Button>
+  );
+
+  if (!collapsed) {
+    return button;
+  }
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{button}</TooltipTrigger>
+      <TooltipContent side="right">Nova issue</TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -185,6 +219,7 @@ function SidebarBody({ workspaceSlug, collapsed }: { workspaceSlug: string; coll
   return (
     <div className="flex h-full flex-col gap-4 p-3">
       <WorkspaceSwitcher workspaceSlug={workspaceSlug} collapsed={collapsed} />
+      <SidebarNewIssueButton collapsed={collapsed} />
       <SidebarNav workspaceSlug={workspaceSlug} collapsed={collapsed} />
       <SidebarFooter collapsed={collapsed} />
       <Button
