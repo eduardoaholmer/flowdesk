@@ -922,3 +922,17 @@ Hardening de rate limit por rota (mesma sprint, gap independente encontrado ao r
 **Desvantagens aceitas**: nenhuma verificação automatizada de que o scan de fato roda no CI real (limitação de ambiente, não de escopo) — pendente confirmar num push/PR real.
 
 **Impacto futuro**: Sprint 17.5 (runbook/decisão para os itens que exigem infraestrutura real) é a última do M6 — fecha o milestone.
+
+---
+
+## ADR-041 — Sprint 17.5 (M6): runbook de produção — fecha M6
+
+**Contexto**: última sub-sprint de execução do M6 (planejamento em ADR-036). Com Sprint 17.1–17.4 fechando tudo que era código real (transferência de propriedade, `StorageProvider` S3, `MailSender` SMTP, hardening de CI), restavam nove itens em `PRODUCTION_CHECKLIST.md` marcados "requer infraestrutura externa" — decisão já tomada na ADR-036 (opção "a" de três apresentadas): documentar a estratégia real para cada um, sem implementar infraestrutura "de mentira" (MinIO simulando produção real, TLS self-signed, um cron de backup contra um Postgres de desenvolvimento) só para preencher o checklist.
+
+**Decisão — novo documento `docs/11-production-runbook.md`, não expandir o próprio `PRODUCTION_CHECKLIST.md` inline**: o checklist (Sprint 8.7, ADR-016) já cumpre bem seu papel de lista de verificação compacta — expandir cada item unchecked com um parágrafo de estratégia inflaria um documento cuja força é ser escaneável rapidamente. Um documento numerado novo (`11-`, próximo da sequência `00`–`10` já estabelecida em `docs/`) segue o mesmo padrão dos demais docs de referência do projeto; `PRODUCTION_CHECKLIST.md` ganhou só uma referência cruzada por item (`Estratégia: docs/11-production-runbook.md §N`), mantendo sua natureza de checklist.
+
+**Conteúdo do runbook** (dez seções, uma por item do checklist): segredos reais (GitHub Environments/secret manager dedicado), pipeline de deploy real (job `deploy` novo no CI, build+push para GHCR+deploy no orquestrador), migração de banco como etapa obrigatória pré-tráfego, agregação de log centralizada (driver nativo da plataforma, zero mudança de código), backup automatizado do Postgres (preferir backup nativo de provedor gerenciado sobre solução artesanal — o item mais crítico de todos, perda de dado é o modo de falha menos reversível), backup de anexos (recursos nativos do bucket S3 já disponível desde a ADR-038), runbook de rollback testado (ordem correta: `alembic downgrade` antes de reverter a imagem, nunca depois), TLS na borda (terminador dedicado, nunca a própria aplicação), autoscaling horizontal real (nativo do orquestrador, pré-requisito de app stateless já satisfeito). Cada seção cita o que já existe no código que a viabiliza (ex.: `Strict-Transport-Security` já condicionado a `ENVIRONMENT=production`, esperando um terminador TLS real).
+
+**Verificação**: DoD-base — nenhuma mudança de código neste ADR, decisão/documentação pura. `PRODUCTION_CHECKLIST.md` e `docs/08-roadmap.md` atualizados para fechar Sprint 17.5 e M6.
+
+**Impacto futuro**: **M6 fechado.** Nenhum item de infraestrutura real vira trabalho de código futuro a menos que o projeto ganhe um ambiente de produção de fato — reavaliação natural se isso acontecer, com este runbook como ponto de partida.

@@ -4,7 +4,10 @@ Este checklist reflete o estado real do repositório após a Sprint 8.7 (`docs/0
 ADR-016 em `docs/09-decision-log.md`). Ele é deliberadamente honesto sobre o que está
 implementado **no código deste repositório** versus o que depende de infraestrutura real que um
 projeto de portfólio não provisiona (um banco gerenciado, um serviço de backup, um provedor de
-TLS). Itens do segundo tipo estão marcados como "requer infraestrutura externa".
+TLS). Itens do segundo tipo estão marcados como "requer infraestrutura externa" — cada um aponta
+para a seção correspondente de `docs/11-production-runbook.md` (Sprint 17.5/M6, ADR-041), que
+registra a estratégia real recomendada para o dia em que esta infraestrutura vier a existir, sem
+implementá-la "de mentira" neste repositório (decisão explícita do usuário, ADR-036).
 
 ## Ambiente
 
@@ -20,7 +23,7 @@ TLS). Itens do segundo tipo estão marcados como "requer infraestrutura externa"
       nunca valores reais utilizáveis.
 - [ ] Segredos reais (chave JWT de produção, credenciais de banco) gerados e armazenados em um
       gerenciador de segredos — **requer infraestrutura externa** (Vault, AWS Secrets Manager,
-      GitHub Environments, etc.). Nunca em `.env` commitado.
+      GitHub Environments, etc.). Nunca em `.env` commitado. Estratégia: `docs/11-production-runbook.md` §1.
 
 ## Deploy
 
@@ -33,9 +36,10 @@ TLS). Itens do segundo tipo estão marcados como "requer infraestrutura externa"
       — quebra de Dockerfile é pega antes do merge.
 - [ ] Pipeline de deploy real (build → push para registry → deploy em orquestrador) —
       **requer infraestrutura externa**. O que existe aqui é a base (imagens corretas, CI que as
-      valida), não o pipeline em si.
+      valida), não o pipeline em si. Estratégia: `docs/11-production-runbook.md` §2.
 - [ ] Migração de banco (`alembic upgrade head`) como etapa explícita e obrigatória do deploy,
       antes de trocar o tráfego para a nova versão — hoje só roda em CI, contra um banco efêmero.
+      Estratégia: `docs/11-production-runbook.md` §3.
 
 ## Monitoramento e Observabilidade
 
@@ -50,7 +54,7 @@ TLS). Itens do segundo tipo estão marcados como "requer infraestrutura externa"
 - [x] `GET /version` com versão, ambiente e `uptime_seconds`.
 - [ ] Agregação/retenção de log centralizada (ELK, Loki, CloudWatch Logs) — **requer
       infraestrutura externa**. O formato JSON estruturado já é o pré-requisito para conectar a
-      qualquer uma dessas ferramentas sem mudança de código.
+      qualquer uma dessas ferramentas sem mudança de código. Estratégia: `docs/11-production-runbook.md` §4.
 - [ ] Métricas de série temporal (Prometheus/OpenTelemetry) e alerta automático — deliberadamente
       fora de escopo desta sprint (ADR-016); a linha de access-log já cobre "métricas básicas via
       log agregável" o suficiente para o estágio atual do projeto.
@@ -60,11 +64,11 @@ TLS). Itens do segundo tipo estão marcados como "requer infraestrutura externa"
 - [ ] Backup automatizado do Postgres — **requer infraestrutura externa** (a maioria dos
       provedores gerenciados de Postgres oferece isso nativamente). Estratégia recomendada para
       quando houver um banco real: `pg_dump` agendado + retenção de N dias + teste periódico de
-      restore (um backup nunca testado não é um backup confiável).
-- [ ] Backup dos anexos enviados (`var/uploads` local, `core/storage.py::LocalStorageProvider`) —
-      hoje é armazenamento em disco local de instância única, sem replicação; migrar para um
-      provider de objeto remoto (S3 ou equivalente, o `StorageProvider` já é o ponto de extensão
-      para isso) é pré-requisito para backup real de anexos.
+      restore (um backup nunca testado não é um backup confiável). Detalhado em `docs/11-production-runbook.md` §6.
+- [ ] Backup dos anexos enviados — `LocalStorageProvider` (disco local de instância única, sem
+      replicação) não tem história de backup própria; com `STORAGE_PROVIDER=s3` (Sprint 17.2/M6,
+      ADR-038) já disponível, versionamento de bucket + replicação entre regiões resolvem isso sem
+      código novo — falta só configurar um bucket real. Estratégia: `docs/11-production-runbook.md` §7.
 
 ## Rollback
 
@@ -73,7 +77,7 @@ TLS). Itens do segundo tipo estão marcados como "requer infraestrutura externa"
 - [x] Migrations Alembic são incrementais e cada uma é reversível via `alembic downgrade` (padrão
       já seguido desde a Sprint 2, não introduzido nesta sprint).
 - [ ] Runbook de rollback testado (não só teoricamente possível) contra um ambiente real —
-      **requer infraestrutura externa** para validar de ponta a ponta.
+      **requer infraestrutura externa** para validar de ponta a ponta. Estratégia: `docs/11-production-runbook.md` §8.
 
 ## Segurança
 
@@ -90,6 +94,7 @@ TLS). Itens do segundo tipo estão marcados como "requer infraestrutura externa"
 - [ ] Certificado TLS e terminador HTTPS na borda — **requer infraestrutura externa** (load
       balancer gerenciado, Caddy/Nginx com Let's Encrypt, ou equivalente). O `Strict-Transport-
       Security` já está condicionado a `ENVIRONMENT=production`, pronto para quando isso existir.
+      Estratégia: `docs/11-production-runbook.md` §9.
 - [x] Varredura de vulnerabilidade de imagem Docker via Trivy (Sprint 17.4/M6, ADR-040) — job
       `docker` do CI, não bloqueante (mesmo critério de `pip-audit`/`npm audit`), `CRITICAL`/`HIGH`.
 
@@ -102,6 +107,7 @@ TLS). Itens do segundo tipo estão marcados como "requer infraestrutura externa"
 - [x] Engine de banco e cliente Redis com `pool_pre_ping`/reconexão automática por event loop.
 - [ ] Autoscaling horizontal real (múltiplas instâncias, load balancer) — **requer
       infraestrutura externa** de orquestração (o app já é stateless o suficiente para isso hoje).
+      Estratégia: `docs/11-production-runbook.md` §10.
 - [x] Armazenamento de anexos com provider remoto disponível (`S3StorageProvider`, Sprint 17.2/M6,
       ADR-038) — `STORAGE_PROVIDER=s3` + `S3_BUCKET_NAME` troca `LocalStorageProvider` (disco
       local, não compartilhado entre réplicas) por um bucket S3-compatible sem mudar o contrato
