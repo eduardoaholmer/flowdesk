@@ -902,3 +902,23 @@ Hardening de rate limit por rota (mesma sprint, gap independente encontrado ao r
 **Desvantagens aceitas**: sem suporte a SMTPS implícito (Decisão 6). Sem teste automatizado de que a senha SMTP nunca aparece em log (garantia hoje só por code review/docstring, não por teste — capturar output de `structlog` para asserir ausência seria um teste frágil/de baixo valor para o que verifica, `CLAUDE.md` §16 "testar comportamento, não linha").
 
 **Impacto futuro**: Sprint 17.4 (hardening de CI — scan de imagem + `.env.production.example`) é a próxima, sem dependência nova.
+
+---
+
+## ADR-040 — Sprint 17.4 (M6): hardening de CI (scan de imagem + `.env.production.example`)
+
+**Contexto**: quarta sub-sprint de execução do M6 (planejamento em ADR-036). Dois itens de menor esforço/risco identificados na investigação original: scan de vulnerabilidade de imagem Docker (Trivy/Grype, nunca implementado) e um template dedicado de variáveis de ambiente de produção (só existia `.env.example`/`backend/.env.example` de desenvolvimento). Sem dependência nova de código — só configuração de CI e um arquivo de documentação.
+
+**Decisão 1 — Trivy (`aquasecurity/trivy-action`), não Grype**: ambos cumprem o mesmo papel (scanner de vulnerabilidade de imagem); Trivy tem a Action oficial mais adotada/documentada para GitHub Actions, sem trade-off técnico relevante para o escopo deste item — não havia motivo para preferir Grype além de familiaridade, e este projeto não tinha nenhum dos dois ainda.
+
+**Decisão 2 — `docker/build-push-action` ganhou `load: true` + `tags:` explícitas**: sem isso, a imagem construída pelo `buildx` fica só no builder isolado do runner, nunca visível a `docker images`/Trivy — não fazia diferença antes porque nada além do próprio build consumia a imagem resultante (`push: false` já bastava para validar que o `Dockerfile` compila). `tags: flowdesk-backend:ci`/`flowdesk-frontend:ci` são só identificadores locais do job, nunca publicados em nenhum registry.
+
+**Decisão 3 — não bloqueante (`continue-on-error: true` + `exit-code: "0"`)**: mesmo critério já usado por `pip-audit`/`npm audit` no mesmo workflow (`CLAUDE.md` §1.6) — vulnerabilidade de imagem base ou dependência transitiva fora do controle direto do projeto tornaria um gate bloqueante barulhento o bastante para virar ruído ignorado, o oposto do que CI deveria ser. `severity: CRITICAL,HIGH` filtra o que é acionável do que é apenas informativo. `aquasecurity/trivy-action@0.29.0` fixado por versão (não `@latest`/`@master`) — mesma disciplina de toda GitHub Action deste workflow; `.github/dependabot.yml` já cobre `github-actions` semanalmente, então uma versão desatualizada aqui é auto-corrigida, não uma dívida permanente.
+
+**Decisão 4 — `.env.production.example` na raiz, não em `backend/`**: mesmo nível de `docker-compose.prod.yml` (que ele documenta) e de `.env.example` (o par de desenvolvimento) — cobre variáveis de mais de um serviço (`POSTGRES_*` consumido tanto pelo serviço `postgres` quanto interpolado em `DATABASE_URL` do `backend`, `VITE_API_URL` do `frontend`), não só do backend isoladamente. Todo valor é um placeholder (`CHANGE_ME`) ou uma instrução (gerar par JWT novo via `openssl`) — nunca um valor real utilizável, diferente de `.env.example` (que documenta abertamente o par de chave JWT de DEV, ADR-008). `.gitignore` (achado incidental desta sprint, não introduzido por ela) não cobria `.env.production` — `.env`/`.env.local`/`.env.*.local` não casam com esse nome — corrigido no mesmo commit, junto da negação `!.env.production.example` para manter o template rastreado.
+
+**Verificação**: YAML de `.github/workflows/ci.yml` validado com `yaml.safe_load`; markdown revisado manualmente. **Mesma limitação das Sprints 17.1–17.3**: não foi possível rodar o workflow de fato (sem GitHub Actions neste sandbox) nem `docker build`/`docker compose` (sem acesso ao socket Docker) — os steps novos (`load: true`, Trivy) não foram executados nesta sessão. Nenhuma mudança de código Python nesta sprint, então não há risco de regressão em `pytest`/`mypy` por causa dela especificamente.
+
+**Desvantagens aceitas**: nenhuma verificação automatizada de que o scan de fato roda no CI real (limitação de ambiente, não de escopo) — pendente confirmar num push/PR real.
+
+**Impacto futuro**: Sprint 17.5 (runbook/decisão para os itens que exigem infraestrutura real) é a última do M6 — fecha o milestone.

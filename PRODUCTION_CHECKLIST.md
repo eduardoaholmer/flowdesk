@@ -15,6 +15,9 @@ TLS). Itens do segundo tipo estão marcados como "requer infraestrutura externa"
 - [x] Trava de segurança: recusa subir com `ENVIRONMENT=production` usando a chave JWT de
       desenvolvimento checada no repositório.
 - [x] Referência completa de variáveis de ambiente: `docs/06-backend.md` §10.
+- [x] Template `.env.production.example` (raiz, Sprint 17.4/M6, ADR-040) documentando o conjunto
+      completo de variáveis esperado especificamente em produção — placeholders (`CHANGE_ME`),
+      nunca valores reais utilizáveis.
 - [ ] Segredos reais (chave JWT de produção, credenciais de banco) gerados e armazenados em um
       gerenciador de segredos — **requer infraestrutura externa** (Vault, AWS Secrets Manager,
       GitHub Environments, etc.). Nunca em `.env` commitado.
@@ -87,8 +90,8 @@ TLS). Itens do segundo tipo estão marcados como "requer infraestrutura externa"
 - [ ] Certificado TLS e terminador HTTPS na borda — **requer infraestrutura externa** (load
       balancer gerenciado, Caddy/Nginx com Let's Encrypt, ou equivalente). O `Strict-Transport-
       Security` já está condicionado a `ENVIRONMENT=production`, pronto para quando isso existir.
-- [ ] Varredura de vulnerabilidade de imagem Docker (Trivy/Grype) — não implementada nesta
-      sprint, candidata natural para uma próxima iteração de CI.
+- [x] Varredura de vulnerabilidade de imagem Docker via Trivy (Sprint 17.4/M6, ADR-040) — job
+      `docker` do CI, não bloqueante (mesmo critério de `pip-audit`/`npm audit`), `CRITICAL`/`HIGH`.
 
 ## Escalabilidade
 

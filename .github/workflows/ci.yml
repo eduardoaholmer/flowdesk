@@ -185,6 +185,10 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
+      # `load: true` + `tags:` novos nesta sprint (Sprint 17.4/M6, ADR-040) — sem
+      # eles a imagem construída pelo buildx fica só no builder isolado, nunca
+      # visível a `docker images`/Trivy no runner. Não fazia diferença antes,
+      # já que nada além do próprio build consumia a imagem resultante.
       - name: Build backend (production)
         uses: docker/build-push-action@v6
         with:
@@ -192,6 +196,8 @@ jobs:
           file: ./docker/backend.Dockerfile
           target: production
           push: false
+          load: true
+          tags: flowdesk-backend:ci
 
       - name: Build frontend (production)
         uses: docker/build-push-action@v6
@@ -200,5 +206,30 @@ jobs:
           file: ./docker/frontend.Dockerfile
           target: production
           push: false
+          load: true
+          tags: flowdesk-frontend:ci
           build-args: |
             VITE_API_URL=http://localhost:8000/api/v1
+
+      # Não bloqueante deliberadamente (CLAUDE.md §1.6), mesmo critério já usado
+      # por pip-audit/npm audit (job "backend"/"frontend" acima): vulnerabilidade
+      # de imagem base/dependência transitiva fora do nosso controle não deve
+      # travar todo PR — o resultado fica visível no log deste step. Candidata
+      # já antecipada em `PRODUCTION_CHECKLIST.md` desde a Sprint 8.7.
+      - name: Trivy — scan de vulnerabilidades (backend, não bloqueante)
+        uses: aquasecurity/trivy-action@0.29.0
+        continue-on-error: true
+        with:
+          image-ref: flowdesk-backend:ci
+          format: table
+          severity: CRITICAL,HIGH
+          exit-code: "0"
+
+      - name: Trivy — scan de vulnerabilidades (frontend, não bloqueante)
+        uses: aquasecurity/trivy-action@0.29.0
+        continue-on-error: true
+        with:
+          image-ref: flowdesk-frontend:ci
+          format: table
+          severity: CRITICAL,HIGH
+          exit-code: "0"

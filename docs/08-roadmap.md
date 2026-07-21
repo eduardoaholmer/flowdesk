@@ -444,11 +444,12 @@ Com M5 fechado, o usuário pediu explicitamente o início do M6 — Production. 
 - **Dependências**: nenhuma. Decisão explícita do usuário de **não** introduzir dependência nova (`smtplib` stdlib sobre `aiosmtplib`) — mesma disciplina de aprovação de toda dependência nova deste projeto, aplicada aqui à escolha de não adicionar uma.
 - **DoD**: DoD-base parcialmente satisfeita — mesma limitação de sandbox das Sprints 17.1/17.2 (ADR-037/038): `poetry run pytest`/`mypy`/`ruff` e `docker compose up` não puderam ser executados nesta sessão. Diferente da 17.2, esta sprint não adiciona dependência nova ao `pyproject.toml`/`poetry.lock`. Verificação de que nenhum segredo de SMTP é logado feita por code review/docstring (`SMTPMailSender.send_password_reset` só loga `email`), não por teste automatizado (ADR-039, Desvantagens aceitas). Pendente validar o serviço MailHog novo e rodar a suíte completa no ambiente real do usuário.
 
-### Sprint 17.4 — M6: hardening de CI (scan de imagem + template de env de produção)
+### Sprint 17.4 — M6: hardening de CI (scan de imagem + template de env de produção) (concluída, verificação parcial)
 
 - **Objetivo**: novo step no job `docker` do CI rodando Trivy ou Grype contra as imagens de produção já buildadas (não-bloqueante inicialmente, mesmo critério de `pip-audit`/`npm audit`); `.env.production.example` na raiz documentando o conjunto completo de variáveis esperadas em produção (sem valores reais, só placeholders e instrução de geração).
+- **Entregue**: dois novos steps Trivy (`aquasecurity/trivy-action@0.29.0`) no job `docker`, não-bloqueantes (`continue-on-error`/`exit-code: "0"`, `severity: CRITICAL,HIGH`) — exigiu adicionar `load: true`/`tags:` aos steps de build existentes, sem os quais a imagem não fica visível ao runner. `.env.production.example` na raiz (`POSTGRES_*`, JWT, storage/mail opcionais, `VITE_API_URL`) — placeholders (`CHANGE_ME`), nunca valor real utilizável. Achado incidental corrigido no mesmo commit: `.gitignore` não cobria `.env.production` (só `.env`/`.env.local`/`.env.*.local`) — corrigido, com `!.env.production.example` para manter o template rastreado. Detalhes completos em ADR-040.
 - **Dependências**: nenhuma.
-- **DoD**: DoD-base.
+- **DoD**: DoD-base parcialmente satisfeita — mesma limitação de sandbox das Sprints 17.1–17.3: sem GitHub Actions/Docker neste ambiente, os steps novos não foram executados de fato nesta sessão (YAML validado com `yaml.safe_load`). Pendente confirmar o scan Trivy rodando num push/PR real.
 
 ### Sprint 17.5 — M6: runbook/decisão para itens que exigem infraestrutura real
 
