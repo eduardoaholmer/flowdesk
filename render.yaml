@@ -28,9 +28,10 @@ services:
     dockerfilePath: ./docker/backend.Dockerfile
     dockerContext: ./backend
     # preDeployCommand não é suportado no plano free (só em planes pagos), então a
-    # migração roda encadeada no próprio comando de start.
-    dockerCommand: >-
-      sh -c "alembic upgrade head && uvicorn src.main:app --host 0.0.0.0 --port 8000 --workers 1"
+    # migração roda encadeada no próprio comando de start. Um script (em vez de
+    # `sh -c "cmd1 && cmd2"` inline) evita o parser do Render quebrar o comando com
+    # aspas/`&&` em tokens separados.
+    dockerCommand: sh render_start.sh
     healthCheckPath: /health/ready
     envVars:
       - key: ENVIRONMENT
