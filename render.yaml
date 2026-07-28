@@ -1,0 +1,61 @@
+# Blueprint do Render para uma demo pública pontual do FlowDesk (backend + Postgres +
+# Redis) — não substitui `docker-compose.prod.yml`/`docs/11-production-runbook.md`
+# como estratégia de produção real (ADR-036 continua valendo para o repositório em
+# si); isto é infraestrutura de fato provisionada a pedido explícito do usuário para
+# compartilhar um link funcional. Reaproveita `docker/backend.Dockerfile` (target
+# production) sem modificação.
+#
+# Uso: no dashboard do Render, "New" → "Blueprint", conectar este repositório —
+# o Render lê este arquivo e cria os três recursos abaixo automaticamente.
+databases:
+  - name: flowdesk-postgres
+    plan: free
+    region: oregon
+    postgresMajorVersion: "16"
+
+services:
+  - type: keyvalue
+    name: flowdesk-redis
+    plan: free
+    region: oregon
+    ipAllowList: []
+
+  - type: web
+    name: flowdesk-backend
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./docker/backend.Dockerfile
+    dockerContext: ./backend
+    dockerCommand: >-
+      uvicorn src.main:app --host 0.0.0.0 --port 8000 --workers 1
+    preDeployCommand: alembic upgrade head
+    healthCheckPath: /health/ready
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: LOG_LEVEL
+        value: INFO
+      - key: DATABASE_URL
+        fromDatabase:
+          name: flowdesk-postgres
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          name: flowdesk-redis
+          type: keyvalue
+          property: connectionString
+      - key: STORAGE_PROVIDER
+        value: local
+      - key: MAIL_PROVIDER
+        value: logging
+      # Preenchidos manualmente no dashboard do Render após o deploy inicial
+      # (segredos e URLs reais nunca vão para o repositório, ver CLAUDE.md §9/§11):
+      - key: JWT_PRIVATE_KEY
+        sync: false
+      - key: JWT_PUBLIC_KEY
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      - key: FRONTEND_BASE_URL
+        sync: false
