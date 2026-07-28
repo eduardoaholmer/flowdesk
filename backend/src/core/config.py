@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Chave pública de DEV do par gerado só para desenvolvimento local (`.env.example`,
@@ -109,6 +109,18 @@ class Settings(BaseSettings):
     # `frontend/src/shared/lib/routes.ts::resetPasswordRoute`) — mesmo default de
     # `cors_origins_raw` para o ambiente local.
     frontend_base_url: str = "http://localhost:5173"
+
+    @field_validator("database_url")
+    @classmethod
+    def _normalize_database_url_driver(cls, value: str) -> str:
+        """Provedores de Postgres gerenciado (Render, Heroku, Railway) emitem a
+        connection string sem driver explícito (`postgresql://`), mas a aplicação
+        é async e exige `asyncpg` — normaliza aqui em vez de exigir que cada
+        ambiente hospedado saiba disso.
+        """
+        if value.startswith("postgresql://"):
+            return value.replace("postgresql://", "postgresql+asyncpg://", 1)
+        return value
 
     @property
     def allowed_upload_content_types(self) -> frozenset[str]:
