@@ -27,9 +27,10 @@ services:
     region: oregon
     dockerfilePath: ./docker/backend.Dockerfile
     dockerContext: ./backend
+    # preDeployCommand não é suportado no plano free (só em planes pagos), então a
+    # migração roda encadeada no próprio comando de start.
     dockerCommand: >-
-      uvicorn src.main:app --host 0.0.0.0 --port 8000 --workers 1
-    preDeployCommand: alembic upgrade head
+      sh -c "alembic upgrade head && uvicorn src.main:app --host 0.0.0.0 --port 8000 --workers 1"
     healthCheckPath: /health/ready
     envVars:
       - key: ENVIRONMENT
