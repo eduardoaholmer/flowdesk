@@ -11,6 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/shared/components/ui/dialog";
+import { DUE_DATE_MAX, DUE_DATE_MIN } from "@/shared/lib/constants";
 import { isTypingTarget } from "@/shared/lib/dom";
 import { useUiStore } from "@/shared/stores/uiStore";
 
@@ -25,7 +26,12 @@ const schema = z.object({
   priority: z.enum(["NO_PRIORITY", "LOW", "MEDIUM", "HIGH", "URGENT"]),
   assignee_id: z.string().optional(),
   estimate: z.string().optional(),
-  due_date: z.string().optional(),
+  due_date: z
+    .string()
+    .optional()
+    .refine((value) => !value || (value >= DUE_DATE_MIN && value <= DUE_DATE_MAX), {
+      message: "Data de vencimento inválida.",
+    }),
 });
 
 /**

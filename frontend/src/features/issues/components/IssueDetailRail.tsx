@@ -207,7 +207,7 @@ export function IssueDetailRail({ workspaceId, issue }: { workspaceId: string; i
             key: NONE,
             label: "Sem vencimento",
             checked: !issue.due_date,
-            onSelect: () => updateIssue.mutate({ due_date: undefined }),
+            onSelect: () => updateIssue.mutate({ due_date: null }),
           },
           {
             key: "tomorrow",

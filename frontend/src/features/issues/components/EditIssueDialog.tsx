@@ -13,6 +13,8 @@ import {
   DialogTrigger,
 } from "@/shared/components/ui/dialog";
 
+import { DUE_DATE_MAX, DUE_DATE_MIN } from "@/shared/lib/constants";
+
 import { useUpdateIssue } from "../hooks";
 import type { Issue } from "../types";
 import { IssueFormFields, type IssueFormValues } from "./IssueFormFields";
@@ -25,7 +27,12 @@ const schema = z.object({
   priority: z.enum(["NO_PRIORITY", "LOW", "MEDIUM", "HIGH", "URGENT"]),
   assignee_id: z.string().optional(),
   estimate: z.string().optional(),
-  due_date: z.string().optional(),
+  due_date: z
+    .string()
+    .optional()
+    .refine((value) => !value || (value >= DUE_DATE_MIN && value <= DUE_DATE_MAX), {
+      message: "Data de vencimento inválida.",
+    }),
 });
 
 function issueToFormValues(issue: Issue): IssueFormValues {
@@ -84,7 +91,7 @@ export function EditIssueDialog({
       priority: values.priority,
       assignee_id: values.assignee_id || undefined,
       estimate: values.estimate ? Number(values.estimate) : undefined,
-      due_date: values.due_date || undefined,
+      due_date: values.due_date || null,
     });
     setOpen(false);
   }

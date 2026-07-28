@@ -7,6 +7,8 @@ from src.features.issues.models import IssuePriority, IssueStatus
 
 _TITLE_MIN_LENGTH = 1
 _TITLE_MAX_LENGTH = 255
+_MIN_DUE_DATE = date(1900, 1, 1)
+_MAX_DUE_DATE = date(2200, 12, 31)
 
 
 def _validate_title(value: str) -> str:
@@ -21,6 +23,15 @@ def _validate_title(value: str) -> str:
 def _validate_estimate(value: int | None) -> int | None:
     if value is not None and value < 0:
         raise ValueError("A estimativa não pode ser negativa.")
+    return value
+
+
+def _validate_due_date(value: date | None) -> date | None:
+    if value is not None and not (_MIN_DUE_DATE <= value <= _MAX_DUE_DATE):
+        raise ValueError(
+            f"A data de vencimento deve estar entre {_MIN_DUE_DATE.isoformat()} "
+            f"e {_MAX_DUE_DATE.isoformat()}."
+        )
     return value
 
 
@@ -43,6 +54,11 @@ class IssueCreateRequest(BaseModel):
     @classmethod
     def _check_estimate(cls, value: int | None) -> int | None:
         return _validate_estimate(value)
+
+    @field_validator("due_date")
+    @classmethod
+    def _check_due_date(cls, value: date | None) -> date | None:
+        return _validate_due_date(value)
 
 
 class IssueUpdateRequest(BaseModel):
@@ -70,6 +86,11 @@ class IssueUpdateRequest(BaseModel):
     @classmethod
     def _check_estimate(cls, value: int | None) -> int | None:
         return _validate_estimate(value)
+
+    @field_validator("due_date")
+    @classmethod
+    def _check_due_date(cls, value: date | None) -> date | None:
+        return _validate_due_date(value)
 
 
 class IssueResponse(BaseModel):

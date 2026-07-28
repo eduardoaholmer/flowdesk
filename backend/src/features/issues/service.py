@@ -291,7 +291,7 @@ class IssueService:
             issue.estimate = payload.estimate
             changed = True
 
-        if payload.due_date is not None and payload.due_date != issue.due_date:
+        if "due_date" in payload.model_fields_set and payload.due_date != issue.due_date:
             await self._record_activity(
                 workspace_id,
                 issue.id,
@@ -299,7 +299,7 @@ class IssueService:
                 "issue.updated",
                 field="due_date",
                 old_value=issue.due_date.isoformat() if issue.due_date else None,
-                new_value=payload.due_date.isoformat(),
+                new_value=payload.due_date.isoformat() if payload.due_date else None,
             )
             issue.due_date = payload.due_date
             changed = True

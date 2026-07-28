@@ -13,7 +13,7 @@ import {
   SelectValue,
 } from "@/shared/components/ui/select";
 import { Textarea } from "@/shared/components/ui/textarea";
-import { MAX_PICKER_PAGE_SIZE } from "@/shared/lib/constants";
+import { DUE_DATE_MAX, DUE_DATE_MIN, MAX_PICKER_PAGE_SIZE } from "@/shared/lib/constants";
 
 import type { IssuePriority, IssueStatus } from "../types";
 
@@ -199,7 +199,16 @@ export function IssueFormFields({
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor={`${idPrefix}-due-date`}>Vencimento</Label>
-          <Input id={`${idPrefix}-due-date`} type="date" {...register("due_date")} />
+          <Input
+            id={`${idPrefix}-due-date`}
+            type="date"
+            min={DUE_DATE_MIN}
+            max={DUE_DATE_MAX}
+            {...register("due_date")}
+          />
+          {errors.due_date && (
+            <p className="text-xs text-destructive">{errors.due_date.message}</p>
+          )}
         </div>
       </div>
     </div>

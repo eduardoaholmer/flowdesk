@@ -1,4 +1,5 @@
 import uuid
+from datetime import date
 
 import pytest
 
@@ -6,6 +7,7 @@ import pytest
 # `Issue.comments` -> `Comment`) estejam resolvíveis antes de instanciar
 # models isoladamente — ver `src/db/models_registry.py`.
 import src.db.models_registry  # noqa: F401
+from pydantic import ValidationError
 from src.core.authorization import PermissionService
 from src.core.exceptions import PermissionDeniedError
 from src.core.security import CurrentUser
@@ -299,6 +301,61 @@ async def test_update_validates_new_project_belongs_to_workspace(
         await service.update(
             actor, workspace_id, issue.id, IssueUpdateRequest(project_id=foreign_project.id)
         )
+
+
+async def test_update_clears_due_date_when_explicitly_set_to_none(
+    service: IssueService, issue_repo: FakeIssueRepository
+) -> None:
+    workspace_id = _workspace_id()
+    actor = _user()
+    issue = await service.create(
+        actor, workspace_id, IssueCreateRequest(title="Issue", due_date=date(2026, 1, 1))
+    )
+
+    updated = await service.update(
+        actor, workspace_id, issue.id, IssueUpdateRequest(due_date=None)
+    )
+
+    assert updated.due_date is None
+    assert updated.version == 2
+    assert any(
+        entry.action == "issue.updated" and entry.field == "due_date"
+        for entry in issue_repo.activity_log
+    )
+
+
+async def test_update_omitting_due_date_leaves_it_unchanged(
+    service: IssueService, issue_repo: FakeIssueRepository
+) -> None:
+    workspace_id = _workspace_id()
+    actor = _user()
+    issue = await service.create(
+        actor, workspace_id, IssueCreateRequest(title="Issue", due_date=date(2026, 1, 1))
+    )
+    issue_repo.activity_log.clear()
+
+    updated = await service.update(actor, workspace_id, issue.id, IssueUpdateRequest(title="Issue"))
+
+    assert updated.due_date == date(2026, 1, 1)
+    assert updated.version == 1
+    assert issue_repo.activity_log == []
+
+
+@pytest.mark.parametrize("request_cls", [IssueCreateRequest, IssueUpdateRequest])
+def test_due_date_outside_business_range_is_rejected(request_cls: type) -> None:
+    kwargs = {"title": "Issue"} if request_cls is IssueCreateRequest else {}
+
+    with pytest.raises(ValidationError):
+        request_cls(**kwargs, due_date=date(2, 1, 1))
+
+
+@pytest.mark.parametrize("request_cls", [IssueCreateRequest, IssueUpdateRequest])
+def test_due_date_within_business_range_is_accepted(request_cls: type) -> None:
+    kwargs = {"title": "Issue"} if request_cls is IssueCreateRequest else {}
+
+    payload = request_cls(**kwargs, due_date=date(2026, 1, 1))
+
+    assert payload.due_date == date(2026, 1, 1)
 
 
 async def test_delete_by_creator_succeeds_via_ownership_override(

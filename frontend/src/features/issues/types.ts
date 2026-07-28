@@ -53,7 +53,7 @@ export interface IssueCreateInput {
   priority?: IssuePriority;
   assignee_id?: string;
   estimate?: number;
-  due_date?: string;
+  due_date?: string | null;
 }
 
 export type IssueUpdateInput = Partial<IssueCreateInput>;

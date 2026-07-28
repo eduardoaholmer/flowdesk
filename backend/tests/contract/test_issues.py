@@ -238,6 +238,48 @@ async def test_update_issue_changes_status_and_records_activity(client: AsyncCli
     assert "issue.created" in actions
 
 
+async def test_update_issue_clears_due_date_when_sent_as_null(client: AsyncClient) -> None:
+    _, owner_token = await _register_and_login(client)
+    workspace_id = await _create_workspace(client, owner_token)
+    issue = await _create_issue(client, workspace_id, owner_token, due_date="2026-01-01")
+
+    response = await client.patch(
+        f"/api/v1/workspaces/{workspace_id}/issues/{issue['id']}",
+        json={"due_date": None},
+        headers=_auth(owner_token),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["data"]["due_date"] is None
+
+
+async def test_update_issue_rejects_due_date_outside_business_range(client: AsyncClient) -> None:
+    _, owner_token = await _register_and_login(client)
+    workspace_id = await _create_workspace(client, owner_token)
+    issue = await _create_issue(client, workspace_id, owner_token)
+
+    response = await client.patch(
+        f"/api/v1/workspaces/{workspace_id}/issues/{issue['id']}",
+        json={"due_date": "0002-01-01"},
+        headers=_auth(owner_token),
+    )
+
+    assert response.status_code == 422
+
+
+async def test_create_issue_rejects_due_date_outside_business_range(client: AsyncClient) -> None:
+    _, owner_token = await _register_and_login(client)
+    workspace_id = await _create_workspace(client, owner_token)
+
+    response = await client.post(
+        f"/api/v1/workspaces/{workspace_id}/issues",
+        json={"title": "Issue", "due_date": "0002-01-01"},
+        headers=_auth(owner_token),
+    )
+
+    assert response.status_code == 422
+
+
 async def test_update_issue_rejects_stale_if_match(client: AsyncClient) -> None:
     _, owner_token = await _register_and_login(client)
     workspace_id = await _create_workspace(client, owner_token)

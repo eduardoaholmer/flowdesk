@@ -129,6 +129,8 @@ Implementado na Sprint 7 (`docs/09-decision-log.md` ADR-012 tem o racional compl
 
 `status` aceita `PATCH` genérico (ao contrário de `Project.status`, que só transiciona via `/archive`/`/restore`): mudança de status de issue é uma ação frequente e não tem workflow configurável nesta sprint, então não há transição inválida a bloquear — qualquer status pode ir para qualquer status.
 
+`due_date` aceita apenas datas entre `1900-01-01` e `2200-12-31` (422 fora da faixa — proteção contra corrupção de dado por erro de digitação, ADR-055). No `PATCH`, `due_date` segue a semântica padrão de todo campo opcional deste endpoint: **omitir a chave** preserva o valor atual; **enviar `due_date: null` explicitamente** limpa o campo (distinção feita via `model_fields_set` do Pydantic, não apenas `is not None`).
+
 ### Exemplo — criar issue
 
 ```json
