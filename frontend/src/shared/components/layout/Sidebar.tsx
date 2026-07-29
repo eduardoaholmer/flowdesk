@@ -218,19 +218,23 @@ function SidebarBody({ workspaceSlug, collapsed }: { workspaceSlug: string; coll
 
   return (
     <div className="flex h-full flex-col gap-4 p-3">
-      <WorkspaceSwitcher workspaceSlug={workspaceSlug} collapsed={collapsed} />
+      <div className={cn("flex items-center gap-1", collapsed && "flex-col")}>
+        <div className="min-w-0 flex-1">
+          <WorkspaceSwitcher workspaceSlug={workspaceSlug} collapsed={collapsed} />
+        </div>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="hidden shrink-0 md:flex"
+          aria-label={collapsed ? "Expandir menu" : "Recolher menu"}
+          onClick={toggleSidebar}
+        >
+          {collapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
+        </Button>
+      </div>
       <SidebarNewIssueButton collapsed={collapsed} />
       <SidebarNav workspaceSlug={workspaceSlug} collapsed={collapsed} />
       <SidebarFooter collapsed={collapsed} />
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        className="hidden self-end md:flex"
-        aria-label={collapsed ? "Expandir menu" : "Recolher menu"}
-        onClick={toggleSidebar}
-      >
-        {collapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
-      </Button>
     </div>
   );
 }
