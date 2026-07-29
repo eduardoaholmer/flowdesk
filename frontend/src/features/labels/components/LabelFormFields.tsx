@@ -36,7 +36,11 @@ export function LabelFormFields({
           control={control}
           name="color"
           render={({ field }) => (
-            <ColorSwatchPicker id={`${idPrefix}-color`} value={field.value} onChange={field.onChange} />
+            <ColorSwatchPicker
+              id={`${idPrefix}-color`}
+              value={field.value}
+              onChange={field.onChange}
+            />
           )}
         />
         {errors.color && <p className="text-xs text-destructive">{errors.color.message}</p>}
