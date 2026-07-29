@@ -24,6 +24,7 @@ export function PasswordInput({ className, ...props }: Omit<ComponentProps<"inpu
           type="button"
           aria-label={isVisible ? "Ocultar senha" : "Mostrar senha"}
           size="icon-xs"
+          className="rounded-full bg-transparent hover:bg-foreground/10"
           onClick={() => setIsVisible((visible) => !visible)}
         >
           {isVisible ? <EyeOff /> : <Eye />}
