@@ -1,5 +1,7 @@
-import type { FieldErrors, UseFormRegister } from "react-hook-form";
+import type { Control, FieldErrors, UseFormRegister } from "react-hook-form";
+import { Controller } from "react-hook-form";
 
+import { ColorSwatchPicker } from "@/shared/components/pickers/ColorSwatchPicker";
 import { Input } from "@/shared/components/ui/input";
 import { Label as FieldLabel } from "@/shared/components/ui/label";
 import { Textarea } from "@/shared/components/ui/textarea";
@@ -12,10 +14,12 @@ export interface LabelFormValues {
 
 export function LabelFormFields({
   register,
+  control,
   errors,
   idPrefix,
 }: {
   register: UseFormRegister<LabelFormValues>;
+  control: Control<LabelFormValues>;
   errors: FieldErrors<LabelFormValues>;
   idPrefix: string;
 }) {
@@ -28,7 +32,13 @@ export function LabelFormFields({
       </div>
       <div className="flex flex-col gap-1.5">
         <FieldLabel htmlFor={`${idPrefix}-color`}>Cor</FieldLabel>
-        <Input id={`${idPrefix}-color`} placeholder="#4F46E5" {...register("color")} />
+        <Controller
+          control={control}
+          name="color"
+          render={({ field }) => (
+            <ColorSwatchPicker id={`${idPrefix}-color`} value={field.value} onChange={field.onChange} />
+          )}
+        />
         {errors.color && <p className="text-xs text-destructive">{errors.color.message}</p>}
       </div>
       <div className="flex flex-col gap-1.5">

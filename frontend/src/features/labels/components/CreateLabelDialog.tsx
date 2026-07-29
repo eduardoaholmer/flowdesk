@@ -31,6 +31,7 @@ export function CreateLabelDialog({ workspaceId }: { workspaceId: string }) {
   const [open, setOpen] = useState(false);
   const {
     register,
+    control,
     handleSubmit,
     reset,
     formState: { errors },
@@ -67,7 +68,12 @@ export function CreateLabelDialog({ workspaceId }: { workspaceId: string }) {
             <DialogTitle>Nova label</DialogTitle>
           </DialogHeader>
           <div className="py-4">
-            <LabelFormFields register={register} errors={errors} idPrefix="create-label" />
+            <LabelFormFields
+              register={register}
+              control={control}
+              errors={errors}
+              idPrefix="create-label"
+            />
           </div>
           <DialogFooter>
             <Button type="submit" disabled={createLabel.isPending}>
