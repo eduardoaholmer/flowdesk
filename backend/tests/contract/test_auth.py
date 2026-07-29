@@ -84,7 +84,10 @@ async def test_login_returns_access_token_and_sets_cookies(client: AsyncClient) 
     assert csrf_cookie is not None
     set_cookie_headers = "\n".join(response.headers.get_list("set-cookie")).lower()
     assert "httponly" in set_cookie_headers
-    assert "secure" in set_cookie_headers
+    # `Secure` só é aplicado em produção (ENVIRONMENT=production) — testes rodam com
+    # ENVIRONMENT=development (backend/.env), onde exigir `Secure` faria o navegador
+    # descartar o cookie em http://localhost e derrubar a sessão a cada reload.
+    assert "secure" not in set_cookie_headers
     assert "samesite=strict" in set_cookie_headers
 
 

@@ -1,11 +1,12 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useState } from "react";
-import { useForm, useWatch } from "react-hook-form";
+import { Controller, useForm, useWatch } from "react-hook-form";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { z } from "zod";
 
 import { Button } from "@/shared/components/ui/button";
+import { Checkbox } from "@/shared/components/ui/checkbox";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
 import { PasswordInput } from "@/shared/components/forms/PasswordInput";
@@ -17,6 +18,7 @@ import { login, register as registerUser } from "../api";
 const loginSchema = z.object({
   email: z.string().min(1, "Informe o e-mail.").email("E-mail inválido."),
   password: z.string().min(1, "Informe a senha."),
+  remember_me: z.boolean(),
 });
 
 const registerSchema = z.object({
@@ -74,9 +76,13 @@ function LoginTab({ redirectTo }: { redirectTo: string }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const {
     register,
+    control,
     handleSubmit,
     formState: { errors },
-  } = useForm<LoginValues>({ resolver: zodResolver(loginSchema) });
+  } = useForm<LoginValues>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: { remember_me: false },
+  });
 
   async function onSubmit(values: LoginValues) {
     setIsSubmitting(true);
@@ -112,6 +118,16 @@ function LoginTab({ redirectTo }: { redirectTo: string }) {
         />
         {errors.password && <p className="text-xs text-destructive">{errors.password.message}</p>}
       </div>
+      <Controller
+        control={control}
+        name="remember_me"
+        render={({ field }) => (
+          <label className="flex items-center gap-2 text-sm text-t2 select-none">
+            <Checkbox checked={field.value} onCheckedChange={field.onChange} />
+            Lembrar de mim
+          </label>
+        )}
+      />
       <Button type="submit" disabled={isSubmitting}>
         {isSubmitting ? "Entrando…" : "Entrar"}
       </Button>

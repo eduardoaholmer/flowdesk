@@ -6,6 +6,7 @@ import type { AuthUser } from "./types";
 export interface LoginPayload {
   email: string;
   password: string;
+  remember_me?: boolean;
 }
 
 export interface RegisterPayload {

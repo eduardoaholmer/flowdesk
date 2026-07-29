@@ -23,6 +23,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 REFRESH_COOKIE_NAME = "refresh_token"
 CSRF_COOKIE_NAME = "csrf_token"
+REMEMBER_COOKIE_NAME = "remember_me"
 CSRF_HEADER_NAME = "X-CSRF-Token"
 COOKIE_PATH = "/api/v1/auth"
 
@@ -42,15 +43,25 @@ async def verify_csrf_token(request: Request) -> None:
         raise InvalidRefreshTokenError()
 
 
-def _set_auth_cookies(response: Response, *, refresh_token: str, settings: Settings) -> None:
-    max_age = settings.refresh_token_expire_days * 24 * 60 * 60
+def _set_auth_cookies(
+    response: Response, *, refresh_token: str, settings: Settings, remember_me: bool
+) -> None:
+    # `max_age=None` produz um cookie de sessão (apagado ao fechar o navegador) —
+    # é assim que "Lembrar de mim" desmarcado se traduz em cookie: o refresh token
+    # continua válido no banco pelos mesmos `refresh_token_expire_days`, só o
+    # navegador não retém o cookie além da sessão atual.
+    max_age = settings.refresh_token_expire_days * 24 * 60 * 60 if remember_me else None
+    # `secure=True` incondicional derrubava silenciosamente o cookie em dev
+    # (http://localhost, sem TLS) — o navegador nunca chega a armazená-lo, então
+    # todo reload perdia a sessão. Só exigimos `Secure` em produção (https real).
+    secure = settings.is_production
     response.set_cookie(
         REFRESH_COOKIE_NAME,
         refresh_token,
         max_age=max_age,
         path=COOKIE_PATH,
         httponly=True,
-        secure=True,
+        secure=secure,
         samesite="strict",
     )
     # Path="/" (não COOKIE_PATH): este cookie só existe para o frontend ler via
@@ -63,7 +74,18 @@ def _set_auth_cookies(response: Response, *, refresh_token: str, settings: Setti
         max_age=max_age,
         path="/",
         httponly=False,
-        secure=True,
+        secure=secure,
+        samesite="strict",
+    )
+    # Marcador lido em `/auth/refresh` (que não recebe o payload de login de novo)
+    # para que a escolha de "Lembrar de mim" sobreviva à rotação do refresh token.
+    response.set_cookie(
+        REMEMBER_COOKIE_NAME,
+        "1" if remember_me else "0",
+        max_age=max_age,
+        path=COOKIE_PATH,
+        httponly=True,
+        secure=secure,
         samesite="strict",
     )
 
@@ -71,6 +93,7 @@ def _set_auth_cookies(response: Response, *, refresh_token: str, settings: Setti
 def _clear_auth_cookies(response: Response) -> None:
     response.delete_cookie(REFRESH_COOKIE_NAME, path=COOKIE_PATH)
     response.delete_cookie(CSRF_COOKIE_NAME, path="/")
+    response.delete_cookie(REMEMBER_COOKIE_NAME, path=COOKIE_PATH)
 
 
 @router.post(
@@ -98,7 +121,12 @@ async def login(
         user_agent=request.headers.get("user-agent"),
         ip_address=request.client.host if request.client else None,
     )
-    _set_auth_cookies(response, refresh_token=result.refresh_token, settings=settings)
+    _set_auth_cookies(
+        response,
+        refresh_token=result.refresh_token,
+        settings=settings,
+        remember_me=payload.remember_me,
+    )
     token_response = TokenResponse(
         access_token=result.access_token, user=UserResponse.model_validate(result.user)
     )
@@ -121,7 +149,10 @@ async def refresh(
         raise InvalidRefreshTokenError()
 
     result = await service.refresh(refresh_token)
-    _set_auth_cookies(response, refresh_token=result.refresh_token, settings=settings)
+    remember_me = request.cookies.get(REMEMBER_COOKIE_NAME) == "1"
+    _set_auth_cookies(
+        response, refresh_token=result.refresh_token, settings=settings, remember_me=remember_me
+    )
     return DataEnvelope(data=AccessTokenResponse(access_token=result.access_token))
 
 
