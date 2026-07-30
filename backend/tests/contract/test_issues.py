@@ -401,3 +401,108 @@ async def test_multi_tenant_isolation_across_two_workspaces(client: AsyncClient)
     own_list = await client.get(f"/api/v1/workspaces/{workspace_b}/issues", headers=_auth(token_b))
     assert own_list.status_code == 200
     assert own_list.json()["meta"]["total"] == 0
+
+
+async def test_create_sub_issue_with_parent_id(client: AsyncClient) -> None:
+    _, owner_token = await _register_and_login(client)
+    workspace_id = await _create_workspace(client, owner_token)
+    parent = await _create_issue(client, workspace_id, owner_token, title="Épico")
+
+    response = await client.post(
+        f"/api/v1/workspaces/{workspace_id}/issues",
+        json={"title": "Sub-tarefa", "parent_id": parent["id"]},
+        headers=_auth(owner_token),
+    )
+
+    assert response.status_code == 201
+    assert response.json()["data"]["parent_id"] == parent["id"]
+
+
+async def test_create_rejects_parent_from_another_workspace(client: AsyncClient) -> None:
+    _, owner_token = await _register_and_login(client)
+    workspace_a = await _create_workspace(client, owner_token)
+    parent = await _create_issue(client, workspace_a, owner_token, title="Épico")
+    workspace_b = await _create_workspace(client, owner_token)
+
+    response = await client.post(
+        f"/api/v1/workspaces/{workspace_b}/issues",
+        json={"title": "Sub-tarefa", "parent_id": parent["id"]},
+        headers=_auth(owner_token),
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "issue_not_found"
+
+
+async def test_create_rejects_nesting_beyond_one_level(client: AsyncClient) -> None:
+    _, owner_token = await _register_and_login(client)
+    workspace_id = await _create_workspace(client, owner_token)
+    grandparent = await _create_issue(client, workspace_id, owner_token, title="Épico")
+    parent = await _create_issue(
+        client, workspace_id, owner_token, title="Filho", parent_id=grandparent["id"]
+    )
+
+    response = await client.post(
+        f"/api/v1/workspaces/{workspace_id}/issues",
+        json={"title": "Neto", "parent_id": parent["id"]},
+        headers=_auth(owner_token),
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "invalid_parent_issue"
+
+
+async def test_update_links_and_unlinks_parent(client: AsyncClient) -> None:
+    _, owner_token = await _register_and_login(client)
+    workspace_id = await _create_workspace(client, owner_token)
+    parent = await _create_issue(client, workspace_id, owner_token, title="Épico")
+    child = await _create_issue(client, workspace_id, owner_token, title="Solta")
+
+    link_response = await client.patch(
+        f"/api/v1/workspaces/{workspace_id}/issues/{child['id']}",
+        json={"parent_id": parent["id"]},
+        headers=_auth(owner_token),
+    )
+    assert link_response.status_code == 200
+    assert link_response.json()["data"]["parent_id"] == parent["id"]
+
+    unlink_response = await client.patch(
+        f"/api/v1/workspaces/{workspace_id}/issues/{child['id']}",
+        json={"parent_id": None},
+        headers=_auth(owner_token),
+    )
+    assert unlink_response.status_code == 200
+    assert unlink_response.json()["data"]["parent_id"] is None
+
+
+async def test_delete_blocks_when_issue_has_sub_issues(client: AsyncClient) -> None:
+    _, owner_token = await _register_and_login(client)
+    workspace_id = await _create_workspace(client, owner_token)
+    parent = await _create_issue(client, workspace_id, owner_token, title="Épico")
+    await _create_issue(client, workspace_id, owner_token, title="Filho", parent_id=parent["id"])
+
+    response = await client.delete(
+        f"/api/v1/workspaces/{workspace_id}/issues/{parent['id']}", headers=_auth(owner_token)
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "issue_has_subissues"
+
+
+async def test_list_issues_filters_by_parent_id(client: AsyncClient) -> None:
+    _, owner_token = await _register_and_login(client)
+    workspace_id = await _create_workspace(client, owner_token)
+    parent = await _create_issue(client, workspace_id, owner_token, title="Épico")
+    child = await _create_issue(
+        client, workspace_id, owner_token, title="Filho", parent_id=parent["id"]
+    )
+    await _create_issue(client, workspace_id, owner_token, title="Solta")
+
+    response = await client.get(
+        f"/api/v1/workspaces/{workspace_id}/issues",
+        params={"parent_id": parent["id"]},
+        headers=_auth(owner_token),
+    )
+
+    assert response.status_code == 200
+    assert [i["id"] for i in response.json()["data"]] == [child["id"]]

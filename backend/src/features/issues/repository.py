@@ -69,6 +69,7 @@ class IssueRepositoryProtocol(Protocol):
         page: int = 1,
         per_page: int = 20,
         project_id: uuid.UUID | None = None,
+        parent_id: uuid.UUID | None = None,
         status_id: uuid.UUID | None = None,
         priority: IssuePriority | None = None,
         assignee_id: uuid.UUID | None = None,
@@ -81,12 +82,14 @@ class IssueRepositoryProtocol(Protocol):
         workspace_id: uuid.UUID,
         *,
         project_id: uuid.UUID | None = None,
+        parent_id: uuid.UUID | None = None,
         status_id: uuid.UUID | None = None,
         priority: IssuePriority | None = None,
         assignee_id: uuid.UUID | None = None,
         creator_id: uuid.UUID | None = None,
         search: str | None = None,
     ) -> int: ...
+    async def count_children(self, workspace_id: uuid.UUID, issue_id: uuid.UUID) -> int: ...
     async def update(self, issue: Issue) -> Issue: ...
     async def soft_delete(self, issue_id: uuid.UUID) -> None: ...
     async def add_label(self, issue_id: uuid.UUID, label_id: uuid.UUID) -> IssueLabel: ...
@@ -147,6 +150,7 @@ class IssueRepository:
         workspace_id: uuid.UUID,
         *,
         project_id: uuid.UUID | None,
+        parent_id: uuid.UUID | None,
         status_id: uuid.UUID | None,
         priority: IssuePriority | None,
         assignee_id: uuid.UUID | None,
@@ -156,6 +160,8 @@ class IssueRepository:
         stmt = select(Issue).where(Issue.workspace_id == workspace_id, Issue.deleted_at.is_(None))
         if project_id is not None:
             stmt = stmt.where(Issue.project_id == project_id)
+        if parent_id is not None:
+            stmt = stmt.where(Issue.parent_id == parent_id)
         if status_id is not None:
             stmt = stmt.where(Issue.status_id == status_id)
         if priority is not None:
@@ -183,6 +189,7 @@ class IssueRepository:
         page: int = 1,
         per_page: int = 20,
         project_id: uuid.UUID | None = None,
+        parent_id: uuid.UUID | None = None,
         status_id: uuid.UUID | None = None,
         priority: IssuePriority | None = None,
         assignee_id: uuid.UUID | None = None,
@@ -194,6 +201,7 @@ class IssueRepository:
             self._filtered(
                 workspace_id,
                 project_id=project_id,
+                parent_id=parent_id,
                 status_id=status_id,
                 priority=priority,
                 assignee_id=assignee_id,
@@ -211,6 +219,7 @@ class IssueRepository:
         workspace_id: uuid.UUID,
         *,
         project_id: uuid.UUID | None = None,
+        parent_id: uuid.UUID | None = None,
         status_id: uuid.UUID | None = None,
         priority: IssuePriority | None = None,
         assignee_id: uuid.UUID | None = None,
@@ -221,12 +230,21 @@ class IssueRepository:
             self._filtered(
                 workspace_id,
                 project_id=project_id,
+                parent_id=parent_id,
                 status_id=status_id,
                 priority=priority,
                 assignee_id=assignee_id,
                 creator_id=creator_id,
                 search=search,
             ).subquery()
+        )
+        return (await self._session.scalar(stmt)) or 0
+
+    async def count_children(self, workspace_id: uuid.UUID, issue_id: uuid.UUID) -> int:
+        stmt = select(func.count()).where(
+            Issue.workspace_id == workspace_id,
+            Issue.parent_id == issue_id,
+            Issue.deleted_at.is_(None),
         )
         return (await self._session.scalar(stmt)) or 0
 

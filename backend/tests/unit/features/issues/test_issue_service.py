@@ -12,6 +12,8 @@ from src.core.authorization import PermissionService
 from src.core.exceptions import PermissionDeniedError
 from src.core.security import CurrentUser
 from src.features.issues.exceptions import (
+    InvalidParentIssueError,
+    IssueHasSubIssuesError,
     IssueLabelAlreadyAppliedError,
     IssueNotFoundError,
     IssueVersionConflictError,
@@ -227,6 +229,7 @@ async def test_list_for_workspace_filters_by_status_and_priority(
         page=1,
         per_page=20,
         project_id=None,
+        parent_id=None,
         status_id=todo_status.id,
         priority=None,
         assignee_id=None,
@@ -239,6 +242,7 @@ async def test_list_for_workspace_filters_by_status_and_priority(
         page=1,
         per_page=20,
         project_id=None,
+        parent_id=None,
         status_id=None,
         priority=IssuePriority.URGENT,
         assignee_id=None,
@@ -606,3 +610,171 @@ async def test_remove_label_unlinks_and_records_activity(
 
     assert not any(link.label_id == label.id for link in issue_repo.labels)
     assert any(entry.action == "label.removed" for entry in issue_repo.activity_log)
+
+
+async def test_create_with_parent_id_links_sub_issue(
+    service: IssueService, workflow_state_repo: FakeWorkflowStateRepository
+) -> None:
+    workspace_id = _workspace_id()
+    await _seed_status(workflow_state_repo, workspace_id)
+    actor = _user()
+    parent = await service.create(actor, workspace_id, IssueCreateRequest(title="Épico"))
+
+    child = await service.create(
+        actor, workspace_id, IssueCreateRequest(title="Sub-tarefa", parent_id=parent.id)
+    )
+
+    assert child.parent_id == parent.id
+
+
+async def test_create_rejects_self_as_parent_is_impossible_but_rejects_unknown_parent(
+    service: IssueService, workflow_state_repo: FakeWorkflowStateRepository
+) -> None:
+    workspace_id = _workspace_id()
+    await _seed_status(workflow_state_repo, workspace_id)
+
+    with pytest.raises(IssueNotFoundError):
+        await service.create(
+            _user(), workspace_id, IssueCreateRequest(title="Sub-tarefa", parent_id=uuid.uuid4())
+        )
+
+
+async def test_create_rejects_parent_that_is_already_a_sub_issue(
+    service: IssueService, workflow_state_repo: FakeWorkflowStateRepository
+) -> None:
+    workspace_id = _workspace_id()
+    await _seed_status(workflow_state_repo, workspace_id)
+    actor = _user()
+    grandparent = await service.create(actor, workspace_id, IssueCreateRequest(title="Épico"))
+    parent = await service.create(
+        actor, workspace_id, IssueCreateRequest(title="Filho", parent_id=grandparent.id)
+    )
+
+    with pytest.raises(InvalidParentIssueError):
+        await service.create(
+            actor, workspace_id, IssueCreateRequest(title="Neto", parent_id=parent.id)
+        )
+
+
+async def test_create_rejects_parent_that_already_has_children(
+    service: IssueService, workflow_state_repo: FakeWorkflowStateRepository
+) -> None:
+    workspace_id = _workspace_id()
+    await _seed_status(workflow_state_repo, workspace_id)
+    actor = _user()
+    parent = await service.create(actor, workspace_id, IssueCreateRequest(title="Épico"))
+    await service.create(
+        actor, workspace_id, IssueCreateRequest(title="Filho 1", parent_id=parent.id)
+    )
+
+    with pytest.raises(InvalidParentIssueError):
+        await service.create(
+            actor, workspace_id, IssueCreateRequest(title="Filho 2", parent_id=parent.id)
+        )
+
+
+async def test_update_links_and_unlinks_parent(
+    service: IssueService,
+    issue_repo: FakeIssueRepository,
+    workflow_state_repo: FakeWorkflowStateRepository,
+) -> None:
+    workspace_id = _workspace_id()
+    await _seed_status(workflow_state_repo, workspace_id)
+    actor = _user()
+    parent = await service.create(actor, workspace_id, IssueCreateRequest(title="Épico"))
+    child = await service.create(actor, workspace_id, IssueCreateRequest(title="Solta"))
+
+    linked = await service.update(
+        actor, workspace_id, child.id, IssueUpdateRequest(parent_id=parent.id)
+    )
+    assert linked.parent_id == parent.id
+    assert any(
+        entry.field == "parent_id" and entry.new_value == str(parent.id)
+        for entry in issue_repo.activity_log
+    )
+
+    unlinked = await service.update(
+        actor, workspace_id, child.id, IssueUpdateRequest(parent_id=None)
+    )
+    assert unlinked.parent_id is None
+
+
+async def test_update_rejects_linking_an_issue_that_already_has_children(
+    service: IssueService, workflow_state_repo: FakeWorkflowStateRepository
+) -> None:
+    workspace_id = _workspace_id()
+    await _seed_status(workflow_state_repo, workspace_id)
+    actor = _user()
+    parent_a = await service.create(actor, workspace_id, IssueCreateRequest(title="Épico A"))
+    await service.create(
+        actor, workspace_id, IssueCreateRequest(title="Filho de A", parent_id=parent_a.id)
+    )
+    parent_b = await service.create(actor, workspace_id, IssueCreateRequest(title="Épico B"))
+
+    with pytest.raises(InvalidParentIssueError):
+        await service.update(
+            actor, workspace_id, parent_a.id, IssueUpdateRequest(parent_id=parent_b.id)
+        )
+
+
+async def test_update_rejects_self_parenting(
+    service: IssueService, workflow_state_repo: FakeWorkflowStateRepository
+) -> None:
+    workspace_id = _workspace_id()
+    await _seed_status(workflow_state_repo, workspace_id)
+    issue = await service.create(_user(), workspace_id, IssueCreateRequest(title="Issue"))
+
+    with pytest.raises(InvalidParentIssueError):
+        await service.update(
+            _user(), workspace_id, issue.id, IssueUpdateRequest(parent_id=issue.id)
+        )
+
+
+async def test_delete_blocks_when_issue_has_sub_issues(
+    service: IssueService,
+    issue_repo: FakeIssueRepository,
+    workflow_state_repo: FakeWorkflowStateRepository,
+) -> None:
+    workspace_id = _workspace_id()
+    await _seed_status(workflow_state_repo, workspace_id)
+    creator = _user()
+    parent = await service.create(creator, workspace_id, IssueCreateRequest(title="Épico"))
+    await service.create(
+        creator, workspace_id, IssueCreateRequest(title="Filho", parent_id=parent.id)
+    )
+    creator_member = _member(workspace_id, creator.id, WorkspaceRole.MEMBER)
+
+    with pytest.raises(IssueHasSubIssuesError):
+        await service.delete(creator_member, workspace_id, parent.id)
+
+    assert issue_repo.issues[parent.id].deleted_at is None
+
+
+async def test_list_for_workspace_filters_by_parent_id(
+    service: IssueService, workflow_state_repo: FakeWorkflowStateRepository
+) -> None:
+    workspace_id = _workspace_id()
+    await _seed_status(workflow_state_repo, workspace_id)
+    actor = _user()
+    parent = await service.create(actor, workspace_id, IssueCreateRequest(title="Épico"))
+    child = await service.create(
+        actor, workspace_id, IssueCreateRequest(title="Filho", parent_id=parent.id)
+    )
+    await service.create(actor, workspace_id, IssueCreateRequest(title="Solta"))
+
+    children, total = await service.list_for_workspace(
+        workspace_id,
+        page=1,
+        per_page=20,
+        project_id=None,
+        parent_id=parent.id,
+        status_id=None,
+        priority=None,
+        assignee_id=None,
+        creator_id=None,
+        search=None,
+        sort="-updated_at",
+    )
+
+    assert total == 1
+    assert children[0].id == child.id

@@ -40,6 +40,13 @@ class Issue(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
     cliente envia a versão que possuía ao editar; um UPDATE que não bate a
     versão afeta zero linhas e o service traduz isso em `IssueVersionConflictError`,
     nunca "last write wins".
+
+    `parent_id` (Sprint 9.4, ADR-059) modela sub-issues — auto-referência
+    nullable, sem `relationship()` ORM (nenhum consumidor precisa de
+    eager-load de pai/filhos, só filtrar por `parent_id` via repository).
+    Limitado a um único nível: `IssueService` recusa vincular uma issue que já
+    é pai (tem filhos) ou que já é filha (tem `parent_id`) — ver
+    `IssueService._validate_parent_link`.
     """
 
     __tablename__ = "issues"
@@ -59,6 +66,7 @@ class Issue(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
         Index("ix_issues_assignee_id_deleted_at", "assignee_id", "deleted_at"),
         Index("ix_issues_creator_id_deleted_at", "creator_id", "deleted_at"),
         Index("ix_issues_project_id_deleted_at", "project_id", "deleted_at"),
+        Index("ix_issues_parent_id_deleted_at", "parent_id", "deleted_at"),
         Index(
             "ix_issues_title_description_fts",
             text("to_tsvector('simple', title || ' ' || coalesce(description, ''))"),
@@ -71,6 +79,9 @@ class Issue(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
     )
     project_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("projects.id", ondelete="RESTRICT"), default=None
+    )
+    parent_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("issues.id", ondelete="RESTRICT"), default=None
     )
     number: Mapped[int] = mapped_column(nullable=False)
     title: Mapped[str] = mapped_column(nullable=False)

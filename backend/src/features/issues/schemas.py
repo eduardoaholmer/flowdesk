@@ -44,6 +44,7 @@ class IssueCreateRequest(BaseModel):
     title: str
     description: str | None = None
     project_id: uuid.UUID | None = None
+    parent_id: uuid.UUID | None = None
     status_id: uuid.UUID | None = None
     priority: IssuePriority = IssuePriority.NO_PRIORITY
     assignee_id: uuid.UUID | None = None
@@ -71,11 +72,16 @@ class IssueUpdateRequest(BaseModel):
     *é* aceito aqui: mudança de status de issue é uma ação frequente e
     dirigida por board/board-like UI, não uma transição administrativa rara
     como arquivar/restaurar projeto (ver ADR-012, Decisão 1).
+
+    `parent_id`, como `due_date` (ADR-055/Sprint 23.1), precisa distinguir
+    "campo omitido" (preserva o vínculo atual) de "`null` explícito"
+    (desvincula) — o service checa `model_fields_set`, não `is not None`.
     """
 
     title: str | None = None
     description: str | None = None
     project_id: uuid.UUID | None = None
+    parent_id: uuid.UUID | None = None
     status_id: uuid.UUID | None = None
     priority: IssuePriority | None = None
     assignee_id: uuid.UUID | None = None
@@ -104,6 +110,7 @@ class IssueResponse(BaseModel):
     id: uuid.UUID
     workspace_id: uuid.UUID
     project_id: uuid.UUID | None
+    parent_id: uuid.UUID | None
     identifier: str
     number: int
     title: str

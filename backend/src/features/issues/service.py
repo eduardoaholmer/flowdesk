@@ -5,6 +5,8 @@ from src.core.authorization import PermissionService
 from src.core.permissions import Permission
 from src.core.security import CurrentUser
 from src.features.issues.exceptions import (
+    InvalidParentIssueError,
+    IssueHasSubIssuesError,
     IssueLabelAlreadyAppliedError,
     IssueNotFoundError,
     IssueVersionConflictError,
@@ -73,6 +75,10 @@ class IssueService:
     ) -> Issue:
         if payload.project_id is not None:
             await self._get_active_project(workspace_id, payload.project_id)
+        if payload.parent_id is not None:
+            await self._validate_parent_link(
+                workspace_id, parent_id=payload.parent_id, child_id=None
+            )
         status_id = await self._resolve_status_id(workspace_id, payload.status_id)
 
         number = await self._issue_repo.next_number(workspace_id)
@@ -80,6 +86,7 @@ class IssueService:
             Issue(
                 workspace_id=workspace_id,
                 project_id=payload.project_id,
+                parent_id=payload.parent_id,
                 number=number,
                 title=payload.title,
                 description=payload.description,
@@ -107,6 +114,7 @@ class IssueService:
         page: int,
         per_page: int,
         project_id: uuid.UUID | None,
+        parent_id: uuid.UUID | None,
         status_id: uuid.UUID | None,
         priority: IssuePriority | None,
         assignee_id: uuid.UUID | None,
@@ -119,6 +127,7 @@ class IssueService:
             page=page,
             per_page=per_page,
             project_id=project_id,
+            parent_id=parent_id,
             status_id=status_id,
             priority=priority,
             assignee_id=assignee_id,
@@ -129,6 +138,7 @@ class IssueService:
         total = await self._issue_repo.count_by_workspace(
             workspace_id,
             project_id=project_id,
+            parent_id=parent_id,
             status_id=status_id,
             priority=priority,
             assignee_id=assignee_id,
@@ -249,6 +259,23 @@ class IssueService:
             issue.project_id = payload.project_id
             changed = True
 
+        if "parent_id" in payload.model_fields_set and payload.parent_id != issue.parent_id:
+            if payload.parent_id is not None:
+                await self._validate_parent_link(
+                    workspace_id, parent_id=payload.parent_id, child_id=issue.id
+                )
+            await self._record_activity(
+                workspace_id,
+                issue.id,
+                current_user.id,
+                "issue.updated",
+                field="parent_id",
+                old_value=str(issue.parent_id) if issue.parent_id else None,
+                new_value=str(payload.parent_id) if payload.parent_id else None,
+            )
+            issue.parent_id = payload.parent_id
+            changed = True
+
         if payload.status_id is not None and payload.status_id != issue.status_id:
             new_state = await self._get_workflow_state(workspace_id, payload.status_id)
             old_state = await self._get_workflow_state(workspace_id, issue.status_id)
@@ -331,6 +358,8 @@ class IssueService:
             permission=Permission.ISSUE_DELETE,
             resource_owner_id=issue.creator_id,
         )
+        if await self._issue_repo.count_children(workspace_id, issue_id) > 0:
+            raise IssueHasSubIssuesError()
         await self._issue_repo.soft_delete(issue_id)
         await self._record_activity(
             workspace_id,
@@ -350,6 +379,33 @@ class IssueService:
         project = await self._project_repo.get_by_id(workspace_id, project_id)
         if project is None:
             raise ProjectNotFoundError()
+
+    async def _validate_parent_link(
+        self, workspace_id: uuid.UUID, *, parent_id: uuid.UUID, child_id: uuid.UUID | None
+    ) -> None:
+        """Aplica "só um nível de sub-issues" (Sprint 9.4, ADR-059): nem o pai
+        escolhido nem a própria issue podem já participar de um vínculo
+        pai/filho — senão a hierarquia passaria de um nível. `child_id=None`
+        na criação (a issue ainda não existe, então só o lado do pai importa).
+        """
+        if child_id is not None and parent_id == child_id:
+            raise InvalidParentIssueError("Uma issue não pode ser pai de si mesma.")
+        parent = await self._get_active_issue(workspace_id, parent_id)
+        if parent.parent_id is not None:
+            raise InvalidParentIssueError(
+                "O pai escolhido já é uma sub-issue — só é permitido um nível de hierarquia."
+            )
+        if await self._issue_repo.count_children(workspace_id, parent_id) > 0:
+            raise InvalidParentIssueError(
+                "O pai escolhido já tem sub-issues — só é permitido um nível de hierarquia."
+            )
+        if (
+            child_id is not None
+            and await self._issue_repo.count_children(workspace_id, child_id) > 0
+        ):
+            raise InvalidParentIssueError(
+                "Esta issue já tem sub-issues — não pode virar sub-issue de outra."
+            )
 
     async def _resolve_status_id(
         self, workspace_id: uuid.UUID, status_id: uuid.UUID | None

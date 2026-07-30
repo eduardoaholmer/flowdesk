@@ -84,3 +84,95 @@ async def test_issue_label_cascades_when_issue_hard_deleted(
 
     remaining = await db_session.scalar(select(IssueLabel).where(IssueLabel.issue_id == issue.id))
     assert remaining is None
+
+
+async def test_sub_issue_persists_parent_id(
+    db_session: AsyncSession, issue_repo: IssueRepository, workspace: Workspace, issue: Issue
+) -> None:
+    child = await issue_repo.create(
+        Issue(
+            workspace_id=workspace.id,
+            number=await issue_repo.next_number(workspace.id),
+            title="Sub-tarefa",
+            creator_id=issue.creator_id,
+            status_id=issue.status_id,
+            parent_id=issue.id,
+        )
+    )
+
+    loaded = await db_session.scalar(select(Issue).where(Issue.id == child.id))
+    assert loaded is not None
+    assert loaded.parent_id == issue.id
+
+
+async def test_count_children_only_counts_active_non_deleted_children(
+    issue_repo: IssueRepository, workspace: Workspace, issue: Issue
+) -> None:
+    child = await issue_repo.create(
+        Issue(
+            workspace_id=workspace.id,
+            number=await issue_repo.next_number(workspace.id),
+            title="Filho",
+            creator_id=issue.creator_id,
+            status_id=issue.status_id,
+            parent_id=issue.id,
+        )
+    )
+
+    assert await issue_repo.count_children(workspace.id, issue.id) == 1
+
+    await issue_repo.soft_delete(child.id)
+
+    assert await issue_repo.count_children(workspace.id, issue.id) == 0
+
+
+async def test_list_by_workspace_filters_by_parent_id(
+    issue_repo: IssueRepository, workspace: Workspace, issue: Issue
+) -> None:
+    child = await issue_repo.create(
+        Issue(
+            workspace_id=workspace.id,
+            number=await issue_repo.next_number(workspace.id),
+            title="Filho",
+            creator_id=issue.creator_id,
+            status_id=issue.status_id,
+            parent_id=issue.id,
+        )
+    )
+    await issue_repo.create(
+        Issue(
+            workspace_id=workspace.id,
+            number=await issue_repo.next_number(workspace.id),
+            title="Solta",
+            creator_id=issue.creator_id,
+            status_id=issue.status_id,
+        )
+    )
+
+    children = await issue_repo.list_by_workspace(workspace.id, parent_id=issue.id)
+
+    assert [i.id for i in children] == [child.id]
+
+
+async def test_hard_deleting_a_parent_with_children_is_restricted(
+    db_session: AsyncSession, issue_repo: IssueRepository, workspace: Workspace, issue: Issue
+) -> None:
+    """`ON DELETE RESTRICT` — mesma defesa em profundidade da constraint de
+    label acima, para o caso de um hard delete acidental atingir um pai com
+    filhos vinculados (a aplicação em si nunca hard-deleta, sempre soft delete
+    via `IssueService.delete`, que já bloqueia esse caso em nível de serviço)."""
+    await issue_repo.create(
+        Issue(
+            workspace_id=workspace.id,
+            number=await issue_repo.next_number(workspace.id),
+            title="Filho",
+            creator_id=issue.creator_id,
+            status_id=issue.status_id,
+            parent_id=issue.id,
+        )
+    )
+    await db_session.flush()
+
+    await db_session.delete(issue)
+    with pytest.raises(IntegrityError):
+        await db_session.flush()
