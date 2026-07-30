@@ -17,7 +17,7 @@ import { formatDate } from "@/shared/lib/date";
 import { getInitials } from "@/shared/lib/string";
 import { cn } from "@/shared/lib/utils";
 
-import { useUpdateIssue } from "../hooks";
+import { useIssues, useUpdateIssue } from "../hooks";
 import { ISSUE_ESTIMATE_OPTIONS, ISSUE_PRIORITY_LABELS } from "../constants";
 import type { Issue, IssuePriority } from "../types";
 import { IssuePriorityIcon } from "./IssuePriorityIcon";
@@ -96,11 +96,24 @@ export function IssueDetailRail({ workspaceId, issue }: { workspaceId: string; i
   const { data: members } = useWorkspaceMembers(workspaceId);
   const { data: projects } = useProjects(workspaceId, { page: 1, per_page: MAX_PICKER_PAGE_SIZE });
   const { data: workflowStates } = useWorkflowStates(workspaceId);
+  const { data: issuesData } = useIssues(workspaceId, {
+    page: 1,
+    per_page: MAX_PICKER_PAGE_SIZE,
+    sort: "-updated_at",
+  });
   const updateIssue = useUpdateIssue(workspaceId, issue.id);
 
   const assignee = members?.find((member) => member.user.id === issue.assignee_id)?.user;
   const project = projects?.data.find((p) => p.id === issue.project_id);
   const currentWorkflowState = workflowStates?.find((state) => state.id === issue.status_id);
+  const parentIssue = issuesData?.data.find((i) => i.id === issue.parent_id);
+  // Candidatos a pai: nem a própria issue, nem uma que já é filha de outra —
+  // o backend ainda valida "o pai já tem filhos"/"a própria issue já tem
+  // filhos" (só um nível de hierarquia, ver IssueService), não reproduzido
+  // aqui por exigir uma segunda consulta que este picker não precisa ter.
+  const parentCandidates = (issuesData?.data ?? []).filter(
+    (i) => i.id !== issue.id && i.parent_id === null,
+  );
 
   return (
     <aside
@@ -170,6 +183,25 @@ export function IssueDetailRail({ workspaceId, issue }: { workspaceId: string; i
             label: p.name,
             checked: p.id === issue.project_id,
             onSelect: () => updateIssue.mutate({ project_id: p.id }),
+          })),
+        ]}
+      />
+
+      <RailField
+        label="Issue pai"
+        valueText={parentIssue ? `${parentIssue.identifier} · ${parentIssue.title}` : "Nenhuma"}
+        options={[
+          {
+            key: NONE,
+            label: "Nenhuma",
+            checked: !issue.parent_id,
+            onSelect: () => updateIssue.mutate({ parent_id: null }),
+          },
+          ...parentCandidates.map((candidate) => ({
+            key: candidate.id,
+            label: `${candidate.identifier} · ${candidate.title}`,
+            checked: candidate.id === issue.parent_id,
+            onSelect: () => updateIssue.mutate({ parent_id: candidate.id }),
           })),
         ]}
       />

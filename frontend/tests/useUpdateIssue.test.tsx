@@ -54,4 +54,36 @@ describe("useUpdateIssue", () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(receivedBody).not.toHaveProperty("due_date");
   });
+
+  it("sends parent_id as an explicit null when unlinking a sub-issue (Sprint 9.4)", async () => {
+    let receivedBody: unknown;
+    server.use(
+      http.patch(`${API_BASE_URL}/workspaces/:workspaceId/issues/:issueId`, async ({ request }) => {
+        receivedBody = await request.json();
+        return HttpResponse.json({ data: { ...demoIssue, parent_id: null } });
+      }),
+    );
+    const { result } = renderUpdateIssue();
+
+    result.current.mutate({ parent_id: null });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(receivedBody).toHaveProperty("parent_id", null);
+  });
+
+  it("sends the chosen parent_id when linking a sub-issue", async () => {
+    let receivedBody: unknown;
+    server.use(
+      http.patch(`${API_BASE_URL}/workspaces/:workspaceId/issues/:issueId`, async ({ request }) => {
+        receivedBody = await request.json();
+        return HttpResponse.json({ data: { ...demoIssue, parent_id: "parent-issue-1" } });
+      }),
+    );
+    const { result } = renderUpdateIssue();
+
+    result.current.mutate({ parent_id: "parent-issue-1" });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(receivedBody).toHaveProperty("parent_id", "parent-issue-1");
+  });
 });

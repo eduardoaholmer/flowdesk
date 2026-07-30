@@ -33,6 +33,7 @@ const baseIssue: Issue = {
   id: "issue-1",
   workspace_id: "ws-1",
   project_id: null,
+  parent_id: null,
   identifier: "FD-1",
   number: 1,
   title: "Corrigir tela de login",

@@ -16,7 +16,7 @@ import { DUE_DATE_MAX, DUE_DATE_MIN } from "@/shared/lib/constants";
 import { isTypingTarget } from "@/shared/lib/dom";
 import { useUiStore } from "@/shared/stores/uiStore";
 
-import { useCreateIssue } from "../hooks";
+import { useCreateIssue, useIssue } from "../hooks";
 import { IssueFormFields, type IssueFormValues } from "./IssueFormFields";
 
 const schema = z.object({
@@ -45,6 +45,9 @@ const schema = z.object({
 export function CreateIssueDialog({ workspaceId }: { workspaceId: string }) {
   const open = useUiStore((state) => state.isCreateIssueOpen);
   const setOpen = useUiStore((state) => state.setCreateIssueOpen);
+  const parentId = useUiStore((state) => state.createIssueParentId);
+  const setCreateIssueParentId = useUiStore((state) => state.setCreateIssueParentId);
+  const { data: parentIssue } = useIssue(workspaceId, parentId ?? "");
   const {
     register,
     handleSubmit,
@@ -91,6 +94,7 @@ export function CreateIssueDialog({ workspaceId }: { workspaceId: string }) {
       title: values.title,
       description: values.description || undefined,
       project_id: values.project_id || undefined,
+      parent_id: parentId ?? undefined,
       status_id: values.status_id,
       priority: values.priority,
       assignee_id: values.assignee_id || undefined,
@@ -99,6 +103,7 @@ export function CreateIssueDialog({ workspaceId }: { workspaceId: string }) {
     });
     reset();
     setOpen(false);
+    setCreateIssueParentId(null);
   }
 
   return (
@@ -106,13 +111,18 @@ export function CreateIssueDialog({ workspaceId }: { workspaceId: string }) {
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
-        if (!next) reset();
+        if (!next) {
+          reset();
+          setCreateIssueParentId(null);
+        }
       }}
     >
       <DialogContent className="sm:max-w-lg">
         <form onSubmit={handleSubmit(onSubmit)}>
           <DialogHeader>
-            <DialogTitle>Nova issue</DialogTitle>
+            <DialogTitle>
+              {parentIssue ? `Nova sub-issue de ${parentIssue.identifier}` : "Nova issue"}
+            </DialogTitle>
           </DialogHeader>
           <div className="py-4">
             <IssueFormFields

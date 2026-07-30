@@ -4,6 +4,7 @@ export interface Issue {
   id: string;
   workspace_id: string;
   project_id: string | null;
+  parent_id: string | null;
   identifier: string;
   number: number;
   title: string;
@@ -38,6 +39,7 @@ export interface IssueListParams {
   status_id?: string;
   priority?: IssuePriority;
   project_id?: string;
+  parent_id?: string;
   assignee_id?: string;
   creator_id?: string;
   sort?: IssueSort;
@@ -47,6 +49,7 @@ export interface IssueCreateInput {
   title: string;
   description?: string;
   project_id?: string;
+  parent_id?: string | null;
   status_id?: string;
   priority?: IssuePriority;
   assignee_id?: string;

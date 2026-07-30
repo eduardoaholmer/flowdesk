@@ -51,6 +51,7 @@ export const demoIssue: Issue = {
   id: "issue-1",
   workspace_id: "workspace-1",
   project_id: "project-1",
+  parent_id: null,
   identifier: "FLW-1",
   number: 1,
   title: "Configurar infraestrutura de mock de rede",

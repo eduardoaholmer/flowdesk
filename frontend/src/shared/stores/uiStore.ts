@@ -34,6 +34,11 @@ interface UiState {
   setCommandPaletteOpen: (open: boolean) => void;
   isCreateIssueOpen: boolean;
   setCreateIssueOpen: (open: boolean) => void;
+  /** Pré-seleciona o `parent_id` da próxima issue criada — acionado pelo botão
+   * "Nova sub-issue" no detalhe de uma issue (Sprint 9.4). `CreateIssueDialog`
+   * lê e limpa este valor ao fechar. */
+  createIssueParentId: string | null;
+  setCreateIssueParentId: (issueId: string | null) => void;
   isCreateWorkspaceOpen: boolean;
   setCreateWorkspaceOpen: (open: boolean) => void;
 }
@@ -56,6 +61,8 @@ export const useUiStore = create<UiState>((set) => ({
   setCommandPaletteOpen: (open) => set({ isCommandPaletteOpen: open }),
   isCreateIssueOpen: false,
   setCreateIssueOpen: (open) => set({ isCreateIssueOpen: open }),
+  createIssueParentId: null,
+  setCreateIssueParentId: (issueId) => set({ createIssueParentId: issueId }),
   isCreateWorkspaceOpen: false,
   setCreateWorkspaceOpen: (open) => set({ isCreateWorkspaceOpen: open }),
 }));

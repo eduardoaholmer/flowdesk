@@ -4,14 +4,19 @@ import { Link, useNavigate } from "react-router-dom";
 import { AttachmentList } from "@/features/attachments/components/AttachmentList";
 import { CommentList } from "@/features/comments/components/CommentList";
 import { ErrorState } from "@/shared/components/feedback/ErrorState";
+import { ListSkeleton } from "@/shared/components/skeletons/ListSkeleton";
+import { Button } from "@/shared/components/ui/button";
 import { Separator } from "@/shared/components/ui/separator";
 import { Skeleton } from "@/shared/components/ui/skeleton";
 import { workspaceRoutes } from "@/shared/lib/routes";
+import { useUiStore } from "@/shared/stores/uiStore";
 
-import { useIssue } from "../hooks";
+import { useIssue, useIssues } from "../hooks";
 import { IssueActivityTimeline } from "./IssueActivityTimeline";
 import { IssueDetailRail } from "./IssueDetailRail";
 import { IssueRowActions } from "./IssueRowActions";
+import { IssuesEmptyState } from "./IssuesEmptyState";
+import { IssuesTable } from "./IssuesTable";
 
 const SECTION_HEADING = "mb-3 text-[11px] font-semibold tracking-wide text-t3 uppercase";
 
@@ -26,6 +31,14 @@ export function IssueDetailView({
 }) {
   const navigate = useNavigate();
   const { data: issue, isLoading, isError, refetch } = useIssue(workspaceId, issueId);
+  const setCreateIssueParentId = useUiStore((state) => state.setCreateIssueParentId);
+  const setCreateIssueOpen = useUiStore((state) => state.setCreateIssueOpen);
+  const subIssuesQuery = useIssues(workspaceId, {
+    page: 1,
+    per_page: 20,
+    parent_id: issueId,
+    sort: "-updated_at",
+  });
 
   if (isLoading) {
     return (
@@ -67,6 +80,46 @@ export function IssueDetailView({
         <p className="mt-5 text-sm leading-relaxed whitespace-pre-wrap text-t2">
           {issue.description || "Sem descrição."}
         </p>
+
+        <Separator className="my-6" />
+
+        <div>
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <h2 className={SECTION_HEADING}>
+              Sub-issues
+              {subIssuesQuery.data && subIssuesQuery.data.meta.total > 0 && (
+                <span className="ml-1.5 normal-case">({subIssuesQuery.data.meta.total})</span>
+              )}
+            </h2>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setCreateIssueParentId(issue.id);
+                setCreateIssueOpen(true);
+              }}
+            >
+              Nova sub-issue
+            </Button>
+          </div>
+          {subIssuesQuery.isLoading ? (
+            <ListSkeleton rows={3} />
+          ) : subIssuesQuery.isError ? (
+            <ErrorState
+              message="Não foi possível carregar as sub-issues."
+              onRetry={() => subIssuesQuery.refetch()}
+            />
+          ) : subIssuesQuery.data && subIssuesQuery.data.data.length > 0 ? (
+            <IssuesTable
+              workspaceId={workspaceId}
+              workspaceSlug={workspaceSlug}
+              issues={subIssuesQuery.data.data}
+              showProject={false}
+            />
+          ) : (
+            <IssuesEmptyState hasFilters={false} />
+          )}
+        </div>
 
         <Separator className="my-6" />
 
