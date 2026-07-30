@@ -1,3 +1,4 @@
+import { WorkflowStatesSettings } from "@/features/workflow-states/components/WorkflowStatesSettings";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/components/ui/tabs";
 
 import type { WorkspaceRole } from "../types";
@@ -28,6 +29,7 @@ export function WorkspaceSettingsPage({
           <TabsTrigger value="general">Geral</TabsTrigger>
           <TabsTrigger value="members">Membros</TabsTrigger>
           {canManage && <TabsTrigger value="invitations">Convites</TabsTrigger>}
+          {canManage && <TabsTrigger value="workflow-states">Status</TabsTrigger>}
         </TabsList>
         <TabsContent value="general" className="pt-4">
           <WorkspaceGeneralSettings
@@ -46,6 +48,11 @@ export function WorkspaceSettingsPage({
         {canManage && (
           <TabsContent value="invitations" className="pt-4">
             <WorkspaceInvitationsSettings workspaceId={workspaceId} />
+          </TabsContent>
+        )}
+        {canManage && (
+          <TabsContent value="workflow-states" className="pt-4">
+            <WorkflowStatesSettings workspaceId={workspaceId} />
           </TabsContent>
         )}
       </Tabs>

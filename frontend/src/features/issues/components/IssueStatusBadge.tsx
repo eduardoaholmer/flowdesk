@@ -1,12 +1,12 @@
-import { ISSUE_STATUS_LABELS } from "../constants";
-import type { IssueStatus } from "../types";
+import type { WorkflowState } from "@/features/workflow-states/types";
+
 import { IssueStatusIcon } from "./IssueStatusIcon";
 
-export function IssueStatusBadge({ status }: { status: IssueStatus }) {
+export function IssueStatusBadge({ workflowState }: { workflowState: WorkflowState }) {
   return (
     <span className="inline-flex items-center gap-1.5 text-sm">
-      <IssueStatusIcon status={status} />
-      {ISSUE_STATUS_LABELS[status]}
+      <IssueStatusIcon category={workflowState.category} />
+      {workflowState.name}
     </span>
   );
 }

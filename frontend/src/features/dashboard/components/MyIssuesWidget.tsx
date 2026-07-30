@@ -22,7 +22,10 @@ export function MyIssuesWidget({
   workspaceSlug: string;
   userId: string;
 }) {
-  const { issues, isLoading, isError, refetch } = useMyRadarIssues(workspaceId, userId);
+  const { issues, workflowStateById, isLoading, isError, refetch } = useMyRadarIssues(
+    workspaceId,
+    userId,
+  );
 
   return (
     <DashboardWidgetCard
@@ -53,7 +56,9 @@ export function MyIssuesWidget({
                 className="flex h-10 items-center gap-2.5 px-4 hover:bg-sunken"
               >
                 <IssuePriorityIcon priority={issue.priority} />
-                <IssueStatusIcon status={issue.status} />
+                {workflowStateById.get(issue.status_id) && (
+                  <IssueStatusIcon category={workflowStateById.get(issue.status_id)!.category} />
+                )}
                 <span className="font-mono text-xs text-t3">{issue.identifier}</span>
                 <span className="min-w-0 flex-1 truncate text-[13px] font-medium">
                   {issue.title}

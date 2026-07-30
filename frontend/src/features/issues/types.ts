@@ -1,5 +1,3 @@
-export type IssueStatus = "BACKLOG" | "TODO" | "IN_PROGRESS" | "IN_REVIEW" | "DONE" | "CANCELED";
-
 export type IssuePriority = "NO_PRIORITY" | "LOW" | "MEDIUM" | "HIGH" | "URGENT";
 
 export interface Issue {
@@ -10,7 +8,7 @@ export interface Issue {
   number: number;
   title: string;
   description: string | null;
-  status: IssueStatus;
+  status_id: string;
   priority: IssuePriority;
   assignee_id: string | null;
   creator_id: string;
@@ -37,7 +35,7 @@ export interface IssueListParams {
   page: number;
   per_page: number;
   q?: string;
-  status?: IssueStatus;
+  status_id?: string;
   priority?: IssuePriority;
   project_id?: string;
   assignee_id?: string;
@@ -49,7 +47,7 @@ export interface IssueCreateInput {
   title: string;
   description?: string;
   project_id?: string;
-  status?: IssueStatus;
+  status_id?: string;
   priority?: IssuePriority;
   assignee_id?: string;
   estimate?: number;

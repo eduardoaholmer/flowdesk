@@ -6,10 +6,20 @@ import { describe, expect, it } from "vitest";
 
 import { IssuesBoardView } from "@/features/issues/components/IssuesBoardView";
 import type { Issue } from "@/features/issues/types";
+import type { WorkflowState } from "@/features/workflow-states/types";
 
 import { API_BASE_URL } from "./mocks/apiBaseUrl";
-import { buildPaginationMeta, demoIssue } from "./mocks/fixtures";
+import { buildPaginationMeta, demoIssue, demoWorkflowState } from "./mocks/fixtures";
 import { server } from "./mocks/server";
+
+const todoState: WorkflowState = demoWorkflowState;
+const doneState: WorkflowState = {
+  ...demoWorkflowState,
+  id: "workflow-state-done",
+  name: "Done",
+  category: "COMPLETED",
+  position: 2,
+};
 
 function renderBoard() {
   const queryClient = new QueryClient({
@@ -33,16 +43,31 @@ function mockIssues(issues: Issue[]) {
   );
 }
 
+function mockWorkflowStates(states: WorkflowState[]) {
+  server.use(
+    http.get(`${API_BASE_URL}/workspaces/:workspaceId/workflow-states`, () =>
+      HttpResponse.json({ data: states }),
+    ),
+  );
+}
+
 describe("IssuesBoardView", () => {
   it("groups issues into the column matching their status", async () => {
+    mockWorkflowStates([todoState, doneState]);
     mockIssues([
-      { ...demoIssue, id: "issue-todo", identifier: "FLW-1", title: "A fazer", status: "TODO" },
+      {
+        ...demoIssue,
+        id: "issue-todo",
+        identifier: "FLW-1",
+        title: "A fazer",
+        status_id: todoState.id,
+      },
       {
         ...demoIssue,
         id: "issue-done",
         identifier: "FLW-2",
         title: "Concluída",
-        status: "DONE",
+        status_id: doneState.id,
       },
     ]);
 
@@ -59,15 +84,16 @@ describe("IssuesBoardView", () => {
   });
 
   it("shows an empty-column message for statuses with no issues", async () => {
-    mockIssues([{ ...demoIssue, status: "TODO" }]);
+    mockWorkflowStates([todoState, doneState]);
+    mockIssues([{ ...demoIssue, status_id: todoState.id }]);
 
     renderBoard();
 
     await screen.findByText(demoIssue.title);
-    const backlogColumn = screen
-      .getByText("Backlog")
+    const doneColumn = screen
+      .getByText("Done")
       .closest('[data-slot="board-column"]') as HTMLElement;
 
-    expect(within(backlogColumn).getByText("Solte um cartão aqui")).toBeInTheDocument();
+    expect(within(doneColumn).getByText("Solte um cartão aqui")).toBeInTheDocument();
   });
 });

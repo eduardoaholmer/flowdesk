@@ -4,6 +4,7 @@ import type { Issue } from "@/features/issues/types";
 import type { Notification } from "@/features/notifications/types";
 import type { Project } from "@/features/projects/types";
 import type { WorkspaceMember } from "@/features/workspaces/types";
+import type { WorkflowState } from "@/features/workflow-states/types";
 import type { PaginationMeta } from "@/shared/lib/apiTypes";
 
 export const demoUser: AuthUser = {
@@ -34,6 +35,18 @@ export const demoProject: Project = {
   updated_at: "2026-01-01T00:00:00Z",
 };
 
+export const demoWorkflowState: WorkflowState = {
+  id: "workflow-state-todo",
+  workspace_id: "workspace-1",
+  name: "Todo",
+  category: "UNSTARTED",
+  position: 1,
+  is_default: false,
+  issue_count: 1,
+  created_at: "2026-01-01T00:00:00Z",
+  updated_at: "2026-01-01T00:00:00Z",
+};
+
 export const demoIssue: Issue = {
   id: "issue-1",
   workspace_id: "workspace-1",
@@ -42,7 +55,7 @@ export const demoIssue: Issue = {
   number: 1,
   title: "Configurar infraestrutura de mock de rede",
   description: null,
-  status: "TODO",
+  status_id: demoWorkflowState.id,
   priority: "MEDIUM",
   assignee_id: "user-1",
   creator_id: "user-1",

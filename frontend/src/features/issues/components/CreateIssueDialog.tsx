@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 
+import { useWorkflowStates } from "@/features/workflow-states/hooks";
 import { Button } from "@/shared/components/ui/button";
 import {
   Dialog,
@@ -22,7 +23,7 @@ const schema = z.object({
   title: z.string().min(1, "O título é obrigatório.").max(255),
   description: z.string().optional(),
   project_id: z.string().optional(),
-  status: z.enum(["BACKLOG", "TODO", "IN_PROGRESS", "IN_REVIEW", "DONE", "CANCELED"]),
+  status_id: z.string().min(1, "Selecione um status."),
   priority: z.enum(["NO_PRIORITY", "LOW", "MEDIUM", "HIGH", "URGENT"]),
   assignee_id: z.string().optional(),
   estimate: z.string().optional(),
@@ -49,12 +50,25 @@ export function CreateIssueDialog({ workspaceId }: { workspaceId: string }) {
     handleSubmit,
     control,
     reset,
+    setValue,
     formState: { errors },
   } = useForm<IssueFormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { status: "BACKLOG", priority: "NO_PRIORITY" },
+    defaultValues: { status_id: "", priority: "NO_PRIORITY" },
   });
   const createIssue = useCreateIssue(workspaceId);
+  const { data: workflowStates } = useWorkflowStates(workspaceId);
+
+  // Preseleciona o status padrão do workspace assim que a lista carrega — o
+  // backend também assumiria esse default se o campo fosse omitido, mas
+  // manter um valor visível no select reproduz o comportamento anterior
+  // (enum fixo com default "BACKLOG" hardcoded).
+  useEffect(() => {
+    if (!open || !workflowStates) return;
+    const defaultState = workflowStates.find((state) => state.is_default) ?? workflowStates.at(0);
+    if (!defaultState) return;
+    setValue("status_id", defaultState.id);
+  }, [open, workflowStates, setValue]);
 
   // Atalho global "C" (sem modificador) — mesmo gesto do handoff (`Sidebar.dc.html`/
   // `CommandPalette.dc.html`, "Nova issue · C"). Ignora quando o foco está num campo
@@ -77,7 +91,7 @@ export function CreateIssueDialog({ workspaceId }: { workspaceId: string }) {
       title: values.title,
       description: values.description || undefined,
       project_id: values.project_id || undefined,
-      status: values.status,
+      status_id: values.status_id,
       priority: values.priority,
       assignee_id: values.assignee_id || undefined,
       estimate: values.estimate ? Number(values.estimate) : undefined,

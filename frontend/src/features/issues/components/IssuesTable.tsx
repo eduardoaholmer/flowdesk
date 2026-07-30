@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 
 import { useProjects } from "@/features/projects/hooks";
 import { useWorkspaceMembers } from "@/features/workspaces/hooks";
+import { useWorkflowStates } from "@/features/workflow-states/hooks";
 import { Avatar, AvatarFallback } from "@/shared/components/ui/avatar";
 import {
   Table,
@@ -16,7 +17,7 @@ import { formatDate, formatRelativeTime } from "@/shared/lib/date";
 import { workspaceRoutes } from "@/shared/lib/routes";
 import { getInitials } from "@/shared/lib/string";
 
-import { ISSUE_PRIORITY_LABELS, ISSUE_STATUS_LABELS } from "../constants";
+import { ISSUE_PRIORITY_LABELS } from "../constants";
 import { IssuePriorityIcon } from "./IssuePriorityIcon";
 import { IssueRowActions } from "./IssueRowActions";
 import { IssueStatusIcon } from "./IssueStatusIcon";
@@ -36,6 +37,9 @@ export function IssuesTable({
 }) {
   const { data: members } = useWorkspaceMembers(workspaceId);
   const memberById = new Map((members ?? []).map((member) => [member.user.id, member.user]));
+
+  const { data: workflowStates } = useWorkflowStates(workspaceId);
+  const workflowStateById = new Map((workflowStates ?? []).map((state) => [state.id, state]));
 
   const { data: projects } = useProjects(workspaceId, {
     page: 1,
@@ -64,6 +68,7 @@ export function IssuesTable({
           {issues.map((issue) => {
             const assignee = issue.assignee_id ? memberById.get(issue.assignee_id) : undefined;
             const project = issue.project_id ? projectById.get(issue.project_id) : undefined;
+            const workflowState = workflowStateById.get(issue.status_id);
             return (
               <TableRow key={issue.id}>
                 <TableCell className="font-mono text-xs text-muted-foreground">
@@ -78,14 +83,16 @@ export function IssuesTable({
                   </Link>
                 </TableCell>
                 <TableCell>
-                  <span
-                    role="img"
-                    aria-label={ISSUE_STATUS_LABELS[issue.status]}
-                    title={ISSUE_STATUS_LABELS[issue.status]}
-                    className="inline-flex"
-                  >
-                    <IssueStatusIcon status={issue.status} />
-                  </span>
+                  {workflowState && (
+                    <span
+                      role="img"
+                      aria-label={workflowState.name}
+                      title={workflowState.name}
+                      className="inline-flex"
+                    >
+                      <IssueStatusIcon category={workflowState.category} />
+                    </span>
+                  )}
                 </TableCell>
                 <TableCell>
                   <span

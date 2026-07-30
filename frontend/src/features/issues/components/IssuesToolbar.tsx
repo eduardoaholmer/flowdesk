@@ -1,6 +1,7 @@
 import { Search } from "lucide-react";
 
 import { useProjects } from "@/features/projects/hooks";
+import { useWorkflowStates } from "@/features/workflow-states/hooks";
 import { FilterBar } from "@/shared/components/forms/FilterBar";
 import { Input } from "@/shared/components/ui/input";
 import {
@@ -12,16 +13,7 @@ import {
 } from "@/shared/components/ui/select";
 import { MAX_PICKER_PAGE_SIZE } from "@/shared/lib/constants";
 
-import type { IssuePriority, IssueSort, IssueStatus } from "../types";
-
-const STATUS_OPTIONS: { value: IssueStatus; label: string }[] = [
-  { value: "BACKLOG", label: "Backlog" },
-  { value: "TODO", label: "Todo" },
-  { value: "IN_PROGRESS", label: "In Progress" },
-  { value: "IN_REVIEW", label: "In Review" },
-  { value: "DONE", label: "Done" },
-  { value: "CANCELED", label: "Canceled" },
-];
+import type { IssuePriority, IssueSort } from "../types";
 
 const PRIORITY_OPTIONS: { value: IssuePriority; label: string }[] = [
   { value: "NO_PRIORITY", label: "No priority" },
@@ -56,8 +48,8 @@ export function IssuesToolbar({
   workspaceId: string;
   search: string;
   onSearchChange: (value: string) => void;
-  status: IssueStatus | "ALL";
-  onStatusChange: (value: IssueStatus | "ALL") => void;
+  status: string | "ALL";
+  onStatusChange: (value: string | "ALL") => void;
   priority: IssuePriority | "ALL";
   onPriorityChange: (value: IssuePriority | "ALL") => void;
   projectId: string | "ALL";
@@ -70,6 +62,7 @@ export function IssuesToolbar({
     per_page: MAX_PICKER_PAGE_SIZE,
     sort: "-created_at",
   });
+  const { data: workflowStates } = useWorkflowStates(workspaceId);
 
   return (
     <FilterBar
@@ -86,18 +79,15 @@ export function IssuesToolbar({
       }
       filters={
         <>
-          <Select
-            value={status}
-            onValueChange={(value) => onStatusChange(value as IssueStatus | "ALL")}
-          >
+          <Select value={status} onValueChange={onStatusChange}>
             <SelectTrigger className="w-40">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="ALL">Todos os status</SelectItem>
-              {STATUS_OPTIONS.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
+              {workflowStates?.map((state) => (
+                <SelectItem key={state.id} value={state.id}>
+                  {state.name}
                 </SelectItem>
               ))}
             </SelectContent>

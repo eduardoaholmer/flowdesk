@@ -5,14 +5,7 @@ import type { CollectionEnvelope } from "@/shared/lib/apiTypes";
 import { getApiErrorMessage } from "@/shared/lib/errors";
 
 import * as api from "./api";
-import { ISSUE_STATUS_LABELS } from "./constants";
-import type {
-  Issue,
-  IssueCreateInput,
-  IssueListParams,
-  IssueStatus,
-  IssueUpdateInput,
-} from "./types";
+import type { Issue, IssueCreateInput, IssueListParams, IssueUpdateInput } from "./types";
 
 function issuesListKey(workspaceId: string, params: IssueListParams) {
   return ["workspaces", workspaceId, "issues", params] as const;
@@ -100,15 +93,23 @@ export function useMoveIssueStatus(workspaceId: string, listParams: IssueListPar
   const key = issuesListKey(workspaceId, listParams);
 
   return useMutation({
-    mutationFn: ({ issueId, status }: { issueId: string; status: IssueStatus }) =>
-      api.updateIssue(workspaceId, issueId, { status }),
-    onMutate: async ({ issueId, status }) => {
+    mutationFn: ({
+      issueId,
+      statusId,
+    }: {
+      issueId: string;
+      statusId: string;
+      statusName: string;
+    }) => api.updateIssue(workspaceId, issueId, { status_id: statusId }),
+    onMutate: async ({ issueId, statusId }) => {
       await queryClient.cancelQueries({ queryKey: key });
       const previous = queryClient.getQueryData<CollectionEnvelope<Issue>>(key);
       if (previous) {
         queryClient.setQueryData<CollectionEnvelope<Issue>>(key, {
           ...previous,
-          data: previous.data.map((issue) => (issue.id === issueId ? { ...issue, status } : issue)),
+          data: previous.data.map((issue) =>
+            issue.id === issueId ? { ...issue, status_id: statusId } : issue,
+          ),
         });
       }
       return { previous };
@@ -119,8 +120,8 @@ export function useMoveIssueStatus(workspaceId: string, listParams: IssueListPar
       }
       toast.error(getApiErrorMessage(error));
     },
-    onSuccess: (updated) => {
-      toast.success(`${updated.identifier} → ${ISSUE_STATUS_LABELS[updated.status]}`);
+    onSuccess: (updated, variables) => {
+      toast.success(`${updated.identifier} → ${variables.statusName}`);
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["workspaces", workspaceId, "issues"] });

@@ -3,6 +3,7 @@ import { Controller } from "react-hook-form";
 
 import { useProjects } from "@/features/projects/hooks";
 import { useWorkspaceMembers } from "@/features/workspaces/hooks";
+import { useWorkflowStates } from "@/features/workflow-states/hooks";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
 import {
@@ -15,13 +16,13 @@ import {
 import { Textarea } from "@/shared/components/ui/textarea";
 import { DUE_DATE_MAX, DUE_DATE_MIN, MAX_PICKER_PAGE_SIZE } from "@/shared/lib/constants";
 
-import type { IssuePriority, IssueStatus } from "../types";
+import type { IssuePriority } from "../types";
 
 export interface IssueFormValues {
   title: string;
   description?: string;
   project_id?: string;
-  status: IssueStatus;
+  status_id: string;
   priority: IssuePriority;
   assignee_id?: string;
   estimate?: string;
@@ -29,15 +30,6 @@ export interface IssueFormValues {
 }
 
 const NONE = "__none__";
-
-const STATUS_OPTIONS: { value: IssueStatus; label: string }[] = [
-  { value: "BACKLOG", label: "Backlog" },
-  { value: "TODO", label: "Todo" },
-  { value: "IN_PROGRESS", label: "In Progress" },
-  { value: "IN_REVIEW", label: "In Review" },
-  { value: "DONE", label: "Done" },
-  { value: "CANCELED", label: "Canceled" },
-];
 
 const PRIORITY_OPTIONS: { value: IssuePriority; label: string }[] = [
   { value: "NO_PRIORITY", label: "No priority" },
@@ -66,6 +58,7 @@ export function IssueFormFields({
     sort: "-created_at",
   });
   const { data: members } = useWorkspaceMembers(workspaceId);
+  const { data: workflowStates } = useWorkflowStates(workspaceId);
 
   return (
     <div className="flex flex-col gap-4">
@@ -93,16 +86,16 @@ export function IssueFormFields({
           <Label>Status</Label>
           <Controller
             control={control}
-            name="status"
+            name="status_id"
             render={({ field }) => (
               <Select value={field.value} onValueChange={field.onChange}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {STATUS_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
+                  {workflowStates?.map((state) => (
+                    <SelectItem key={state.id} value={state.id}>
+                      {state.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -206,9 +199,7 @@ export function IssueFormFields({
             max={DUE_DATE_MAX}
             {...register("due_date")}
           />
-          {errors.due_date && (
-            <p className="text-xs text-destructive">{errors.due_date.message}</p>
-          )}
+          {errors.due_date && <p className="text-xs text-destructive">{errors.due_date.message}</p>}
         </div>
       </div>
     </div>

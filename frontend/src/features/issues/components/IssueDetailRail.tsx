@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 
 import { useProjects } from "@/features/projects/hooks";
 import { useWorkspaceMembers } from "@/features/workspaces/hooks";
+import { useWorkflowStates } from "@/features/workflow-states/hooks";
 import { IssueLabelPicker } from "@/features/labels/components/IssueLabelPicker";
 import { Avatar, AvatarFallback } from "@/shared/components/ui/avatar";
 import {
@@ -17,21 +18,12 @@ import { getInitials } from "@/shared/lib/string";
 import { cn } from "@/shared/lib/utils";
 
 import { useUpdateIssue } from "../hooks";
-import { ISSUE_ESTIMATE_OPTIONS, ISSUE_PRIORITY_LABELS, ISSUE_STATUS_LABELS } from "../constants";
-import type { Issue, IssuePriority, IssueStatus } from "../types";
+import { ISSUE_ESTIMATE_OPTIONS, ISSUE_PRIORITY_LABELS } from "../constants";
+import type { Issue, IssuePriority } from "../types";
 import { IssuePriorityIcon } from "./IssuePriorityIcon";
 import { IssueStatusIcon } from "./IssueStatusIcon";
 
 const NONE = "__none__";
-
-const STATUS_ORDER: IssueStatus[] = [
-  "BACKLOG",
-  "TODO",
-  "IN_PROGRESS",
-  "IN_REVIEW",
-  "DONE",
-  "CANCELED",
-];
 
 const PRIORITY_ORDER: IssuePriority[] = ["URGENT", "HIGH", "MEDIUM", "LOW", "NO_PRIORITY"];
 
@@ -103,10 +95,12 @@ function RailAvatarIcon({ name }: { name: string }) {
 export function IssueDetailRail({ workspaceId, issue }: { workspaceId: string; issue: Issue }) {
   const { data: members } = useWorkspaceMembers(workspaceId);
   const { data: projects } = useProjects(workspaceId, { page: 1, per_page: MAX_PICKER_PAGE_SIZE });
+  const { data: workflowStates } = useWorkflowStates(workspaceId);
   const updateIssue = useUpdateIssue(workspaceId, issue.id);
 
   const assignee = members?.find((member) => member.user.id === issue.assignee_id)?.user;
   const project = projects?.data.find((p) => p.id === issue.project_id);
+  const currentWorkflowState = workflowStates?.find((state) => state.id === issue.status_id);
 
   return (
     <aside
@@ -116,14 +110,14 @@ export function IssueDetailRail({ workspaceId, issue }: { workspaceId: string; i
     >
       <RailField
         label="Status"
-        icon={<IssueStatusIcon status={issue.status} />}
-        valueText={ISSUE_STATUS_LABELS[issue.status]}
-        options={STATUS_ORDER.map((status) => ({
-          key: status,
-          label: ISSUE_STATUS_LABELS[status],
-          icon: <IssueStatusIcon status={status} />,
-          checked: status === issue.status,
-          onSelect: () => updateIssue.mutate({ status }),
+        icon={currentWorkflowState && <IssueStatusIcon category={currentWorkflowState.category} />}
+        valueText={currentWorkflowState?.name ?? "—"}
+        options={(workflowStates ?? []).map((state) => ({
+          key: state.id,
+          label: state.name,
+          icon: <IssueStatusIcon category={state.category} />,
+          checked: state.id === issue.status_id,
+          onSelect: () => updateIssue.mutate({ status_id: state.id }),
         }))}
       />
 

@@ -10,7 +10,7 @@ import { useUiStore } from "@/shared/stores/uiStore";
 import { cn } from "@/shared/lib/utils";
 
 import { useIssues } from "../hooks";
-import type { IssuePriority, IssueSort, IssueStatus } from "../types";
+import type { IssuePriority, IssueSort } from "../types";
 import { IssuesEmptyState } from "./IssuesEmptyState";
 import { IssuesTable } from "./IssuesTable";
 import { IssuesToolbar } from "./IssuesToolbar";
@@ -30,7 +30,7 @@ export function IssuesListPage({
   const debouncedSearch = useDebouncedValue(searchInput);
 
   const page = Number(searchParams.get("page") ?? "1");
-  const status = (searchParams.get("status") as IssueStatus | null) ?? "ALL";
+  const status = searchParams.get("status") ?? "ALL";
   const priority = (searchParams.get("priority") as IssuePriority | null) ?? "ALL";
   const projectId = searchParams.get("project_id") ?? "ALL";
   const sort = (searchParams.get("sort") as IssueSort | null) ?? "-updated_at";
@@ -39,7 +39,7 @@ export function IssuesListPage({
     page,
     per_page: PER_PAGE,
     q: debouncedSearch || undefined,
-    status: status === "ALL" ? undefined : status,
+    status_id: status === "ALL" ? undefined : status,
     priority: priority === "ALL" ? undefined : priority,
     project_id: projectId === "ALL" ? undefined : projectId,
     sort,
@@ -47,7 +47,7 @@ export function IssuesListPage({
 
   function updateParams(next: {
     q?: string;
-    status?: IssueStatus | "ALL";
+    status?: string | "ALL";
     priority?: IssuePriority | "ALL";
     project_id?: string | "ALL";
     sort?: IssueSort;
