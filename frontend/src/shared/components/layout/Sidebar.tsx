@@ -113,6 +113,7 @@ function WorkspaceSwitcher({
   collapsed: boolean;
 }) {
   const { data: profile } = useCurrentUser();
+  const setCreateWorkspaceOpen = useUiStore((state) => state.setCreateWorkspaceOpen);
   const activeWorkspace = profile?.workspaces.find((workspace) => workspace.slug === workspaceSlug);
 
   if (!profile) {
@@ -155,32 +156,13 @@ function WorkspaceSwitcher({
             </Link>
           </DropdownMenuItem>
         ))}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onSelect={() => setCreateWorkspaceOpen(true)}>
+          <Plus className="size-4" />
+          Criar workspace
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
-  );
-}
-
-function SidebarFooter({ collapsed }: { collapsed: boolean }) {
-  const { data: profile } = useCurrentUser();
-
-  if (!profile) {
-    return null;
-  }
-
-  return (
-    <div className={cn("flex items-center gap-2 border-t pt-3", collapsed && "justify-center")}>
-      <Avatar size="sm" className="border border-border2 bg-sunken">
-        <AvatarFallback className="bg-transparent text-t2">
-          {getInitials(profile.name)}
-        </AvatarFallback>
-      </Avatar>
-      {!collapsed && (
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium">{profile.name}</p>
-          <p className="truncate text-xs text-t3">{profile.email}</p>
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -234,7 +216,6 @@ function SidebarBody({ workspaceSlug, collapsed }: { workspaceSlug: string; coll
       </div>
       <SidebarNewIssueButton collapsed={collapsed} />
       <SidebarNav workspaceSlug={workspaceSlug} collapsed={collapsed} />
-      <SidebarFooter collapsed={collapsed} />
     </div>
   );
 }

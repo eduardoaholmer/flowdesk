@@ -1,4 +1,5 @@
-import { Bell, LogOut, Menu, Search } from "lucide-react";
+import { Bell, LogOut, Menu, Search, Settings, SunMoon } from "lucide-react";
+import { useTheme } from "next-themes";
 import { Link, useLocation, useParams } from "react-router-dom";
 
 import { logout } from "@/features/auth/api";
@@ -13,7 +14,6 @@ import {
 import type { Notification } from "@/features/notifications/types";
 import { useProject } from "@/features/projects/hooks";
 import { Logo } from "@/shared/components/brand/Logo";
-import { ThemeToggle } from "@/shared/components/ThemeToggle";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -29,6 +29,11 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/shared/components/ui/dropdown-menu";
 import { Empty, EmptyDescription, EmptyTitle } from "@/shared/components/ui/empty";
@@ -230,9 +235,10 @@ function TopbarNotifications() {
   );
 }
 
-function TopbarUserMenu() {
+function TopbarUserMenu({ workspaceSlug }: { workspaceSlug?: string }) {
   const { data: profile } = useCurrentUser();
   const clearAuth = useAuthStore((state) => state.clear);
+  const { setTheme } = useTheme();
 
   async function handleLogout() {
     try {
@@ -250,16 +256,40 @@ function TopbarUserMenu() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" className="rounded-full">
+        <Button variant="ghost" size="icon" className="rounded-full" aria-label="Menu de perfil">
           <Avatar size="sm">
             <AvatarFallback>{getInitials(profile.name)}</AvatarFallback>
           </Avatar>
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuItem disabled className="text-xs text-muted-foreground">
-          {profile.email}
-        </DropdownMenuItem>
+      <DropdownMenuContent align="end" className="w-56">
+        <DropdownMenuLabel className="flex flex-col">
+          <span className="truncate font-medium">{profile.name}</span>
+          <span className="truncate text-xs font-normal text-muted-foreground">
+            {profile.email}
+          </span>
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        {workspaceSlug && (
+          <DropdownMenuItem asChild>
+            <Link to={workspaceRoutes.settings(workspaceSlug)}>
+              <Settings className="size-4" />
+              Configurações
+            </Link>
+          </DropdownMenuItem>
+        )}
+        <DropdownMenuSub>
+          <DropdownMenuSubTrigger>
+            <SunMoon className="size-4" />
+            Preferências
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent>
+            <DropdownMenuItem onSelect={() => setTheme("light")}>Tema claro</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => setTheme("dark")}>Tema escuro</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => setTheme("system")}>Tema do sistema</DropdownMenuItem>
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
+        <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={handleLogout}>
           <LogOut className="size-4" />
           Sair
@@ -292,8 +322,7 @@ export function Topbar() {
       <div className="flex items-center gap-2">
         <TopbarSearch />
         <TopbarNotifications />
-        <ThemeToggle />
-        <TopbarUserMenu />
+        <TopbarUserMenu workspaceSlug={workspaceSlug} />
       </div>
     </header>
   );

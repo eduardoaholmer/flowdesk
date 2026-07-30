@@ -1,6 +1,12 @@
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import { useIssues } from "@/features/issues/hooks";
+import { IssuesEmptyState } from "@/features/issues/components/IssuesEmptyState";
+import { IssuesTable } from "@/features/issues/components/IssuesTable";
 import { ErrorState } from "@/shared/components/feedback/ErrorState";
+import { Pagination } from "@/shared/components/navigation/Pagination";
+import { ListSkeleton } from "@/shared/components/skeletons/ListSkeleton";
 import { Skeleton } from "@/shared/components/ui/skeleton";
 import { formatDate } from "@/shared/lib/date";
 import { workspaceRoutes } from "@/shared/lib/routes";
@@ -8,6 +14,8 @@ import { workspaceRoutes } from "@/shared/lib/routes";
 import { useProject } from "../hooks";
 import { ProjectRowActions } from "./ProjectRowActions";
 import { ProjectStatusBadge } from "./ProjectStatusBadge";
+
+const ISSUES_PER_PAGE = 20;
 
 export function ProjectDetailView({
   workspaceId,
@@ -20,6 +28,13 @@ export function ProjectDetailView({
 }) {
   const navigate = useNavigate();
   const { data: project, isLoading, isError, refetch } = useProject(workspaceId, projectId);
+  const [page, setPage] = useState(1);
+  const issuesQuery = useIssues(workspaceId, {
+    page,
+    per_page: ISSUES_PER_PAGE,
+    project_id: projectId,
+    sort: "-updated_at",
+  });
 
   if (isLoading) {
     return (
@@ -86,6 +101,36 @@ export function ProjectDetailView({
           </div>
         )}
       </dl>
+
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center gap-3">
+          <h2 className="text-sm font-medium text-muted-foreground">Issues</h2>
+          {issuesQuery.data && (
+            <span className="text-xs text-t3">{issuesQuery.data.meta.total} issues</span>
+          )}
+        </div>
+
+        {issuesQuery.isLoading ? (
+          <ListSkeleton rows={5} />
+        ) : issuesQuery.isError ? (
+          <ErrorState
+            message="Não foi possível carregar as issues do projeto."
+            onRetry={() => issuesQuery.refetch()}
+          />
+        ) : issuesQuery.data && issuesQuery.data.data.length > 0 ? (
+          <>
+            <IssuesTable
+              workspaceId={workspaceId}
+              workspaceSlug={workspaceSlug}
+              issues={issuesQuery.data.data}
+              showProject={false}
+            />
+            <Pagination meta={issuesQuery.data.meta} itemLabel="issue" onPageChange={setPage} />
+          </>
+        ) : (
+          <IssuesEmptyState hasFilters={false} />
+        )}
+      </div>
     </div>
   );
 }

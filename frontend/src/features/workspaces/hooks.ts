@@ -69,6 +69,18 @@ export function useInvitations(workspaceId: string, params: InvitationListParams
   });
 }
 
+export function useCreateWorkspace() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (name: string) => api.createWorkspace(name),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["users", "me"] });
+      toast.success("Workspace criado.");
+    },
+    onError: (error) => toast.error(getApiErrorMessage(error)),
+  });
+}
+
 export function useUpdateWorkspace(workspaceId: string) {
   const queryClient = useQueryClient();
   return useMutation({

@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 
+import { useProjects } from "@/features/projects/hooks";
 import { useWorkspaceMembers } from "@/features/workspaces/hooks";
 import { Avatar, AvatarFallback } from "@/shared/components/ui/avatar";
 import {
@@ -10,6 +11,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/shared/components/ui/table";
+import { MAX_PICKER_PAGE_SIZE } from "@/shared/lib/constants";
 import { formatDate, formatRelativeTime } from "@/shared/lib/date";
 import { workspaceRoutes } from "@/shared/lib/routes";
 import { getInitials } from "@/shared/lib/string";
@@ -24,13 +26,23 @@ export function IssuesTable({
   workspaceId,
   workspaceSlug,
   issues,
+  showProject = true,
 }: {
   workspaceId: string;
   workspaceSlug: string;
   issues: Issue[];
+  /** Omitido nas listagens já filtradas por um único projeto (ex.: `ProjectDetailView`), onde a coluna seria redundante. */
+  showProject?: boolean;
 }) {
   const { data: members } = useWorkspaceMembers(workspaceId);
   const memberById = new Map((members ?? []).map((member) => [member.user.id, member.user]));
+
+  const { data: projects } = useProjects(workspaceId, {
+    page: 1,
+    per_page: MAX_PICKER_PAGE_SIZE,
+    sort: "-created_at",
+  });
+  const projectById = new Map((projects?.data ?? []).map((project) => [project.id, project]));
 
   return (
     <div className="rounded-xl border">
@@ -41,6 +53,7 @@ export function IssuesTable({
             <TableHead>Título</TableHead>
             <TableHead className="w-10">Status</TableHead>
             <TableHead className="w-10">Prioridade</TableHead>
+            {showProject && <TableHead>Projeto</TableHead>}
             <TableHead>Responsável</TableHead>
             <TableHead>Vencimento</TableHead>
             <TableHead>Atualizado</TableHead>
@@ -50,6 +63,7 @@ export function IssuesTable({
         <TableBody>
           {issues.map((issue) => {
             const assignee = issue.assignee_id ? memberById.get(issue.assignee_id) : undefined;
+            const project = issue.project_id ? projectById.get(issue.project_id) : undefined;
             return (
               <TableRow key={issue.id}>
                 <TableCell className="font-mono text-xs text-muted-foreground">
@@ -83,6 +97,20 @@ export function IssuesTable({
                     <IssuePriorityIcon priority={issue.priority} />
                   </span>
                 </TableCell>
+                {showProject && (
+                  <TableCell className="text-sm">
+                    {project ? (
+                      <Link
+                        to={workspaceRoutes.projectDetail(workspaceSlug, project.id)}
+                        className="text-muted-foreground hover:text-foreground hover:underline"
+                      >
+                        {project.name}
+                      </Link>
+                    ) : (
+                      <span className="text-sm text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
+                )}
                 <TableCell>
                   {assignee ? (
                     <div className="flex items-center gap-2">

@@ -1,6 +1,7 @@
 import { Outlet } from "react-router-dom";
 
 import { CreateIssueDialog } from "@/features/issues/components/CreateIssueDialog";
+import { CreateWorkspaceDialog } from "@/features/workspaces/components/CreateWorkspaceDialog";
 import { useWorkspace } from "@/features/workspaces/useWorkspace";
 import { CommandPalette } from "@/shared/components/command-palette/CommandPalette";
 import { PageContainer } from "@/shared/components/layout/PageContainer";
@@ -30,6 +31,7 @@ export function AppLayout() {
       </div>
       <CommandPalette />
       {workspace && <CreateIssueDialog workspaceId={workspace.id} />}
+      <CreateWorkspaceDialog />
     </div>
   );
 }

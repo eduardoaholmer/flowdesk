@@ -34,6 +34,8 @@ interface UiState {
   setCommandPaletteOpen: (open: boolean) => void;
   isCreateIssueOpen: boolean;
   setCreateIssueOpen: (open: boolean) => void;
+  isCreateWorkspaceOpen: boolean;
+  setCreateWorkspaceOpen: (open: boolean) => void;
 }
 
 export const useUiStore = create<UiState>((set) => ({
@@ -54,4 +56,6 @@ export const useUiStore = create<UiState>((set) => ({
   setCommandPaletteOpen: (open) => set({ isCommandPaletteOpen: open }),
   isCreateIssueOpen: false,
   setCreateIssueOpen: (open) => set({ isCreateIssueOpen: open }),
+  isCreateWorkspaceOpen: false,
+  setCreateWorkspaceOpen: (open) => set({ isCreateWorkspaceOpen: open }),
 }));
