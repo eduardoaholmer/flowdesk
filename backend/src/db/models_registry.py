@@ -20,6 +20,7 @@ from src.features.comments import models as comments_models  # noqa: F401
 from src.features.issues import models as issues_models  # noqa: F401
 from src.features.labels import models as labels_models  # noqa: F401
 from src.features.notifications import models as notifications_models  # noqa: F401
+from src.features.permissions import models as permissions_models  # noqa: F401
 from src.features.projects import models as projects_models  # noqa: F401
 from src.features.teams import models as teams_models  # noqa: F401
 from src.features.workflow_states import models as workflow_states_models  # noqa: F401

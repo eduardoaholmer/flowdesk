@@ -12,6 +12,7 @@ from src.features.issues.repository import IssueRepository
 from src.features.labels.models import Label
 from src.features.labels.repository import LabelRepository
 from src.features.notifications.repository import NotificationRepository
+from src.features.permissions.repository import PermissionOverrideRepository
 from src.features.teams.models import Team
 from src.features.teams.repository import TeamRepository
 from src.features.workflow_states.models import WorkflowState, WorkflowStateCategory
@@ -52,6 +53,11 @@ def team_repo(db_session: AsyncSession) -> TeamRepository:
 @pytest.fixture
 def workflow_state_repo(db_session: AsyncSession) -> WorkflowStateRepository:
     return WorkflowStateRepository(db_session)
+
+
+@pytest.fixture
+def permission_override_repo(db_session: AsyncSession) -> PermissionOverrideRepository:
+    return PermissionOverrideRepository(db_session)
 
 
 @pytest.fixture

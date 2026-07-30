@@ -257,6 +257,19 @@ Implementado na Sprint 9.2 (ADR-056, reabre a ADR-035) — reaproveita a tabela 
 
 **Reordenar** aceita a lista completa de IDs ativos do workspace na nova ordem — o service rejeita (`422`) qualquer lista que não seja exatamente o conjunto atual (falta ou sobra um id). Internamente, o service move todas as posições para valores negativos temporários antes de aplicar a ordem final, porque o índice único parcial `(workspace_id, position)` não é `DEFERRABLE` — uma troca direta de posições entre duas linhas violaria a constraint no meio da transação.
 
+## 5.2 Permissões (`/workspaces/{workspace_id}/permission-overrides`)
+
+Implementado na Sprint 9.3 (ADR-058) — meio-termo entre RBAC fixo e cargos arbitrários (ver ADR-056): permissões individualmente ligáveis/desligáveis dentro dos 4 papéis fixos (`OWNER`/`ADMIN`/`MEMBER`/`GUEST`), não uma tabela de cargos nova. `OWNER` nunca aparece na matriz (sempre tem todas as permissões) e três permissões nunca aparecem como linha (`workspace.delete`, `workspace.transfer_ownership`, `workspace.manage_permissions` — exclusivas do OWNER, "`LOCKED_PERMISSIONS`" em `core/authorization.py`).
+
+| Ação | Endpoint | Autorização | Request | Response | Códigos |
+|---|---|---|---|---|---|
+| Ver matriz | `GET .../permission-overrides` | `workspace.manage_permissions` (`OWNER` apenas) | — | `{ data: [matrix_entry] }` (uma linha por papel × permissão customizável, 3 papéis × 26 permissões) | 200, 401, 403 |
+| Alterar uma célula | `PUT .../permission-overrides` | `workspace.manage_permissions` (`OWNER` apenas) | `{ role, permission, granted }` | `{ data: [matrix_entry] }` (matriz inteira recalculada) | 200, 401, 403, 422 (`cannot_override_owner_role`, `locked_permission`) |
+
+`matrix_entry` = `{ permission, role, default, effective, is_override }` — `default` é o valor de `ROLE_PERMISSIONS` sem nenhum override; `effective` já aplica o override do workspace, se houver; `is_override` diz se a célula diverge do padrão (para a UI destacar visualmente). Setar `granted` de volta ao valor de `default` **remove** o override em vez de gravar uma linha redundante — a tabela só guarda desvios reais (`permission_overrides`, `docs/03-database.md` §6.7).
+
+**Gerenciar é exclusivo do OWNER** — mesmo `ADMIN`, que já gerencia membros e status do board, não gerencia a própria régua de permissões (evita um ADMIN se auto-conceder qualquer coisa via toggle, incluindo teoricamente escalar para permissões que a UI de outra forma nunca ofereceria). Uma permissão revogada por override bloqueia a ação **por completo**, inclusive sobre o próprio recurso — se `comment.delete` é desligado para `MEMBER`, um membro deixa de poder excluir até o próprio comentário (a exceção de posse, `docs/07-security.md` §8.5, não é um fallback para permissão explicitamente revogada).
+
 ## 6. Comentários (`/workspaces/{workspace_id}/issues/{issue_id}/comments`)
 
 Implementado na Sprint 8 (`docs/09-decision-log.md` ADR-013 tem o racional completo dos desvios em relação ao esboço original acima).
@@ -451,7 +464,7 @@ Paginação **offset-based** (`{ page, per_page, total, total_pages }`, mesmo en
 
 ## 11. Erros — catálogo de `code` (não exaustivo, cresce por feature)
 
-`invalid_credentials`, `email_already_registered`, `invalid_refresh_token`, `invalid_password_reset_token`, `invalid_token`, `workspace_not_found`, `slug_taken`, `already_member`, `invitation_already_pending`, `invitation_not_found`, `invitation_expired`, `invitation_email_mismatch`, `sole_owner_cannot_leave`, `member_not_found`, `cannot_manage_own_membership`, `cannot_manage_owner`, `cannot_transfer_ownership_to_self`, `key_taken`, `name_taken`, `team_not_found`, `issue_not_found`, `version_conflict`, `permission_denied`, `rate_limited`, `validation_error`, `project_not_found`, `project_slug_taken`, `project_name_taken`, `project_already_archived`, `project_not_archived`, `project_has_active_issues`, `comment_not_found`, `label_not_found`, `label_name_taken`, `attachment_not_found`, `attachment_too_large`, `attachment_type_not_allowed`, `notification_not_found`, `workflow_state_not_found`, `workflow_state_name_taken`, `workflow_state_has_issues`, `cannot_delete_last_workflow_state`, `invalid_reassign_target`.
+`invalid_credentials`, `email_already_registered`, `invalid_refresh_token`, `invalid_password_reset_token`, `invalid_token`, `workspace_not_found`, `slug_taken`, `already_member`, `invitation_already_pending`, `invitation_not_found`, `invitation_expired`, `invitation_email_mismatch`, `sole_owner_cannot_leave`, `member_not_found`, `cannot_manage_own_membership`, `cannot_manage_owner`, `cannot_transfer_ownership_to_self`, `key_taken`, `name_taken`, `team_not_found`, `issue_not_found`, `version_conflict`, `permission_denied`, `rate_limited`, `validation_error`, `project_not_found`, `project_slug_taken`, `project_name_taken`, `project_already_archived`, `project_not_archived`, `project_has_active_issues`, `comment_not_found`, `label_not_found`, `label_name_taken`, `attachment_not_found`, `attachment_too_large`, `attachment_type_not_allowed`, `notification_not_found`, `workflow_state_not_found`, `workflow_state_name_taken`, `workflow_state_has_issues`, `cannot_delete_last_workflow_state`, `invalid_reassign_target`, `cannot_override_owner_role`, `locked_permission`.
 
 `comment_not_found` (404), `label_not_found` (404), `label_name_taken` (409, unicidade por workspace), `attachment_not_found` (404), `attachment_too_large`/`attachment_type_not_allowed` (422, validados antes da persistência) são novos na Sprint 8 (§6–8, ADR-013). O esboço original deste catálogo já reservava `name_taken` genérico para labels; `label_name_taken` o substitui com um `code` específico por feature, mesmo padrão já usado por `project_name_taken` na Sprint 6 (evita que o cliente precise inferir o recurso a partir só do `code` genérico).
 
@@ -460,6 +473,8 @@ Paginação **offset-based** (`{ page, per_page, total, total_pages }`, mesmo en
 `issue_not_found` (404) e `version_conflict` (409, `If-Match` divergente) são efetivamente implementados na Sprint 7 (§5) — ambos já estavam reservados neste catálogo desde o esboço original da Sprint 0/2, sem uso até agora. `team_not_found` permanece reservado, sem uso: seria acionado por uma futura feature de Team (ainda sem service/router, ver ADR-012), não por Issues, que não depende mais de `team_id`. `invalid_status_transition` (também reservado desde o esboço original) permanece **não implementado** — mesmo com status agora customizável por workspace (Sprint 9.2/ADR-056), não há grafo de transição configurável (nenhuma regra de negócio bloqueia mudar para qualquer outro status ativo); o código volta ao catálogo se/quando um workflow configurável (com transições restritas) for implementado.
 
 `workflow_state_not_found` (404), `workflow_state_name_taken` (409, unicidade por workspace), `workflow_state_has_issues` (409, exclusão bloqueada até reatribuição — carrega `details: { issue_count }`), `cannot_delete_last_workflow_state` (409) e `invalid_reassign_target` (409, `reassign_to_id` inválido/igual ao próprio status) são novos na Sprint 9.2 (§5.1, ADR-056).
+
+`cannot_override_owner_role` (422, tentativa de customizar o papel `OWNER`) e `locked_permission` (422, tentativa de conceder/revogar uma das três permissões exclusivas do OWNER) são novos na Sprint 9.3 (§5.2, ADR-058).
 
 `member_not_found` (404), `cannot_manage_own_membership` (409) e `cannot_manage_owner` (403) são novos na Sprint 5 (`PATCH`/`DELETE .../members/{member_id}`) — ver `docs/07-security.md` §8.4.
 

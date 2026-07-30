@@ -2,6 +2,7 @@ import uuid
 
 import pytest
 from src.core.authorization import (
+    LOCKED_PERMISSIONS,
     OWNERSHIP_OVERRIDE_PERMISSIONS,
     ROLE_PERMISSIONS,
     PermissionService,
@@ -29,18 +30,24 @@ class TestRolePermissionsMatrix:
     def test_owner_has_every_permission(self) -> None:
         assert ROLE_PERMISSIONS[WorkspaceRole.OWNER] == frozenset(Permission)
 
-    def test_admin_has_every_permission_except_delete_and_transfer_ownership(self) -> None:
-        """As duas únicas ações irreversíveis/de posse do domínio (Sprint 17.1/M6,
-        ADR-037) são reservadas ao OWNER — nem ADMIN as tem.
+    def test_admin_has_every_permission_except_locked_ones(self) -> None:
+        """As duas ações irreversíveis/de posse do domínio (Sprint 17.1/M6,
+        ADR-037) mais a capacidade de gerenciar overrides de permissão
+        (Sprint 9.3/ADR-058) são reservadas ao OWNER — nem ADMIN as tem.
         """
         admin_permissions = ROLE_PERMISSIONS[WorkspaceRole.ADMIN]
 
         assert Permission.WORKSPACE_DELETE not in admin_permissions
         assert Permission.WORKSPACE_TRANSFER_OWNERSHIP not in admin_permissions
-        assert admin_permissions == frozenset(Permission) - {
-            Permission.WORKSPACE_DELETE,
-            Permission.WORKSPACE_TRANSFER_OWNERSHIP,
-        }
+        assert Permission.WORKSPACE_MANAGE_PERMISSIONS not in admin_permissions
+        assert admin_permissions == frozenset(Permission) - LOCKED_PERMISSIONS
+
+    def test_locked_permissions_are_owner_exclusive(self) -> None:
+        """`LOCKED_PERMISSIONS` nunca deve escapar para nenhum outro papel na
+        matriz base — condição necessária para o override (Sprint 9.3) nunca
+        conseguir conceder uma delas a ADMIN/MEMBER/GUEST."""
+        for role in (WorkspaceRole.ADMIN, WorkspaceRole.MEMBER, WorkspaceRole.GUEST):
+            assert ROLE_PERMISSIONS[role].isdisjoint(LOCKED_PERMISSIONS)
 
     def test_member_cannot_manage_workspace_or_members(self) -> None:
         member_permissions = ROLE_PERMISSIONS[WorkspaceRole.MEMBER]
@@ -129,6 +136,57 @@ class TestPermissionServiceCan:
         assert not permission_service.can(
             member=member, permission=Permission.ISSUE_CREATE, resource_owner_id=user_id
         )
+
+
+class TestPermissionServiceOverrides:
+    """Sprint 9.3 (ADR-058): `granted_overrides`/`revoked_overrides` já
+    resolvidos para o papel do chamador (ver `PermissionOverrideRepository`),
+    passados por `WorkspaceContext`/`require_permission` — aqui testados
+    diretamente contra `can()`, sem tocar banco."""
+
+    def test_granted_override_allows_permission_role_would_not_have(
+        self, permission_service: PermissionService
+    ) -> None:
+        member = _member(WorkspaceRole.GUEST)
+
+        assert permission_service.can(
+            member=member,
+            permission=Permission.ISSUE_CREATE,
+            granted_overrides=frozenset({Permission.ISSUE_CREATE}),
+        )
+
+    def test_revoked_override_blocks_permission_role_would_have(
+        self, permission_service: PermissionService
+    ) -> None:
+        member = _member(WorkspaceRole.MEMBER)
+
+        assert not permission_service.can(
+            member=member,
+            permission=Permission.ISSUE_CREATE,
+            revoked_overrides=frozenset({Permission.ISSUE_CREATE}),
+        )
+
+    def test_revoked_override_blocks_even_the_ownership_fallback(
+        self, permission_service: PermissionService
+    ) -> None:
+        """Revogar `comment.delete` para o papel remove a ação por completo —
+        inclusive sobre o próprio recurso, não só sobre o de terceiros."""
+        user_id = uuid.uuid4()
+        member = _member(WorkspaceRole.MEMBER, user_id=user_id)
+
+        assert not permission_service.can(
+            member=member,
+            permission=Permission.COMMENT_DELETE,
+            resource_owner_id=user_id,
+            revoked_overrides=frozenset({Permission.COMMENT_DELETE}),
+        )
+
+    def test_no_overrides_falls_back_to_base_matrix(
+        self, permission_service: PermissionService
+    ) -> None:
+        member = _member(WorkspaceRole.MEMBER)
+
+        assert permission_service.can(member=member, permission=Permission.ISSUE_CREATE)
 
 
 class TestPermissionServiceRequire:

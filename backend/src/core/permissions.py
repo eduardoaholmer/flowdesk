@@ -22,6 +22,7 @@ class Permission(enum.StrEnum):
     WORKSPACE_DELETE = "workspace.delete"
     WORKSPACE_INVITE = "workspace.invite"
     WORKSPACE_TRANSFER_OWNERSHIP = "workspace.transfer_ownership"
+    WORKSPACE_MANAGE_PERMISSIONS = "workspace.manage_permissions"
 
     MEMBER_REMOVE = "member.remove"
     MEMBER_UPDATE_ROLE = "member.update_role"

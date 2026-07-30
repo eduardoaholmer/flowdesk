@@ -70,7 +70,7 @@ Permissões são strings estáveis `"<domínio>.<ação>"` (`core/permissions.py
 
 | Domínio | Permissões |
 |---|---|
-| Workspace | `workspace.view`, `workspace.update`, `workspace.delete`, `workspace.invite`, `workspace.transfer_ownership` |
+| Workspace | `workspace.view`, `workspace.update`, `workspace.delete`, `workspace.invite`, `workspace.transfer_ownership`, `workspace.manage_permissions` |
 | Membros | `member.remove`, `member.update_role` |
 | Projetos | `project.create`, `project.read`, `project.update`, `project.delete` |
 | Issues *(feature na Sprint 7)* | `issue.create`, `issue.read`, `issue.update`, `issue.delete`, `issue.assign`, `issue.change_status` |
@@ -79,11 +79,13 @@ Permissões são strings estáveis `"<domínio>.<ação>"` (`core/permissions.py
 | Anexos *(feature na Sprint 8)* | `attachment.create`, `attachment.delete` |
 | Status de Issue *(feature na Sprint 9.2, ADR-056)* | `workflow_state.read`, `workflow_state.manage` |
 
+Todas as permissões acima, exceto as três marcadas `LOCKED_PERMISSIONS` (`workspace.delete`, `workspace.transfer_ownership`, `workspace.manage_permissions`), podem ser individualmente concedidas/revogadas por workspace para `ADMIN`/`MEMBER`/`GUEST` via `PermissionOverride` (Sprint 9.3, ADR-058) — ver §8.7.
+
 A feature de Projetos (Sprint 6), a de Issues (Sprint 7) e as de Comentários/Labels/Anexos (Sprint 8, `docs/08-roadmap.md`) foram implementadas sem nenhuma mudança de desenho de RBAC: `core/permissions.py` e `core/authorization.py::ROLE_PERMISSIONS` já traziam todas as permissões acima, corretamente posicionadas na matriz, desde que foram modeladas preventivamente na Sprint 5 (ADR-010). Cada feature só passou a exercitá-las via `Depends(require_permission(...))` — Issues foi a primeira a exercitar de fato o `OWNERSHIP_OVERRIDE_PERMISSIONS` (§8.5) em produção, para `issue.delete`; Comentários e Anexos (Sprint 8) seguem o mesmo padrão para `comment.update`/`comment.delete`/`attachment.delete`.
 
 ### 8.3 Matriz de permissões por papel
 
-A fonte de verdade é `ROLE_PERMISSIONS`/`OWNERSHIP_OVERRIDE_PERMISSIONS` em `core/authorization.py` — esta tabela é a descrição legível para humanos; divergência entre as duas é bug.
+A fonte de verdade é `ROLE_PERMISSIONS`/`OWNERSHIP_OVERRIDE_PERMISSIONS` em `core/authorization.py` — esta tabela é a descrição legível para humanos; divergência entre as duas é bug. Esta é a matriz **padrão**: um workspace pode desviar dela por `PermissionOverride` (Sprint 9.3, §8.7) — a tabela abaixo continua sendo o comportamento de todo workspace sem override configurado.
 
 | Permissão | OWNER | ADMIN | MEMBER | GUEST | Observação |
 |---|---|---|---|---|---|
@@ -92,6 +94,7 @@ A fonte de verdade é `ROLE_PERMISSIONS`/`OWNERSHIP_OVERRIDE_PERMISSIONS` em `co
 | `workspace.delete` | ✅ | ❌ | ❌ | ❌ | Única ação irreversível do domínio — reservada ao dono, nunca delegável a ADMIN. |
 | `workspace.invite` | ✅ | ✅ | ❌ | ❌ | Cobre criar, listar e cancelar convite — mesma checagem para as três ações (eram idênticas antes da Sprint 5 via `_require_role`, ADR-009). |
 | `workspace.transfer_ownership` | ✅ | ❌ | ❌ | ❌ | Segunda ação irreversível/de posse do domínio, junto de `workspace.delete` — nem ADMIN pode transferir a propriedade de outro OWNER. Única forma de qualquer membro virar OWNER fora da criação do workspace (Sprint 17.1/M6, ADR-036/037). |
+| `workspace.manage_permissions` | ✅ | ❌ | ❌ | ❌ | Terceira permissão `LOCKED_PERMISSIONS` (Sprint 9.3/ADR-058) — gerencia os overrides de §8.7. Nem ADMIN a tem, mesmo já gerenciando membros/status: evita auto-escalonamento via toggle. |
 | `member.remove` | ✅ | ✅ (exceto OWNER) | ❌ | ❌ | Exceção "exceto OWNER" é contextual (`require_can_manage_member`, §8.4), não expressável na matriz estática. |
 | `member.update_role` | ✅ | ✅ (exceto OWNER) | ❌ | ❌ | Idem. Promover alguém a OWNER é sempre rejeitado (422 na validação de schema) — a única forma de promoção a OWNER é `workspace.transfer_ownership`, acima. |
 | `project.create` / `update` / `delete` | ✅ | ✅ | ❌ | ❌ | |
@@ -124,6 +127,16 @@ Além da matriz por papel, `OWNERSHIP_OVERRIDE_PERMISSIONS` (`comment.update`, `
 Toda chamada a `PermissionService.require`/`.require_can_manage_member` que resulta em negação emite um log estruturado (`structlog`, `CLAUDE.md` §9) no nível `WARNING` com `event="permission_denied"`, `user_id`, `workspace_id`, `role` e `permission` — nunca persistido em `workspace_activity_logs` (reservada a eventos de negócio bem-sucedidos, ADR-009 Decisão 1), mas suficiente para detecção de abuso via agregação de logs.
 
 `GUEST` é um papel somente leitura + comentário, pensado para stakeholders externos observando o progresso sem poder alterar o trabalho — fora do MVP (ver `docs/00-product-vision.md` §5), mas já modelado na matriz para não exigir migração de schema quando for implementado.
+
+### 8.7 Overrides de permissão por workspace (Sprint 9.3, ADR-058)
+
+Meio-termo entre o RBAC fixo original e cargos totalmente arbitrários (decisão registrada na ADR-056): permissões são individualmente ligáveis/desligáveis **dentro** dos 4 papéis fixos, não uma tabela de cargos nova. `PermissionOverride` (`workspace_id`, `role`, `permission`, `granted`) guarda só os desvios — ausência de linha é sempre "segue `ROLE_PERMISSIONS`". `OWNER` nunca é customizável (sempre `frozenset(Permission)` inteiro) e as três `LOCKED_PERMISSIONS` (`workspace.delete`, `workspace.transfer_ownership`, `workspace.manage_permissions`) nunca podem ser concedidas a outro papel, mesmo via override — validado em `PermissionOverrideService.set_override`, não só na UI.
+
+`PermissionService.can()` resolve a decisão final em ordem: **(1)** se a permissão foi explicitamente revogada para o papel do chamador naquele workspace → nega, mesmo que a matriz base ou o ownership override (§8.5) concederiam; **(2)** senão, se foi explicitamente concedida (override) ou já está na matriz base → concede; **(3)** senão, cai no ownership override de §8.5 como já fazia antes desta sprint. O ponto (1) é deliberado: revogar `comment.delete` para `MEMBER` remove a ação por completo, inclusive sobre o próprio comentário — um workspace que desliga uma permissão espera que ela suma de verdade, não que sobreviva por uma exceção lateral.
+
+Os overrides do papel do chamador são resolvidos uma vez por requisição em `get_workspace_context` (junto com `Workspace`/`WorkspaceMember`) e passados a `require_permission`/`PermissionService` como dois `frozenset[Permission]` (`granted_overrides`/`revoked_overrides`) — nenhum dos 44+ call sites de `Depends(require_permission(...))` espalhados pelas rotas precisou mudar; o mecanismo inteiro vive em `core/authorization.py` + `features/permissions/`.
+
+Gerenciar os overrides (`GET`/`PUT .../permission-overrides`, `docs/04-api-design.md` §5.2) exige `workspace.manage_permissions`, que só `OWNER` tem — nem `ADMIN` gerencia a própria régua de permissões, mesmo já gerenciando membros e status do board, para não abrir caminho de auto-escalonamento.
 
 ## 9. Isolamento entre Workspaces (multi-tenancy)
 

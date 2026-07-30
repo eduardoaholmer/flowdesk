@@ -389,6 +389,10 @@ Desde a Sprint 7 (ADR-012 em `docs/09-decision-log.md`), `Issue` não depende ma
 
 **Atualização Sprint 9.2 (ADR-056)**: `status` deixou de ser o enum fixo descrito acima — `issues.status_id` agora é uma FK para `workflow_states`, reaproveitando essa tabela (dormente em escopo de time desde a Sprint 2) recém-reescopada para `workspace_id` direto, sem reativar `Team`/membership (a ADR-035 continua valendo nesse ponto). Todo workspace nasce com os mesmos 6 status de antes (`WorkflowStateService.seed_defaults`, chamado por `WorkspaceService.create`), agora editáveis pelo usuário (criar/renomear/reordenar/excluir com reatribuição obrigatória de issues). Migration `43650f3d8613` fez o backfill de dado real (issues existentes mapeadas para o status equivalente por workspace) — ver §11 abaixo.
 
+### 6.7 Adições da Sprint 9.3 (RBAC — permissões toggleáveis, ADR-058)
+
+- **`PermissionOverride`** (`permission_overrides`, migration `31c66896669d`) — nova tabela: desvio explícito da matriz estática `ROLE_PERMISSIONS` (`core/authorization.py`) para um papel de um workspace específico. Colunas `id`/`workspace_id`/`role`/`permission`/`granted`/`created_at`/`updated_at`. `role` e `permission` via `domain_enum()` (mesmo padrão de `workflow_states.category`), reaproveitando os enums `WorkspaceRole`/`Permission` já existentes — nenhum enum novo. **Sem soft delete**: resetar uma permissão para o padrão é apagar a linha (não há dado de negócio associado a preservar, ao contrário de `WorkflowState`). Tabela deliberadamente esparsa — só existe linha para o que **diverge** do padrão; ausência de linha é sempre "segue o padrão de `ROLE_PERMISSIONS`". `OWNER` nunca aparece como `role` (sempre `frozenset(Permission)` inteiro, validado em `PermissionOverrideService`) e três permissões nunca aparecem como `permission` (`workspace.delete`, `workspace.transfer_ownership`, a nova `workspace.manage_permissions` — `LOCKED_PERMISSIONS`, exclusivas do OWNER). Ver ADR-058.
+
 ## 7. Cardinalidades (explícitas)
 
 | Relacionamento | Cardinalidade | Observação |
@@ -412,6 +416,7 @@ Desde a Sprint 7 (ADR-012 em `docs/09-decision-log.md`), `Issue` não depende ma
 | Issue → Attachment | 1:N, opcional | polimórfico com Comment (nunca os dois) |
 | Comment → Attachment | 1:N, opcional | idem — sem consumidor nesta sprint (só Issue, ADR-013) |
 | User → RefreshToken | indireto via Session | ver acima |
+| Workspace → PermissionOverride | 1:N | desvio da matriz `ROLE_PERMISSIONS` por papel (Sprint 9.3/ADR-058), tabela esparsa — a maioria dos workspaces nunca tem uma linha aqui |
 
 ## 8. Constraints principais
 
@@ -429,6 +434,7 @@ Desde a Sprint 7 (ADR-012 em `docs/09-decision-log.md`), `Issue` não depende ma
 - `projects.key`: `UNIQUE (workspace_id, key) WHERE deleted_at IS NULL` (índice `uq_projects_workspace_id_key_active`, Sprint 19.1, migration `b3e7c1a9d240`) — mesmo padrão parcial de `slug`/`name`, key fica livre de novo após soft delete.
 - `labels.name`: `UNIQUE (workspace_id, name) WHERE deleted_at IS NULL`.
 - `project_members`: `UNIQUE (project_id, user_id)` (índice `uq_project_members_project_id_user_id`, Sprint 19.1) **sem** filtro parcial — a tabela não tem soft delete (membership é add/remove); a unicidade torna `add_member` idempotente no banco (`ON CONFLICT DO NOTHING`).
+- `permission_overrides`: `UNIQUE (workspace_id, role, permission)` (índice `uq_permission_overrides_workspace_role_permission`, Sprint 9.3, migration `31c66896669d`) **sem** filtro parcial — sem soft delete, resetar para o padrão é `DELETE` da linha (§6.7).
 - `attachments`: `CHECK (num_nonnulls(issue_id, comment_id) = 1)` — exatamente um dos dois nunca os dois, nunca nenhum.
 - `comment_mentions`: `PRIMARY KEY (comment_id, mentioned_user_id)` (Sprint 8) — um usuário mencionado no máximo uma vez por comentário; `ON DELETE CASCADE` em ambas as FKs, por não ter ciclo de vida próprio (mesmo racional de `issue_labels`).
 - Todas as FKs usam `ON DELETE RESTRICT` por padrão (exclusão física nunca deveria acontecer via cascade automático dado o soft delete; a única exceção é `issue_labels`, `ON DELETE CASCADE`, por não ter ciclo de vida próprio — os relacionamentos ORM correspondentes usam `passive_deletes=True` para não competir com a constraint do banco).
@@ -521,3 +527,4 @@ Mais 2 migrations da Sprint 19.1, encadeadas sobre a 22 (`f4c36aa63332`), pequen
 23. `b3e7c1a9d240` — `add_key_to_projects`: coluna `key` (`NOT NULL` direto, banco de migração é limpo — mesma justificativa de `slug`/`created_by` da migration 15) + índice único parcial `uq_projects_workspace_id_key_active` (`deleted_at IS NULL`).
 24. `c8f4a2b6e130` — `create_project_members`: nova tabela `project_members` (`id`/`workspace_id`/`project_id`/`user_id`/`created_at`, FKs `RESTRICT`) + índice único `(project_id, user_id)`. Sem soft delete.
 25. `43650f3d8613` — `workspace_scope_workflow_states_status_id` (Sprint 9.2/ADR-056): **primeira migration deste projeto a seguir *expand → backfill → contract* de verdade** (as anteriores marcadas "destrutivas" podiam ser porque a tabela nunca tinha linha real — `issues` já tinha ~400 linhas nesta). (1) reescopa `workflow_states` de `team_id` para `workspace_id` (drop da FK/índices por `team_id`, novos índices únicos parciais por `workspace_id`); (2) semeia os 6 status antigos como linha real por workspace existente (`Backlog`/`Todo`/`In Progress`/`In Review`/`Done`/`Canceled`, categorias e posições preservadas); (3) adiciona `issues.status_id` nullable, backfilla via `UPDATE ... FROM workflow_states` casando pelo nome dentro do mesmo workspace, torna `NOT NULL`, dropa a coluna `status` antiga e cria a FK/índice novos. `downgrade()` é best-effort (documentado no docstring da migration): status customizados criados após o upgrade caem em `BACKLOG` na volta, sem tentar preservar customização — aceitável para o ciclo de verificação `upgrade → downgrade → upgrade`, não para produção real.
+26. `31c66896669d` — `create_permission_overrides` (Sprint 9.3/ADR-058): puramente aditiva — nova tabela `permission_overrides` (`id`/`workspace_id`/`role`/`permission`/`granted`/`created_at`/`updated_at`, FK `RESTRICT` para `workspaces`) + índice único `(workspace_id, role, permission)`. Sem backfill (tabela nasce vazia — nenhum workspace existente tinha override antes desta sprint, "vazio" já é o comportamento correto/default).
