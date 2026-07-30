@@ -1,4 +1,5 @@
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, ChevronDown, ChevronUp, X } from "lucide-react";
+import { useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { AttachmentList } from "@/features/attachments/components/AttachmentList";
@@ -8,7 +9,9 @@ import { ListSkeleton } from "@/shared/components/skeletons/ListSkeleton";
 import { Button } from "@/shared/components/ui/button";
 import { Separator } from "@/shared/components/ui/separator";
 import { Skeleton } from "@/shared/components/ui/skeleton";
+import { isTypingTarget } from "@/shared/lib/dom";
 import { workspaceRoutes } from "@/shared/lib/routes";
+import { cn } from "@/shared/lib/utils";
 import { useUiStore } from "@/shared/stores/uiStore";
 
 import { useIssue, useIssues } from "../hooks";
@@ -24,13 +27,43 @@ export function IssueDetailView({
   workspaceId,
   workspaceSlug,
   issueId,
+  onClose,
+  onNavigate,
+  hasPrevious,
+  hasNext,
 }: {
   workspaceId: string;
   workspaceSlug: string;
   issueId: string;
+  /** Modo painel lateral (Sprint 9.5, `IssuesListPage`): substitui o link
+   * "Voltar para Issues" por um botão de fechar, e excluir a issue fecha o
+   * painel em vez de navegar para longe da lista. */
+  onClose?: () => void;
+  onNavigate?: (direction: "previous" | "next") => void;
+  hasPrevious?: boolean;
+  hasNext?: boolean;
 }) {
   const navigate = useNavigate();
   const { data: issue, isLoading, isError, refetch } = useIssue(workspaceId, issueId);
+
+  // Atalhos de teclado J/K (navegar) — só faz sentido no painel lateral, onde
+  // existe uma lista ordenada por trás; a página cheia (link direto/compartilhado)
+  // não tem esse contexto, então `onNavigate` nunca é passado ali.
+  useEffect(() => {
+    if (!onNavigate) return;
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.metaKey || event.ctrlKey || event.altKey || isTypingTarget(event.target)) return;
+      if (event.key === "j" || event.key === "ArrowDown") {
+        event.preventDefault();
+        onNavigate?.("next");
+      } else if (event.key === "k" || event.key === "ArrowUp") {
+        event.preventDefault();
+        onNavigate?.("previous");
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onNavigate]);
   const setCreateIssueParentId = useUiStore((state) => state.setCreateIssueParentId);
   const setCreateIssueOpen = useUiStore((state) => state.setCreateIssueOpen);
   const subIssuesQuery = useIssues(workspaceId, {
@@ -54,16 +87,50 @@ export function IssueDetailView({
     return <ErrorState message="Issue não encontrada ou indisponível." onRetry={() => refetch()} />;
   }
 
+  // No painel lateral (`onClose` presente), a largura já é fixa e estreita
+  // (`IssuesListPage`) — empilhar conteúdo+rail sempre, ignorando os
+  // breakpoints `md:` pensados para a página cheia, que assumem a largura
+  // real da viewport, não a do painel.
   return (
-    <div className="flex flex-col items-start gap-8 md:flex-row">
-      <div className="w-full min-w-0 md:max-w-3xl">
-        <Link
-          to={workspaceRoutes.issues(workspaceSlug)}
-          className="mb-4 inline-flex items-center gap-1.5 text-xs text-t3 hover:text-foreground"
-        >
-          <ArrowLeft className="size-3.5" />
-          Issues
-        </Link>
+    <div className={cn("flex flex-col items-start gap-8", !onClose && "md:flex-row")}>
+      <div className={cn("w-full min-w-0", !onClose && "md:max-w-3xl")}>
+        <div className="mb-4 flex items-center justify-between gap-2">
+          {onClose ? (
+            <>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Issue anterior"
+                  disabled={!hasPrevious}
+                  onClick={() => onNavigate?.("previous")}
+                >
+                  <ChevronUp />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Próxima issue"
+                  disabled={!hasNext}
+                  onClick={() => onNavigate?.("next")}
+                >
+                  <ChevronDown />
+                </Button>
+              </div>
+              <Button variant="ghost" size="icon-sm" aria-label="Fechar painel" onClick={onClose}>
+                <X />
+              </Button>
+            </>
+          ) : (
+            <Link
+              to={workspaceRoutes.issues(workspaceSlug)}
+              className="inline-flex items-center gap-1.5 text-xs text-t3 hover:text-foreground"
+            >
+              <ArrowLeft className="size-3.5" />
+              Issues
+            </Link>
+          )}
+        </div>
 
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
@@ -73,7 +140,11 @@ export function IssueDetailView({
           <IssueRowActions
             workspaceId={workspaceId}
             issue={issue}
-            onDeleted={() => navigate(workspaceRoutes.issues(workspaceSlug), { replace: true })}
+            onDeleted={() =>
+              onClose
+                ? onClose()
+                : navigate(workspaceRoutes.issues(workspaceSlug), { replace: true })
+            }
           />
         </div>
 
@@ -143,7 +214,7 @@ export function IssueDetailView({
         </div>
       </div>
 
-      <IssueDetailRail workspaceId={workspaceId} issue={issue} />
+      <IssueDetailRail workspaceId={workspaceId} issue={issue} isPanel={Boolean(onClose)} />
     </div>
   );
 }

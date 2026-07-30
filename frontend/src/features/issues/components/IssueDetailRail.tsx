@@ -92,7 +92,18 @@ function RailAvatarIcon({ name }: { name: string }) {
   );
 }
 
-export function IssueDetailRail({ workspaceId, issue }: { workspaceId: string; issue: Issue }) {
+export function IssueDetailRail({
+  workspaceId,
+  issue,
+  isPanel = false,
+}: {
+  workspaceId: string;
+  issue: Issue;
+  /** Sprint 9.5: no painel lateral de `IssuesListPage` a largura já é fixa e
+   * estreita — ignora os breakpoints `md:` (pensados para a largura real da
+   * viewport na página cheia) e sempre empilha abaixo do conteúdo. */
+  isPanel?: boolean;
+}) {
   const { data: members } = useWorkspaceMembers(workspaceId);
   const { data: projects } = useProjects(workspaceId, { page: 1, per_page: MAX_PICKER_PAGE_SIZE });
   const { data: workflowStates } = useWorkflowStates(workspaceId);
@@ -118,7 +129,8 @@ export function IssueDetailRail({ workspaceId, issue }: { workspaceId: string; i
   return (
     <aside
       className={cn(
-        "flex w-full shrink-0 flex-col gap-4 border-t pt-6 md:w-68 md:border-t-0 md:border-l md:pt-0 md:pl-5",
+        "flex w-full shrink-0 flex-col gap-4 border-t pt-6",
+        !isPanel && "md:w-68 md:border-t-0 md:border-l md:pt-0 md:pl-5",
       )}
     >
       <RailField

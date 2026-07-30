@@ -16,6 +16,7 @@ import { MAX_PICKER_PAGE_SIZE } from "@/shared/lib/constants";
 import { formatDate, formatRelativeTime } from "@/shared/lib/date";
 import { workspaceRoutes } from "@/shared/lib/routes";
 import { getInitials } from "@/shared/lib/string";
+import { cn } from "@/shared/lib/utils";
 
 import { ISSUE_PRIORITY_LABELS } from "../constants";
 import { IssuePriorityIcon } from "./IssuePriorityIcon";
@@ -28,12 +29,20 @@ export function IssuesTable({
   workspaceSlug,
   issues,
   showProject = true,
+  getRowHref,
+  selectedIssueId,
 }: {
   workspaceId: string;
   workspaceSlug: string;
   issues: Issue[];
   /** Omitido nas listagens já filtradas por um único projeto (ex.: `ProjectDetailView`), onde a coluna seria redundante. */
   showProject?: boolean;
+  /** Sprint 9.5: sobrepõe o destino do título da linha — usado pelo painel
+   * lateral de `IssuesListPage`, que aponta para `?panel=<id>` (mesma URL,
+   * preserva os filtros atuais) em vez da página cheia de detalhe. */
+  getRowHref?: (issue: Issue) => string;
+  /** Destaca a linha cujo painel lateral está aberto (Sprint 9.5). */
+  selectedIssueId?: string;
 }) {
   const { data: members } = useWorkspaceMembers(workspaceId);
   const memberById = new Map((members ?? []).map((member) => [member.user.id, member.user]));
@@ -49,7 +58,7 @@ export function IssuesTable({
   const projectById = new Map((projects?.data ?? []).map((project) => [project.id, project]));
 
   return (
-    <div className="rounded-xl border">
+    <div className="overflow-x-auto rounded-xl border">
       <Table>
         <TableHeader>
           <TableRow>
@@ -70,13 +79,17 @@ export function IssuesTable({
             const project = issue.project_id ? projectById.get(issue.project_id) : undefined;
             const workflowState = workflowStateById.get(issue.status_id);
             return (
-              <TableRow key={issue.id}>
+              <TableRow key={issue.id} className={cn(selectedIssueId === issue.id && "bg-sunken")}>
                 <TableCell className="font-mono text-xs text-muted-foreground">
                   {issue.identifier}
                 </TableCell>
                 <TableCell>
                   <Link
-                    to={workspaceRoutes.issueDetail(workspaceSlug, issue.id)}
+                    to={
+                      getRowHref
+                        ? getRowHref(issue)
+                        : workspaceRoutes.issueDetail(workspaceSlug, issue.id)
+                    }
                     className="font-medium hover:underline"
                   >
                     {issue.title}
