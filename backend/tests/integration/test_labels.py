@@ -54,7 +54,13 @@ async def test_issue_counts_counts_only_non_deleted_issues(
     await issue_repo.add_label(issue.id, label.id)
     number = await issue_repo.next_number(workspace.id)
     deleted_issue = await issue_repo.create(
-        Issue(workspace_id=workspace.id, number=number, title="t", creator_id=issue.creator_id)
+        Issue(
+            workspace_id=workspace.id,
+            number=number,
+            title="t",
+            creator_id=issue.creator_id,
+            status_id=issue.status_id,
+        )
     )
     await issue_repo.add_label(deleted_issue.id, label.id)
     await issue_repo.soft_delete(deleted_issue.id)

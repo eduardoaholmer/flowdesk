@@ -3,7 +3,7 @@ from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
-from src.features.issues.models import IssuePriority, IssueStatus
+from src.features.issues.models import IssuePriority
 
 _TITLE_MIN_LENGTH = 1
 _TITLE_MAX_LENGTH = 255
@@ -36,10 +36,15 @@ def _validate_due_date(value: date | None) -> date | None:
 
 
 class IssueCreateRequest(BaseModel):
+    """`status_id` opcional: quando omitido, o service atribui o status
+    marcado `is_default` no workspace (ver `WorkflowStateService.seed_defaults`,
+    Sprint 9.2/ADR-056) — sem valor fixo aqui, já que o status default agora é
+    dado de workspace, não uma constante do código."""
+
     title: str
     description: str | None = None
     project_id: uuid.UUID | None = None
-    status: IssueStatus = IssueStatus.BACKLOG
+    status_id: uuid.UUID | None = None
     priority: IssuePriority = IssuePriority.NO_PRIORITY
     assignee_id: uuid.UUID | None = None
     estimate: int | None = None
@@ -71,7 +76,7 @@ class IssueUpdateRequest(BaseModel):
     title: str | None = None
     description: str | None = None
     project_id: uuid.UUID | None = None
-    status: IssueStatus | None = None
+    status_id: uuid.UUID | None = None
     priority: IssuePriority | None = None
     assignee_id: uuid.UUID | None = None
     estimate: int | None = None
@@ -103,7 +108,7 @@ class IssueResponse(BaseModel):
     number: int
     title: str
     description: str | None
-    status: IssueStatus
+    status_id: uuid.UUID
     priority: IssuePriority
     assignee_id: uuid.UUID | None
     creator_id: uuid.UUID

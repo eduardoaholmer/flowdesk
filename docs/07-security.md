@@ -77,6 +77,7 @@ Permissões são strings estáveis `"<domínio>.<ação>"` (`core/permissions.py
 | Comentários *(feature na Sprint 8)* | `comment.create`, `comment.update`, `comment.delete` |
 | Labels *(feature na Sprint 8)* | `label.create`, `label.read`, `label.update`, `label.delete` |
 | Anexos *(feature na Sprint 8)* | `attachment.create`, `attachment.delete` |
+| Status de Issue *(feature na Sprint 9.2, ADR-056)* | `workflow_state.read`, `workflow_state.manage` |
 
 A feature de Projetos (Sprint 6), a de Issues (Sprint 7) e as de Comentários/Labels/Anexos (Sprint 8, `docs/08-roadmap.md`) foram implementadas sem nenhuma mudança de desenho de RBAC: `core/permissions.py` e `core/authorization.py::ROLE_PERMISSIONS` já traziam todas as permissões acima, corretamente posicionadas na matriz, desde que foram modeladas preventivamente na Sprint 5 (ADR-010). Cada feature só passou a exercitá-las via `Depends(require_permission(...))` — Issues foi a primeira a exercitar de fato o `OWNERSHIP_OVERRIDE_PERMISSIONS` (§8.5) em produção, para `issue.delete`; Comentários e Anexos (Sprint 8) seguem o mesmo padrão para `comment.update`/`comment.delete`/`attachment.delete`.
 
@@ -107,6 +108,8 @@ A fonte de verdade é `ROLE_PERMISSIONS`/`OWNERSHIP_OVERRIDE_PERMISSIONS` em `co
 | `label.update` / `label.delete` | ✅ | ✅ | ❌ | ❌ | Sem ownership override — quem cria uma label não ganha direito extra de editá-la/excluí-la (ADR-013). |
 | `attachment.create` | ✅ | ✅ | ✅ | ✅ | Mesmo papel de `comment.create` — qualquer membro (incl. GUEST) pode anexar arquivo a uma issue que já pode ler. |
 | `attachment.delete` | ✅ | ✅ | ✅ (só o próprio) | ✅ (só o próprio) | MEMBER/GUEST só via **ownership override** (§8.5) — quem enviou o anexo pode removê-lo. |
+| `workflow_state.read` | ✅ | ✅ | ✅ | ✅ | Qualquer membro precisa ver os status para renderizar o board/badges de issue. |
+| `workflow_state.manage` | ✅ | ✅ | ❌ | ❌ | Cobre criar, editar, reordenar e excluir status — configuração de workspace, mesmo nível de `label.update`/`delete`. Sem ownership override. |
 
 ### 8.4 Regra contextual: gerenciamento de membro
 

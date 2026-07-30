@@ -69,6 +69,7 @@ class TestRolePermissionsMatrix:
                 Permission.ISSUE_READ,
                 Permission.COMMENT_CREATE,
                 Permission.LABEL_READ,
+                Permission.WORKFLOW_STATE_READ,
                 Permission.ATTACHMENT_CREATE,
             }
         )

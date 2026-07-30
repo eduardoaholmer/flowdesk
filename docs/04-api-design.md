@@ -116,18 +116,20 @@ O banco guarda apenas `token_hash` (`SHA-256`, mesmo padrão de `refresh_tokens`
 
 Implementado na Sprint 7 (`docs/09-decision-log.md` ADR-012 tem o racional completo dos desvios em relação ao esboço original abaixo — o principal sendo o desacoplamento de `Team`/`WorkflowState`, nunca implementados como feature).
 
+**Atualização Sprint 9.2 (ADR-056)**: `status` (enum fixo) virou `status_id` (UUID, FK para um status customizável por workspace — ver §5.1 abaixo). Todo request/response deste recurso que citava `status` abaixo foi atualizado para `status_id`.
+
 | Ação | Endpoint | Autorização | Request | Response | Códigos |
 |---|---|---|---|---|---|
-| Criar | `POST .../issues` | `issue.create` (`MEMBER`+) | `{ title, description?, project_id?, status?, priority?, assignee_id?, estimate?, due_date? }` | `{ data: { issue } }` (gera `number`/`identifier` sequencial por workspace, ex. `FD-1`) | 201, 401, 403, 404 (`project_not_found`, se `project_id` não pertence ao workspace), 422 |
-| Listar | `GET .../issues?page=&per_page=&status=&priority=&project_id=&assignee_id=&creator_id=&q=&sort=` | `issue.read` (qualquer papel) | — | `{ data: [issue], meta }` | 200, 401, 404 |
+| Criar | `POST .../issues` | `issue.create` (`MEMBER`+) | `{ title, description?, project_id?, status_id?, priority?, assignee_id?, estimate?, due_date? }` | `{ data: { issue } }` (gera `number`/`identifier` sequencial por workspace, ex. `FD-1`) | 201, 401, 403, 404 (`project_not_found`/`workflow_state_not_found`, se `project_id`/`status_id` não pertencem ao workspace), 422 |
+| Listar | `GET .../issues?page=&per_page=&status_id=&priority=&project_id=&assignee_id=&creator_id=&q=&sort=` | `issue.read` (qualquer papel) | — | `{ data: [issue], meta }` | 200, 401, 404 |
 | Detalhe | `GET .../issues/{issue_id}` | `issue.read` | — | `{ data: { issue } }` | 200, 401, 404 (`issue_not_found`) |
-| Atualizar | `PATCH .../issues/{issue_id}` | `issue.update` (`MEMBER`+, sem restrição de posse) | `{ title?, description?, project_id?, status?, priority?, assignee_id?, estimate?, due_date? }` + header opcional `If-Match: <version>` | `{ data: { issue } }` | 200, 401, 403, 404, 409 (`version_conflict`, se `If-Match` divergir da versão atual), 422 |
+| Atualizar | `PATCH .../issues/{issue_id}` | `issue.update` (`MEMBER`+, sem restrição de posse) | `{ title?, description?, project_id?, status_id?, priority?, assignee_id?, estimate?, due_date? }` + header opcional `If-Match: <version>` | `{ data: { issue } }` | 200, 401, 403, 404 (inclui `workflow_state_not_found`), 409 (`version_conflict`, se `If-Match` divergir da versão atual), 422 |
 | Excluir | `DELETE .../issues/{issue_id}` | `issue.delete` (Criador da issue **ou** `ADMIN`+ — posse-como-exceção) | — | 204 (soft delete) | 204, 401, 403, 404 |
 | Atividade | `GET .../issues/{issue_id}/activity` | `issue.read` | — | `{ data: [activity_log] }` | 200, 401, 404 |
 
-`q` aciona busca textual full-text (índice GIN, §9 de `docs/03-database.md`) sobre título/descrição; se o termo casar com o padrão `FD-\d+` ou um número puro, também compara contra `number` diretamente (busca por identificador). Demais filtros (`status`, `priority`, `project_id`, `assignee_id`, `creator_id`) combinam via AND, valor único por campo (sem OR multi-valor nesta sprint — YAGNI, `CLAUDE.md` §1.6). `sort` aceita `number|-number|created_at|-created_at|updated_at|-updated_at|priority|-priority|due_date|-due_date` (prioridade ordenada por rank semântico — `NO_PRIORITY < LOW < MEDIUM < HIGH < URGENT` —, não alfabeticamente), default `-updated_at`. Paginação **offset-based** (`{ page, per_page, total, total_pages }`, mesmo envelope de Projects/Members/Teams) — desvio deliberado do esboço original (cursor-based); ver ADR-012 Decisão 5.
+`q` aciona busca textual full-text (índice GIN, §9 de `docs/03-database.md`) sobre título/descrição; se o termo casar com o padrão `FD-\d+` ou um número puro, também compara contra `number` diretamente (busca por identificador). Demais filtros (`status_id`, `priority`, `project_id`, `assignee_id`, `creator_id`) combinam via AND, valor único por campo (sem OR multi-valor nesta sprint — YAGNI, `CLAUDE.md` §1.6). `sort` aceita `number|-number|created_at|-created_at|updated_at|-updated_at|priority|-priority|due_date|-due_date` (prioridade ordenada por rank semântico — `NO_PRIORITY < LOW < MEDIUM < HIGH < URGENT` —, não alfabeticamente), default `-updated_at`. Paginação **offset-based** (`{ page, per_page, total, total_pages }`, mesmo envelope de Projects/Members/Teams) — desvio deliberado do esboço original (cursor-based); ver ADR-012 Decisão 5.
 
-`status` aceita `PATCH` genérico (ao contrário de `Project.status`, que só transiciona via `/archive`/`/restore`): mudança de status de issue é uma ação frequente e não tem workflow configurável nesta sprint, então não há transição inválida a bloquear — qualquer status pode ir para qualquer status.
+`status_id` aceita `PATCH` genérico (ao contrário de `Project.status`, que só transiciona via `/archive`/`/restore`): mudança de status de issue é uma ação frequente, e desde a Sprint 9.2 o conjunto de status é dado (não enum), então não há transição inválida a bloquear no código — qualquer status ativo do workspace pode ir para qualquer outro. Omitir `status_id` na criação atribui o status marcado `is_default` do workspace (§5.1).
 
 `due_date` aceita apenas datas entre `1900-01-01` e `2200-12-31` (422 fora da faixa — proteção contra corrupção de dado por erro de digitação, ADR-055). No `PATCH`, `due_date` segue a semântica padrão de todo campo opcional deste endpoint: **omitir a chave** preserva o valor atual; **enviar `due_date: null` explicitamente** limpa o campo (distinção feita via `model_fields_set` do Pydantic, não apenas `is not None`).
 
@@ -139,7 +141,7 @@ Implementado na Sprint 7 (`docs/09-decision-log.md` ADR-012 tem o racional compl
   "title": "Corrigir vazamento de memória no worker",
   "description": "O worker de background acumula memória após 24h em produção.",
   "priority": "HIGH",
-  "status": "IN_PROGRESS",
+  "status_id": "019f6100-...",
   "estimate": 5
 }
 
@@ -153,7 +155,7 @@ Implementado na Sprint 7 (`docs/09-decision-log.md` ADR-012 tem o racional compl
     "number": 1,
     "title": "Corrigir vazamento de memória no worker",
     "description": "O worker de background acumula memória após 24h em produção.",
-    "status": "IN_PROGRESS",
+    "status_id": "019f6100-...",
     "priority": "HIGH",
     "assignee_id": null,
     "creator_id": "3fa2...",
@@ -200,7 +202,7 @@ sequenceDiagram
         end
         S->>IssueRepo: next_number(workspace_id) — INSERT ... ON CONFLICT DO UPDATE ... RETURNING
         IssueRepo->>DB: número atômico (sem lock explícito)
-        S->>IssueRepo: INSERT Issue (status=payload.status ou BACKLOG)
+        S->>IssueRepo: INSERT Issue (status_id=payload.status_id ou o status is_default do workspace)
         S->>IssueRepo: INSERT ActivityLog (issue.created)
         IssueRepo->>DB: commit (boundary controlado pelo service)
         S-->>C: 201 { data: issue }
@@ -236,6 +238,24 @@ Cada campo alterado gera uma entrada própria em `activity_logs` (`field`/`old_v
 ### Exclusão: posse como exceção
 
 `DELETE .../issues/{issue_id}` usa `Depends(require_permission(Permission.ISSUE_READ))` no router (garante só membership do workspace) — a permissão real (`Permission.ISSUE_DELETE`, que está em `OWNERSHIP_OVERRIDE_PERMISSIONS` desde a Sprint 5/ADR-010) é resolvida dentro do `IssueService.delete()`, depois de buscar a issue e conhecer `creator_id`. Um `MEMBER` que não é o criador recebe `403 permission_denied`; o criador ou qualquer `ADMIN`+/`OWNER` pode excluir.
+
+## 5.1 Status de Issue (`/workspaces/{workspace_id}/workflow-states`)
+
+Implementado na Sprint 9.2 (ADR-056, reabre a ADR-035) — reaproveita a tabela `workflow_states`, dormente desde a Sprint 2 em escopo de time (`Team`, nunca reativado), agora escopada diretamente por `workspace_id`. Todo workspace novo nasce com os mesmos 6 status que antes eram o enum fixo (`Backlog`/`Todo`/`In Progress`/`In Review`/`Done`/`Canceled`), semeados por `WorkspaceService.create` — a partir daí, editáveis.
+
+| Ação | Endpoint | Autorização | Request | Response | Códigos |
+|---|---|---|---|---|---|
+| Criar | `POST .../workflow-states` | `workflow_state.manage` (`ADMIN`+) | `{ name, category, is_default? }` | `{ data: { workflow_state } }` (`position` = último + 1) | 201, 401, 403, 409 (`workflow_state_name_taken`), 422 |
+| Listar | `GET .../workflow-states` | `workflow_state.read` (qualquer papel) | — | `{ data: [workflow_state] }` (ordenado por `position`, sem paginação) | 200, 401 |
+| Atualizar | `PATCH .../workflow-states/{state_id}` | `workflow_state.manage` | `{ name?, category?, is_default? }` | `{ data: { workflow_state } }` | 200, 401, 403, 404, 409, 422 |
+| Reordenar | `POST .../workflow-states/reorder` | `workflow_state.manage` | `{ ordered_ids: [uuid] }` (lista completa, nova ordem) | `{ data: [workflow_state] }` | 200, 401, 403, 404, 422 (lista incompleta/com repetição) |
+| Excluir | `DELETE .../workflow-states/{state_id}?reassign_to_id=` | `workflow_state.manage` | — | 204 | 204, 401, 403, 404, 409 (`workflow_state_has_issues`, `cannot_delete_last_workflow_state`, `invalid_reassign_target`) |
+
+`category` é um enum fixo (`BACKLOG`/`UNSTARTED`/`STARTED`/`COMPLETED`/`CANCELED`) — não editável pelo usuário além dessas 5 opções, usado por agregações internas (ex.: `ProjectRepository.issue_counts`, barra de progresso "concluídas/total" conta `category == COMPLETED`) para não acoplar a uma string de `name` livremente editável. `name` é o texto exibido, único por workspace.
+
+**Exclusão com reatribuição obrigatória**: excluir um status que ainda tem issues vinculadas sem informar `?reassign_to_id=` devolve `409 workflow_state_has_issues` com `details: { issue_count }` — o frontend usa isso para abrir um diálogo "para onde mover estas N issues?" e repetir a chamada com o `reassign_to_id` escolhido, que então reatribui todas as issues daquele status antes de excluí-lo (reatribuição + soft delete na mesma transação). Excluir o único status restante do workspace é sempre bloqueado (`409 cannot_delete_last_workflow_state`, `workspace.view` exige ao menos um). Excluir o status atualmente `is_default` promove automaticamente outro (o de menor `position` entre os remanescentes) a `is_default`, sem exigir passo extra do cliente.
+
+**Reordenar** aceita a lista completa de IDs ativos do workspace na nova ordem — o service rejeita (`422`) qualquer lista que não seja exatamente o conjunto atual (falta ou sobra um id). Internamente, o service move todas as posições para valores negativos temporários antes de aplicar a ordem final, porque o índice único parcial `(workspace_id, position)` não é `DEFERRABLE` — uma troca direta de posições entre duas linhas violaria a constraint no meio da transação.
 
 ## 6. Comentários (`/workspaces/{workspace_id}/issues/{issue_id}/comments`)
 
@@ -431,13 +451,15 @@ Paginação **offset-based** (`{ page, per_page, total, total_pages }`, mesmo en
 
 ## 11. Erros — catálogo de `code` (não exaustivo, cresce por feature)
 
-`invalid_credentials`, `email_already_registered`, `invalid_refresh_token`, `invalid_password_reset_token`, `invalid_token`, `workspace_not_found`, `slug_taken`, `already_member`, `invitation_already_pending`, `invitation_not_found`, `invitation_expired`, `invitation_email_mismatch`, `sole_owner_cannot_leave`, `member_not_found`, `cannot_manage_own_membership`, `cannot_manage_owner`, `cannot_transfer_ownership_to_self`, `key_taken`, `name_taken`, `team_not_found`, `issue_not_found`, `version_conflict`, `permission_denied`, `rate_limited`, `validation_error`, `project_not_found`, `project_slug_taken`, `project_name_taken`, `project_already_archived`, `project_not_archived`, `project_has_active_issues`, `comment_not_found`, `label_not_found`, `label_name_taken`, `attachment_not_found`, `attachment_too_large`, `attachment_type_not_allowed`, `notification_not_found`.
+`invalid_credentials`, `email_already_registered`, `invalid_refresh_token`, `invalid_password_reset_token`, `invalid_token`, `workspace_not_found`, `slug_taken`, `already_member`, `invitation_already_pending`, `invitation_not_found`, `invitation_expired`, `invitation_email_mismatch`, `sole_owner_cannot_leave`, `member_not_found`, `cannot_manage_own_membership`, `cannot_manage_owner`, `cannot_transfer_ownership_to_self`, `key_taken`, `name_taken`, `team_not_found`, `issue_not_found`, `version_conflict`, `permission_denied`, `rate_limited`, `validation_error`, `project_not_found`, `project_slug_taken`, `project_name_taken`, `project_already_archived`, `project_not_archived`, `project_has_active_issues`, `comment_not_found`, `label_not_found`, `label_name_taken`, `attachment_not_found`, `attachment_too_large`, `attachment_type_not_allowed`, `notification_not_found`, `workflow_state_not_found`, `workflow_state_name_taken`, `workflow_state_has_issues`, `cannot_delete_last_workflow_state`, `invalid_reassign_target`.
 
 `comment_not_found` (404), `label_not_found` (404), `label_name_taken` (409, unicidade por workspace), `attachment_not_found` (404), `attachment_too_large`/`attachment_type_not_allowed` (422, validados antes da persistência) são novos na Sprint 8 (§6–8, ADR-013). O esboço original deste catálogo já reservava `name_taken` genérico para labels; `label_name_taken` o substitui com um `code` específico por feature, mesmo padrão já usado por `project_name_taken` na Sprint 6 (evita que o cliente precise inferir o recurso a partir só do `code` genérico).
 
 `project_not_found` (404), `project_slug_taken`/`project_name_taken` (409, unicidade por workspace), `project_already_archived`/`project_not_archived` (409, transição de estado idempotency-guarded) e `project_has_active_issues` (409, exclusão bloqueada) são novos na Sprint 6 (§9).
 
-`issue_not_found` (404) e `version_conflict` (409, `If-Match` divergente) são efetivamente implementados na Sprint 7 (§5) — ambos já estavam reservados neste catálogo desde o esboço original da Sprint 0/2, sem uso até agora. `team_not_found` permanece reservado, sem uso: seria acionado por uma futura feature de Team (ainda sem service/router, ver ADR-012), não por Issues, que não depende mais de `team_id`. `invalid_status_transition` (também reservado desde o esboço original) **não** foi implementado nesta sprint e foi removido deste catálogo — `Issue.status` é um enum fixo sem grafo de transição configurável (nenhuma regra de negócio bloqueia uma mudança de status para outra), ver ADR-012 Decisão 1; o código volta ao catálogo se/quando um workflow configurável for implementado.
+`issue_not_found` (404) e `version_conflict` (409, `If-Match` divergente) são efetivamente implementados na Sprint 7 (§5) — ambos já estavam reservados neste catálogo desde o esboço original da Sprint 0/2, sem uso até agora. `team_not_found` permanece reservado, sem uso: seria acionado por uma futura feature de Team (ainda sem service/router, ver ADR-012), não por Issues, que não depende mais de `team_id`. `invalid_status_transition` (também reservado desde o esboço original) permanece **não implementado** — mesmo com status agora customizável por workspace (Sprint 9.2/ADR-056), não há grafo de transição configurável (nenhuma regra de negócio bloqueia mudar para qualquer outro status ativo); o código volta ao catálogo se/quando um workflow configurável (com transições restritas) for implementado.
+
+`workflow_state_not_found` (404), `workflow_state_name_taken` (409, unicidade por workspace), `workflow_state_has_issues` (409, exclusão bloqueada até reatribuição — carrega `details: { issue_count }`), `cannot_delete_last_workflow_state` (409) e `invalid_reassign_target` (409, `reassign_to_id` inválido/igual ao próprio status) são novos na Sprint 9.2 (§5.1, ADR-056).
 
 `member_not_found` (404), `cannot_manage_own_membership` (409) e `cannot_manage_owner` (403) são novos na Sprint 5 (`PATCH`/`DELETE .../members/{member_id}`) — ver `docs/07-security.md` §8.4.
 

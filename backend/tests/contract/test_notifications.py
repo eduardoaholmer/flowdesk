@@ -63,6 +63,17 @@ async def _create_issue(
     return data
 
 
+async def _workflow_state_id(
+    client: AsyncClient, workspace_id: str, token: str, *, name: str
+) -> str:
+    response = await client.get(
+        f"/api/v1/workspaces/{workspace_id}/workflow-states", headers=_auth(token)
+    )
+    states: list[dict[str, object]] = response.json()["data"]
+    match = next(s for s in states if s["name"] == name)
+    return str(match["id"])
+
+
 async def _member_user_id(client: AsyncClient, member_token: str) -> str:
     response = await client.get("/api/v1/users/me", headers=_auth(member_token))
     user_id: str = response.json()["data"]["id"]
@@ -133,10 +144,11 @@ async def test_issue_status_change_notifies_assignee(client: AsyncClient) -> Non
     _, member_token = await _invite_and_accept_member(client, workspace_id, owner_token)
     member_id = await _member_user_id(client, member_token)
     issue = await _create_issue(client, workspace_id, owner_token, assignee_id=member_id)
+    in_progress_id = await _workflow_state_id(client, workspace_id, owner_token, name="In Progress")
 
     await client.patch(
         f"/api/v1/workspaces/{workspace_id}/issues/{issue['id']}",
-        json={"status": "IN_PROGRESS"},
+        json={"status_id": in_progress_id},
         headers=_auth(owner_token),
     )
     response = await client.get("/api/v1/notifications", headers=_auth(member_token))

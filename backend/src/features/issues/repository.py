@@ -13,7 +13,6 @@ from src.features.issues.models import (
     Issue,
     IssueLabel,
     IssuePriority,
-    IssueStatus,
     WorkspaceIssueCounter,
 )
 from src.features.labels.models import Label
@@ -70,7 +69,7 @@ class IssueRepositoryProtocol(Protocol):
         page: int = 1,
         per_page: int = 20,
         project_id: uuid.UUID | None = None,
-        status: IssueStatus | None = None,
+        status_id: uuid.UUID | None = None,
         priority: IssuePriority | None = None,
         assignee_id: uuid.UUID | None = None,
         creator_id: uuid.UUID | None = None,
@@ -82,7 +81,7 @@ class IssueRepositoryProtocol(Protocol):
         workspace_id: uuid.UUID,
         *,
         project_id: uuid.UUID | None = None,
-        status: IssueStatus | None = None,
+        status_id: uuid.UUID | None = None,
         priority: IssuePriority | None = None,
         assignee_id: uuid.UUID | None = None,
         creator_id: uuid.UUID | None = None,
@@ -148,7 +147,7 @@ class IssueRepository:
         workspace_id: uuid.UUID,
         *,
         project_id: uuid.UUID | None,
-        status: IssueStatus | None,
+        status_id: uuid.UUID | None,
         priority: IssuePriority | None,
         assignee_id: uuid.UUID | None,
         creator_id: uuid.UUID | None,
@@ -157,8 +156,8 @@ class IssueRepository:
         stmt = select(Issue).where(Issue.workspace_id == workspace_id, Issue.deleted_at.is_(None))
         if project_id is not None:
             stmt = stmt.where(Issue.project_id == project_id)
-        if status is not None:
-            stmt = stmt.where(Issue.status == status)
+        if status_id is not None:
+            stmt = stmt.where(Issue.status_id == status_id)
         if priority is not None:
             stmt = stmt.where(Issue.priority == priority)
         if assignee_id is not None:
@@ -184,7 +183,7 @@ class IssueRepository:
         page: int = 1,
         per_page: int = 20,
         project_id: uuid.UUID | None = None,
-        status: IssueStatus | None = None,
+        status_id: uuid.UUID | None = None,
         priority: IssuePriority | None = None,
         assignee_id: uuid.UUID | None = None,
         creator_id: uuid.UUID | None = None,
@@ -195,7 +194,7 @@ class IssueRepository:
             self._filtered(
                 workspace_id,
                 project_id=project_id,
-                status=status,
+                status_id=status_id,
                 priority=priority,
                 assignee_id=assignee_id,
                 creator_id=creator_id,
@@ -212,7 +211,7 @@ class IssueRepository:
         workspace_id: uuid.UUID,
         *,
         project_id: uuid.UUID | None = None,
-        status: IssueStatus | None = None,
+        status_id: uuid.UUID | None = None,
         priority: IssuePriority | None = None,
         assignee_id: uuid.UUID | None = None,
         creator_id: uuid.UUID | None = None,
@@ -222,7 +221,7 @@ class IssueRepository:
             self._filtered(
                 workspace_id,
                 project_id=project_id,
-                status=status,
+                status_id=status_id,
                 priority=priority,
                 assignee_id=assignee_id,
                 creator_id=creator_id,

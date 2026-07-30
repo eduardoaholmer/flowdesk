@@ -5,7 +5,7 @@ from typing import Protocol
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.features.teams.models import Team, TeamIssueCounter, TeamMember, WorkflowState
+from src.features.teams.models import Team, TeamIssueCounter, TeamMember
 
 
 class TeamRepositoryProtocol(Protocol):
@@ -13,7 +13,6 @@ class TeamRepositoryProtocol(Protocol):
     async def get_by_id(self, workspace_id: uuid.UUID, team_id: uuid.UUID) -> Team | None: ...
     async def list_by_workspace(self, workspace_id: uuid.UUID) -> Sequence[Team]: ...
     async def add_member(self, member: TeamMember) -> TeamMember: ...
-    async def list_workflow_states(self, team_id: uuid.UUID) -> Sequence[WorkflowState]: ...
     async def next_issue_number(self, team_id: uuid.UUID) -> int: ...
 
 
@@ -46,14 +45,6 @@ class TeamRepository:
         self._session.add(member)
         await self._session.flush()
         return member
-
-    async def list_workflow_states(self, team_id: uuid.UUID) -> Sequence[WorkflowState]:
-        stmt = (
-            select(WorkflowState)
-            .where(WorkflowState.team_id == team_id, WorkflowState.deleted_at.is_(None))
-            .order_by(WorkflowState.position)
-        )
-        return (await self._session.scalars(stmt)).all()
 
     async def next_issue_number(self, team_id: uuid.UUID) -> int:
         """`SELECT ... FOR UPDATE` sobre o contador do time — já previsto em

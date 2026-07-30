@@ -67,6 +67,7 @@ ROLE_PERMISSIONS: dict[WorkspaceRole, frozenset[Permission]] = {
             Permission.COMMENT_CREATE,
             Permission.LABEL_CREATE,
             Permission.LABEL_READ,
+            Permission.WORKFLOW_STATE_READ,
             Permission.ATTACHMENT_CREATE,
         }
     ),
@@ -77,6 +78,7 @@ ROLE_PERMISSIONS: dict[WorkspaceRole, frozenset[Permission]] = {
             Permission.ISSUE_READ,
             Permission.COMMENT_CREATE,
             Permission.LABEL_READ,
+            Permission.WORKFLOW_STATE_READ,
             Permission.ATTACHMENT_CREATE,
         }
     ),

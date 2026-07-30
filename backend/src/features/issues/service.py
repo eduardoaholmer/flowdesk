@@ -9,7 +9,7 @@ from src.features.issues.exceptions import (
     IssueNotFoundError,
     IssueVersionConflictError,
 )
-from src.features.issues.models import ActivityLog, Issue, IssuePriority, IssueStatus
+from src.features.issues.models import ActivityLog, Issue, IssuePriority
 from src.features.issues.repository import IssueRepositoryProtocol, IssueSort
 from src.features.issues.schemas import IssueCreateRequest, IssueUpdateRequest
 from src.features.labels.exceptions import LabelNotFoundError
@@ -19,6 +19,9 @@ from src.features.notifications.models import NotificationType
 from src.features.notifications.service import NotificationService
 from src.features.projects.exceptions import ProjectNotFoundError
 from src.features.projects.repository import ProjectRepositoryProtocol
+from src.features.workflow_states.exceptions import WorkflowStateNotFoundError
+from src.features.workflow_states.models import WorkflowState
+from src.features.workflow_states.repository import WorkflowStateRepositoryProtocol
 from src.features.workspaces.models import WorkspaceMember
 
 
@@ -30,6 +33,7 @@ class IssueService:
         project_repo: ProjectRepositoryProtocol,
         label_repo: LabelRepositoryProtocol,
         notification_service: NotificationService,
+        workflow_state_repo: WorkflowStateRepositoryProtocol,
     ) -> None:
         """Recebe `PermissionService`, ao contrário de `ProjectService`: excluir
         uma issue tem posse-como-exceção (`Permission.ISSUE_DELETE` está em
@@ -51,11 +55,17 @@ class IssueService:
         `notification_service` (Sprint 9) notifica o responsável em uma
         mudança de status — *service* público de outra feature, não o
         repository (`docs/02-architecture.md`).
+
+        `workflow_state_repo` (Sprint 9.2/ADR-056) resolve o status default do
+        workspace quando `status_id` é omitido na criação, e valida que um
+        `status_id` informado pertence ao mesmo workspace — mesmo racional de
+        `project_repo` acima, status deixou de ser um enum fixo.
         """
         self._issue_repo = issue_repo
         self._permission_service = permission_service
         self._project_repo = project_repo
         self._label_repo = label_repo
+        self._workflow_state_repo = workflow_state_repo
         self._notification_service = notification_service
 
     async def create(
@@ -63,6 +73,7 @@ class IssueService:
     ) -> Issue:
         if payload.project_id is not None:
             await self._get_active_project(workspace_id, payload.project_id)
+        status_id = await self._resolve_status_id(workspace_id, payload.status_id)
 
         number = await self._issue_repo.next_number(workspace_id)
         issue = await self._issue_repo.create(
@@ -72,7 +83,7 @@ class IssueService:
                 number=number,
                 title=payload.title,
                 description=payload.description,
-                status=payload.status,
+                status_id=status_id,
                 priority=payload.priority,
                 assignee_id=payload.assignee_id,
                 creator_id=current_user.id,
@@ -96,7 +107,7 @@ class IssueService:
         page: int,
         per_page: int,
         project_id: uuid.UUID | None,
-        status: IssueStatus | None,
+        status_id: uuid.UUID | None,
         priority: IssuePriority | None,
         assignee_id: uuid.UUID | None,
         creator_id: uuid.UUID | None,
@@ -108,7 +119,7 @@ class IssueService:
             page=page,
             per_page=per_page,
             project_id=project_id,
-            status=status,
+            status_id=status_id,
             priority=priority,
             assignee_id=assignee_id,
             creator_id=creator_id,
@@ -118,7 +129,7 @@ class IssueService:
         total = await self._issue_repo.count_by_workspace(
             workspace_id,
             project_id=project_id,
-            status=status,
+            status_id=status_id,
             priority=priority,
             assignee_id=assignee_id,
             creator_id=creator_id,
@@ -238,18 +249,20 @@ class IssueService:
             issue.project_id = payload.project_id
             changed = True
 
-        if payload.status is not None and payload.status != issue.status:
+        if payload.status_id is not None and payload.status_id != issue.status_id:
+            new_state = await self._get_workflow_state(workspace_id, payload.status_id)
+            old_state = await self._get_workflow_state(workspace_id, issue.status_id)
             await self._record_activity(
                 workspace_id,
                 issue.id,
                 current_user.id,
                 "issue.status_changed",
                 field="status",
-                old_value=issue.status.value,
-                new_value=payload.status.value,
+                old_value=old_state.name,
+                new_value=new_state.name,
             )
-            await self._notify_status_change(current_user, issue, payload.status)
-            issue.status = payload.status
+            await self._notify_status_change(current_user, issue, old_state, new_state)
+            issue.status_id = new_state.id
             changed = True
 
         if payload.priority is not None and payload.priority != issue.priority:
@@ -338,8 +351,35 @@ class IssueService:
         if project is None:
             raise ProjectNotFoundError()
 
+    async def _resolve_status_id(
+        self, workspace_id: uuid.UUID, status_id: uuid.UUID | None
+    ) -> uuid.UUID:
+        """Sem `status_id` explícito: usa o status `is_default` do workspace
+        (`WorkflowStateService.seed_defaults`, Sprint 9.2/ADR-056) — sempre
+        existe, já que a exclusão do último status é bloqueada e a exclusão do
+        default promove outro automaticamente (`WorkflowStateService.delete`)."""
+        if status_id is not None:
+            await self._get_workflow_state(workspace_id, status_id)
+            return status_id
+        default_state = await self._workflow_state_repo.get_default(workspace_id)
+        if default_state is None:
+            raise WorkflowStateNotFoundError()
+        return default_state.id
+
+    async def _get_workflow_state(
+        self, workspace_id: uuid.UUID, status_id: uuid.UUID
+    ) -> WorkflowState:
+        state = await self._workflow_state_repo.get_by_id(workspace_id, status_id)
+        if state is None:
+            raise WorkflowStateNotFoundError()
+        return state
+
     async def _notify_status_change(
-        self, current_user: CurrentUser, issue: Issue, new_status: IssueStatus
+        self,
+        current_user: CurrentUser,
+        issue: Issue,
+        old_state: WorkflowState,
+        new_state: WorkflowState,
     ) -> None:
         """Sem responsável, ou o próprio responsável mudou o status: nada a notificar
         (mesmo racional de `CommentService._notify_mentions` para auto-menção)."""
@@ -353,8 +393,8 @@ class IssueService:
                 "issue_id": str(issue.id),
                 "issue_identifier": issue.identifier,
                 "actor_name": current_user.name,
-                "old_status": issue.status.value,
-                "new_status": new_status.value,
+                "old_status": old_state.name,
+                "new_status": new_state.name,
             },
         )
 

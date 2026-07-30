@@ -385,7 +385,9 @@ flowchart LR
     D -->|N:N, Sprint 8| H[Label via IssueLabel]
 ```
 
-Desde a Sprint 7 (ADR-012 em `docs/09-decision-log.md`), `Issue` não depende mais de `Team`/`WorkflowState` — `status` é um enum fixo com default `BACKLOG`, e o número sequencial vem de `WorkspaceIssueCounter`, criado sob demanda na primeira issue do workspace (sem pré-condição de setup, ao contrário do antigo fluxo via `TeamIssueCounter`/`WorkflowState.is_default`).
+Desde a Sprint 7 (ADR-012 em `docs/09-decision-log.md`), `Issue` não depende mais de `Team` — o número sequencial vem de `WorkspaceIssueCounter`, criado sob demanda na primeira issue do workspace (sem pré-condição de setup, ao contrário do antigo fluxo via `TeamIssueCounter`).
+
+**Atualização Sprint 9.2 (ADR-056)**: `status` deixou de ser o enum fixo descrito acima — `issues.status_id` agora é uma FK para `workflow_states`, reaproveitando essa tabela (dormente em escopo de time desde a Sprint 2) recém-reescopada para `workspace_id` direto, sem reativar `Team`/membership (a ADR-035 continua valendo nesse ponto). Todo workspace nasce com os mesmos 6 status de antes (`WorkflowStateService.seed_defaults`, chamado por `WorkspaceService.create`), agora editáveis pelo usuário (criar/renomear/reordenar/excluir com reatribuição obrigatória de issues). Migration `43650f3d8613` fez o backfill de dado real (issues existentes mapeadas para o status equivalente por workspace) — ver §11 abaixo.
 
 ## 7. Cardinalidades (explícitas)
 
@@ -396,10 +398,11 @@ Desde a Sprint 7 (ADR-012 em `docs/09-decision-log.md`), `Issue` não depende ma
 | Session → RefreshToken | 1:N | histórico de rotação; só um token ativo por vez |
 | Workspace → Team | 1:N | time pertence a exatamente um workspace (sem uso por nenhuma regra de negócio desde a Sprint 7 — ver ADR-012) |
 | Team ↔ User | N:N via `team_members` | membro de time deve já ser `workspace_member` (validado em service, não em FK) |
-| Team → WorkflowState | 1:N | workflow é por time, não global (ocioso desde a Sprint 7) |
 | Team → TeamIssueCounter | 1:1 | contador dedicado, não compartilha lock de linha com `teams` (ocioso desde a Sprint 7) |
 | Workspace → Issue | 1:N | issue pertence a exatamente um workspace (Sprint 7, substitui Team → Issue) |
 | Workspace → WorkspaceIssueCounter | 1:1 | contador de `number` por workspace (Sprint 7) |
+| Workspace → WorkflowState | 1:N | status customizável por workspace (Sprint 9.2/ADR-056 — reescopado de `Team → WorkflowState`, agora dado real, não mais ocioso) |
+| WorkflowState → Issue | 1:N | `issue.status_id`, `ON DELETE RESTRICT` — exclusão de status exige reatribuição prévia das issues (`WorkflowStateService.delete`) |
 | Project → Issue | 1:N, opcional | `issue.project_id` nullable |
 | Issue → Comment | 1:N | |
 | Comment ↔ User | N:N via `comment_mentions` (`CommentMention`, Sprint 8) | menção detectada por `@local-part-do-email` no `body` |
@@ -418,7 +421,8 @@ Desde a Sprint 7 (ADR-012 em `docs/09-decision-log.md`), `Issue` não depende ma
 - `invitations`: `UNIQUE (workspace_id, email) WHERE accepted_at IS NULL AND deleted_at IS NULL` — no máximo um convite pendente por e-mail por workspace.
 - `team_members`: `UNIQUE (team_id, user_id) WHERE deleted_at IS NULL`.
 - `teams.key`: `UNIQUE (workspace_id, key) WHERE deleted_at IS NULL` — o código curto (`ENG`, `PROD`) é único dentro do workspace, não globalmente.
-- `workflow_states`: `UNIQUE (team_id, name)` e `UNIQUE (team_id, position)`, ambos parciais; mais `UNIQUE (team_id) WHERE is_default AND deleted_at IS NULL` — no máximo um estado default por time.
+- `workflow_states`: `UNIQUE (workspace_id, name)` e `UNIQUE (workspace_id, position)`, ambos parciais (`WHERE deleted_at IS NULL`); mais `UNIQUE (workspace_id) WHERE is_default AND deleted_at IS NULL` — no máximo um estado default por workspace. Reescopado de `team_id` para `workspace_id` na Sprint 9.2 (ADR-056, migration `43650f3d8613`) — antes disso a constraint era por `team_id`, ocioso desde a Sprint 7.
+- `issues.status_id`: FK `NOT NULL` para `workflow_states.id`, `ON DELETE RESTRICT` (Sprint 9.2/ADR-056, substitui o enum fixo `status` da Sprint 7).
 - `projects.slug`: `UNIQUE (workspace_id, slug) WHERE deleted_at IS NULL` (índice `uq_projects_workspace_id_slug_active`, Sprint 6, migration `fc0a10c66145`) — mesmo padrão parcial de `workspaces.slug`, slug fica livre de novo após soft delete.
 - `projects.name`: `UNIQUE (workspace_id, lower(name)) WHERE deleted_at IS NULL` (índice `uq_projects_workspace_id_name_active`, Sprint 6) — unicidade case-insensitive por workspace, checada também no service antes do insert/update (defesa em profundidade, mesmo racional de `docs/03-database.md` §4).
 - `issues`: `UNIQUE (workspace_id, number)` **sem** filtro parcial (Sprint 7 — antes `(team_id, number)`, ver ADR-012) — ao contrário de slug/key/name, o número não pode ser reciclado após soft delete (evita `FD-123` apontar para duas issues diferentes ao longo do tempo). Gerado via `WorkspaceIssueCounter` com `INSERT ... ON CONFLICT DO UPDATE ... RETURNING` no repository, atômico sem exigir uma linha pré-criada nem depender de `SERIAL` global.
@@ -516,3 +520,4 @@ Mais 2 migrations da Sprint 19.1, encadeadas sobre a 22 (`f4c36aa63332`), pequen
 
 23. `b3e7c1a9d240` — `add_key_to_projects`: coluna `key` (`NOT NULL` direto, banco de migração é limpo — mesma justificativa de `slug`/`created_by` da migration 15) + índice único parcial `uq_projects_workspace_id_key_active` (`deleted_at IS NULL`).
 24. `c8f4a2b6e130` — `create_project_members`: nova tabela `project_members` (`id`/`workspace_id`/`project_id`/`user_id`/`created_at`, FKs `RESTRICT`) + índice único `(project_id, user_id)`. Sem soft delete.
+25. `43650f3d8613` — `workspace_scope_workflow_states_status_id` (Sprint 9.2/ADR-056): **primeira migration deste projeto a seguir *expand → backfill → contract* de verdade** (as anteriores marcadas "destrutivas" podiam ser porque a tabela nunca tinha linha real — `issues` já tinha ~400 linhas nesta). (1) reescopa `workflow_states` de `team_id` para `workspace_id` (drop da FK/índices por `team_id`, novos índices únicos parciais por `workspace_id`); (2) semeia os 6 status antigos como linha real por workspace existente (`Backlog`/`Todo`/`In Progress`/`In Review`/`Done`/`Canceled`, categorias e posições preservadas); (3) adiciona `issues.status_id` nullable, backfilla via `UPDATE ... FROM workflow_states` casando pelo nome dentro do mesmo workspace, torna `NOT NULL`, dropa a coluna `status` antiga e cria a FK/índice novos. `downgrade()` é best-effort (documentado no docstring da migration): status customizados criados após o upgrade caem em `BACKLOG` na volta, sem tentar preservar customização — aceitável para o ciclo de verificação `upgrade → downgrade → upgrade`, não para produção real.

@@ -3,7 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from src.features.issues.models import Issue, IssueLabel, IssueStatus
+from src.features.issues.models import Issue, IssueLabel
 from src.features.issues.repository import IssueRepository
 from src.features.labels.models import Label
 from src.features.workspaces.models import Workspace
@@ -18,7 +18,7 @@ async def test_issue_defaults_and_identifier(
     assert loaded is not None
     assert loaded.workspace_id == workspace.id
     assert loaded.project_id is None
-    assert loaded.status == IssueStatus.BACKLOG
+    assert loaded.status_id == issue.status_id
     assert loaded.version == 1
     assert loaded.number == 1
     assert loaded.identifier == "FD-1"
@@ -46,6 +46,7 @@ async def test_issue_number_unique_per_workspace(
                 number=issue.number,
                 title="Outra issue com o mesmo número",
                 creator_id=issue.creator_id,
+                status_id=issue.status_id,
             )
         )
 

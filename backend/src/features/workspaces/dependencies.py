@@ -6,6 +6,8 @@ from src.core.config import Settings, get_settings
 from src.core.db import get_db_session
 from src.core.dependencies import get_user_repository
 from src.features.auth.repository import UserRepositoryProtocol
+from src.features.workflow_states.dependencies import get_workflow_state_service
+from src.features.workflow_states.service import WorkflowStateService
 from src.features.workspaces.repository import (
     InvitationRepository,
     InvitationRepositoryProtocol,
@@ -30,8 +32,9 @@ def get_invitation_repository(
 def get_workspace_service(
     workspace_repo: WorkspaceRepositoryProtocol = Depends(get_workspace_repository),
     permission_service: PermissionService = Depends(get_permission_service),
+    workflow_state_service: WorkflowStateService = Depends(get_workflow_state_service),
 ) -> WorkspaceService:
-    return WorkspaceService(workspace_repo, permission_service)
+    return WorkspaceService(workspace_repo, permission_service, workflow_state_service)
 
 
 def get_invitation_service(

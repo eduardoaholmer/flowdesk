@@ -58,6 +58,22 @@ async def _create_issue(
     return data
 
 
+async def _workflow_state_id(
+    client: AsyncClient, workspace_id: str, token: str, *, name: str | None = None
+) -> str:
+    """Sem `name`: devolve o status default do workspace (seedado na criação,
+    Sprint 9.2/ADR-056). Com `name`: devolve o status daquele nome."""
+    response = await client.get(
+        f"/api/v1/workspaces/{workspace_id}/workflow-states", headers=_auth(token)
+    )
+    states: list[dict[str, object]] = response.json()["data"]
+    if name is not None:
+        match = next(s for s in states if s["name"] == name)
+    else:
+        match = next(s for s in states if s["is_default"])
+    return str(match["id"])
+
+
 async def test_create_issue_generates_identifier_and_records_creator(client: AsyncClient) -> None:
     _, owner_token = await _register_and_login(client)
     workspace_id = await _create_workspace(client, owner_token)
@@ -70,10 +86,11 @@ async def test_create_issue_generates_identifier_and_records_creator(client: Asy
 
     assert response.status_code == 201
     body = response.json()["data"]
+    default_status_id = await _workflow_state_id(client, workspace_id, owner_token)
     assert body["title"] == "Corrigir bug de login"
     assert body["identifier"] == "FD-1"
     assert body["number"] == 1
-    assert body["status"] == "BACKLOG"
+    assert body["status_id"] == default_status_id
     assert body["priority"] == "HIGH"
     assert body["version"] == 1
     assert body["workspace_id"] == workspace_id
@@ -149,12 +166,15 @@ async def test_list_issues_paginates_and_returns_only_workspace_scoped(client: A
 async def test_list_issues_filters_by_status_priority_and_creator(client: AsyncClient) -> None:
     _, owner_token = await _register_and_login(client)
     workspace_id = await _create_workspace(client, owner_token)
-    todo = await _create_issue(client, workspace_id, owner_token, title="A fazer", status="TODO")
+    todo_status_id = await _workflow_state_id(client, workspace_id, owner_token, name="Todo")
+    todo = await _create_issue(
+        client, workspace_id, owner_token, title="A fazer", status_id=todo_status_id
+    )
     await _create_issue(client, workspace_id, owner_token, title="Urgente", priority="URGENT")
 
     status_response = await client.get(
         f"/api/v1/workspaces/{workspace_id}/issues",
-        params={"status": "TODO"},
+        params={"status_id": todo_status_id},
         headers=_auth(owner_token),
     )
     priority_response = await client.get(
@@ -218,15 +238,16 @@ async def test_update_issue_changes_status_and_records_activity(client: AsyncCli
     _, owner_token = await _register_and_login(client)
     workspace_id = await _create_workspace(client, owner_token)
     issue = await _create_issue(client, workspace_id, owner_token)
+    in_progress_id = await _workflow_state_id(client, workspace_id, owner_token, name="In Progress")
 
     response = await client.patch(
         f"/api/v1/workspaces/{workspace_id}/issues/{issue['id']}",
-        json={"status": "IN_PROGRESS"},
+        json={"status_id": in_progress_id},
         headers=_auth(owner_token),
     )
 
     assert response.status_code == 200
-    assert response.json()["data"]["status"] == "IN_PROGRESS"
+    assert response.json()["data"]["status_id"] == in_progress_id
     assert response.json()["data"]["version"] == 2
 
     activity = await client.get(

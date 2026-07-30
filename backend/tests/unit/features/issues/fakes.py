@@ -57,7 +57,7 @@ class FakeIssueRepository:
         workspace_id: uuid.UUID,
         *,
         project_id: uuid.UUID | None,
-        status: object | None,
+        status_id: object | None,
         priority: object | None,
         assignee_id: uuid.UUID | None,
         creator_id: uuid.UUID | None,
@@ -70,8 +70,8 @@ class FakeIssueRepository:
         ]
         if project_id is not None:
             matches = [i for i in matches if i.project_id == project_id]
-        if status is not None:
-            matches = [i for i in matches if i.status == status]
+        if status_id is not None:
+            matches = [i for i in matches if i.status_id == status_id]
         if priority is not None:
             matches = [i for i in matches if i.priority == priority]
         if assignee_id is not None:
@@ -96,7 +96,7 @@ class FakeIssueRepository:
         page: int = 1,
         per_page: int = 20,
         project_id: uuid.UUID | None = None,
-        status: object | None = None,
+        status_id: object | None = None,
         priority: object | None = None,
         assignee_id: uuid.UUID | None = None,
         creator_id: uuid.UUID | None = None,
@@ -106,7 +106,7 @@ class FakeIssueRepository:
         matches = self._filtered(
             workspace_id,
             project_id=project_id,
-            status=status,
+            status_id=status_id,
             priority=priority,
             assignee_id=assignee_id,
             creator_id=creator_id,
@@ -126,7 +126,7 @@ class FakeIssueRepository:
         workspace_id: uuid.UUID,
         *,
         project_id: uuid.UUID | None = None,
-        status: object | None = None,
+        status_id: object | None = None,
         priority: object | None = None,
         assignee_id: uuid.UUID | None = None,
         creator_id: uuid.UUID | None = None,
@@ -136,7 +136,7 @@ class FakeIssueRepository:
             self._filtered(
                 workspace_id,
                 project_id=project_id,
-                status=status,
+                status_id=status_id,
                 priority=priority,
                 assignee_id=assignee_id,
                 creator_id=creator_id,

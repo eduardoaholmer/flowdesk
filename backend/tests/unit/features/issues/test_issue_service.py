@@ -16,7 +16,7 @@ from src.features.issues.exceptions import (
     IssueNotFoundError,
     IssueVersionConflictError,
 )
-from src.features.issues.models import IssuePriority, IssueStatus
+from src.features.issues.models import IssuePriority
 from src.features.issues.schemas import IssueCreateRequest, IssueUpdateRequest
 from src.features.issues.service import IssueService
 from src.features.labels.exceptions import LabelNotFoundError
@@ -25,12 +25,15 @@ from src.features.notifications.models import NotificationType
 from src.features.notifications.service import NotificationService
 from src.features.projects.exceptions import ProjectNotFoundError
 from src.features.projects.models import Project
+from src.features.workflow_states.exceptions import WorkflowStateNotFoundError
+from src.features.workflow_states.models import WorkflowState, WorkflowStateCategory
 from src.features.workspaces.models import WorkspaceMember, WorkspaceRole
 
 from tests.unit.features.issues.fakes import FakeIssueRepository
 from tests.unit.features.labels.fakes import FakeLabelRepository
 from tests.unit.features.notifications.fakes import FakeNotificationRepository
 from tests.unit.features.projects.fakes import FakeProjectRepository
+from tests.unit.features.workflow_states.fakes import FakeWorkflowStateRepository
 
 # Autorização por papel para create/read/update é resolvida pelo router via
 # `Depends(require_permission(...))` (mesmo racional de `test_project_service.py`)
@@ -64,14 +67,25 @@ def notification_service(notification_repo: FakeNotificationRepository) -> Notif
 
 
 @pytest.fixture
+def workflow_state_repo() -> FakeWorkflowStateRepository:
+    return FakeWorkflowStateRepository()
+
+
+@pytest.fixture
 def service(
     issue_repo: FakeIssueRepository,
     project_repo: FakeProjectRepository,
     label_repo: FakeLabelRepository,
     notification_service: NotificationService,
+    workflow_state_repo: FakeWorkflowStateRepository,
 ) -> IssueService:
     return IssueService(
-        issue_repo, PermissionService(), project_repo, label_repo, notification_service
+        issue_repo,
+        PermissionService(),
+        project_repo,
+        label_repo,
+        notification_service,
+        workflow_state_repo,
     )
 
 
@@ -87,10 +101,37 @@ def _member(workspace_id: uuid.UUID, user_id: uuid.UUID, role: WorkspaceRole) ->
     return WorkspaceMember(workspace_id=workspace_id, user_id=user_id, role=role)
 
 
+async def _seed_status(
+    workflow_state_repo: FakeWorkflowStateRepository,
+    workspace_id: uuid.UUID,
+    *,
+    name: str = "Backlog",
+    category: WorkflowStateCategory = WorkflowStateCategory.BACKLOG,
+    position: int = 0,
+    is_default: bool = True,
+) -> WorkflowState:
+    """Mimetiza `WorkflowStateService.seed_defaults` (chamado por
+    `WorkspaceService.create` em produção) — testes unitários usam workspaces
+    ad-hoc (`_workspace_id()`), então precisam semear o status default à mão
+    antes de criar uma issue sem `status_id` explícito."""
+    return await workflow_state_repo.create(
+        WorkflowState(
+            workspace_id=workspace_id,
+            name=name,
+            category=category,
+            position=position,
+            is_default=is_default,
+        )
+    )
+
+
 async def test_create_generates_sequential_number_and_identifier(
-    service: IssueService, issue_repo: FakeIssueRepository
+    service: IssueService,
+    issue_repo: FakeIssueRepository,
+    workflow_state_repo: FakeWorkflowStateRepository,
 ) -> None:
     workspace_id = _workspace_id()
+    default_status = await _seed_status(workflow_state_repo, workspace_id)
     creator = _user()
 
     first = await service.create(creator, workspace_id, IssueCreateRequest(title="Bug de login"))
@@ -101,14 +142,17 @@ async def test_create_generates_sequential_number_and_identifier(
     assert second.number == 2
     assert second.identifier == "FD-2"
     assert first.creator_id == creator.id
-    assert first.status == IssueStatus.BACKLOG
+    assert first.status_id == default_status.id
     assert any(entry.action == "issue.created" for entry in issue_repo.activity_log)
 
 
 async def test_create_rejects_project_from_another_workspace(
-    service: IssueService, project_repo: FakeProjectRepository
+    service: IssueService,
+    project_repo: FakeProjectRepository,
+    workflow_state_repo: FakeWorkflowStateRepository,
 ) -> None:
     workspace_id = _workspace_id()
+    await _seed_status(workflow_state_repo, workspace_id)
     other_workspace_project = await project_repo.create(
         Project(
             workspace_id=_workspace_id(),
@@ -126,24 +170,51 @@ async def test_create_rejects_project_from_another_workspace(
         )
 
 
+async def test_create_rejects_status_from_another_workspace(
+    service: IssueService, workflow_state_repo: FakeWorkflowStateRepository
+) -> None:
+    workspace_id = _workspace_id()
+    await _seed_status(workflow_state_repo, workspace_id)
+    foreign_status = await _seed_status(workflow_state_repo, _workspace_id(), name="Foreign")
+
+    with pytest.raises(WorkflowStateNotFoundError):
+        await service.create(
+            _user(), workspace_id, IssueCreateRequest(title="Issue", status_id=foreign_status.id)
+        )
+
+
 async def test_get_raises_not_found_for_missing_issue(service: IssueService) -> None:
     with pytest.raises(IssueNotFoundError):
         await service.get(_workspace_id(), uuid.uuid4())
 
 
-async def test_get_raises_not_found_across_workspaces(service: IssueService) -> None:
+async def test_get_raises_not_found_across_workspaces(
+    service: IssueService, workflow_state_repo: FakeWorkflowStateRepository
+) -> None:
     workspace_id = _workspace_id()
+    await _seed_status(workflow_state_repo, workspace_id)
     issue = await service.create(_user(), workspace_id, IssueCreateRequest(title="Issue"))
 
     with pytest.raises(IssueNotFoundError):
         await service.get(_workspace_id(), issue.id)
 
 
-async def test_list_for_workspace_filters_by_status_and_priority(service: IssueService) -> None:
+async def test_list_for_workspace_filters_by_status_and_priority(
+    service: IssueService, workflow_state_repo: FakeWorkflowStateRepository
+) -> None:
     workspace_id = _workspace_id()
+    await _seed_status(workflow_state_repo, workspace_id)
+    todo_status = await _seed_status(
+        workflow_state_repo,
+        workspace_id,
+        name="Todo",
+        category=WorkflowStateCategory.UNSTARTED,
+        position=1,
+        is_default=False,
+    )
     actor = _user()
     todo = await service.create(
-        actor, workspace_id, IssueCreateRequest(title="A fazer", status=IssueStatus.TODO)
+        actor, workspace_id, IssueCreateRequest(title="A fazer", status_id=todo_status.id)
     )
     await service.create(
         actor,
@@ -156,7 +227,7 @@ async def test_list_for_workspace_filters_by_status_and_priority(service: IssueS
         page=1,
         per_page=20,
         project_id=None,
-        status=IssueStatus.TODO,
+        status_id=todo_status.id,
         priority=None,
         assignee_id=None,
         creator_id=None,
@@ -168,7 +239,7 @@ async def test_list_for_workspace_filters_by_status_and_priority(service: IssueS
         page=1,
         per_page=20,
         project_id=None,
-        status=None,
+        status_id=None,
         priority=IssuePriority.URGENT,
         assignee_id=None,
         creator_id=None,
@@ -183,25 +254,47 @@ async def test_list_for_workspace_filters_by_status_and_priority(service: IssueS
 
 
 async def test_update_changes_status_and_records_status_changed_activity(
-    service: IssueService, issue_repo: FakeIssueRepository
+    service: IssueService,
+    issue_repo: FakeIssueRepository,
+    workflow_state_repo: FakeWorkflowStateRepository,
 ) -> None:
     workspace_id = _workspace_id()
+    await _seed_status(workflow_state_repo, workspace_id)
+    in_progress = await _seed_status(
+        workflow_state_repo,
+        workspace_id,
+        name="In Progress",
+        category=WorkflowStateCategory.STARTED,
+        position=1,
+        is_default=False,
+    )
     actor = _user()
     issue = await service.create(actor, workspace_id, IssueCreateRequest(title="Issue"))
 
     updated = await service.update(
-        actor, workspace_id, issue.id, IssueUpdateRequest(status=IssueStatus.IN_PROGRESS)
+        actor, workspace_id, issue.id, IssueUpdateRequest(status_id=in_progress.id)
     )
 
-    assert updated.status == IssueStatus.IN_PROGRESS
+    assert updated.status_id == in_progress.id
     assert updated.version == 2
     assert any(entry.action == "issue.status_changed" for entry in issue_repo.activity_log)
 
 
 async def test_update_status_change_notifies_assignee(
-    service: IssueService, notification_repo: FakeNotificationRepository
+    service: IssueService,
+    notification_repo: FakeNotificationRepository,
+    workflow_state_repo: FakeWorkflowStateRepository,
 ) -> None:
     workspace_id = _workspace_id()
+    await _seed_status(workflow_state_repo, workspace_id)
+    in_progress = await _seed_status(
+        workflow_state_repo,
+        workspace_id,
+        name="In Progress",
+        category=WorkflowStateCategory.STARTED,
+        position=1,
+        is_default=False,
+    )
     actor = _user()
     assignee_id = uuid.uuid4()
     issue = await service.create(
@@ -209,7 +302,7 @@ async def test_update_status_change_notifies_assignee(
     )
 
     await service.update(
-        actor, workspace_id, issue.id, IssueUpdateRequest(status=IssueStatus.IN_PROGRESS)
+        actor, workspace_id, issue.id, IssueUpdateRequest(status_id=in_progress.id)
     )
 
     notifications = list(notification_repo.notifications.values())
@@ -217,43 +310,68 @@ async def test_update_status_change_notifies_assignee(
     assert notifications[0].user_id == assignee_id
     assert notifications[0].type == NotificationType.STATUS_CHANGE
     assert notifications[0].payload["issue_identifier"] == issue.identifier
-    assert notifications[0].payload["new_status"] == IssueStatus.IN_PROGRESS.value
+    assert notifications[0].payload["new_status"] == "In Progress"
 
 
 async def test_update_status_change_does_not_notify_when_unassigned(
-    service: IssueService, notification_repo: FakeNotificationRepository
+    service: IssueService,
+    notification_repo: FakeNotificationRepository,
+    workflow_state_repo: FakeWorkflowStateRepository,
 ) -> None:
     workspace_id = _workspace_id()
+    await _seed_status(workflow_state_repo, workspace_id)
+    in_progress = await _seed_status(
+        workflow_state_repo,
+        workspace_id,
+        name="In Progress",
+        category=WorkflowStateCategory.STARTED,
+        position=1,
+        is_default=False,
+    )
     actor = _user()
     issue = await service.create(actor, workspace_id, IssueCreateRequest(title="Issue"))
 
     await service.update(
-        actor, workspace_id, issue.id, IssueUpdateRequest(status=IssueStatus.IN_PROGRESS)
+        actor, workspace_id, issue.id, IssueUpdateRequest(status_id=in_progress.id)
     )
 
     assert notification_repo.notifications == {}
 
 
 async def test_update_status_change_does_not_notify_self_assigned_actor(
-    service: IssueService, notification_repo: FakeNotificationRepository
+    service: IssueService,
+    notification_repo: FakeNotificationRepository,
+    workflow_state_repo: FakeWorkflowStateRepository,
 ) -> None:
     workspace_id = _workspace_id()
+    await _seed_status(workflow_state_repo, workspace_id)
+    in_progress = await _seed_status(
+        workflow_state_repo,
+        workspace_id,
+        name="In Progress",
+        category=WorkflowStateCategory.STARTED,
+        position=1,
+        is_default=False,
+    )
     actor = _user()
     issue = await service.create(
         actor, workspace_id, IssueCreateRequest(title="Issue", assignee_id=actor.id)
     )
 
     await service.update(
-        actor, workspace_id, issue.id, IssueUpdateRequest(status=IssueStatus.IN_PROGRESS)
+        actor, workspace_id, issue.id, IssueUpdateRequest(status_id=in_progress.id)
     )
 
     assert notification_repo.notifications == {}
 
 
 async def test_update_with_no_changes_does_not_record_activity_or_bump_version(
-    service: IssueService, issue_repo: FakeIssueRepository
+    service: IssueService,
+    issue_repo: FakeIssueRepository,
+    workflow_state_repo: FakeWorkflowStateRepository,
 ) -> None:
     workspace_id = _workspace_id()
+    await _seed_status(workflow_state_repo, workspace_id)
     actor = _user()
     issue = await service.create(actor, workspace_id, IssueCreateRequest(title="Issue"))
     issue_repo.activity_log.clear()
@@ -265,9 +383,10 @@ async def test_update_with_no_changes_does_not_record_activity_or_bump_version(
 
 
 async def test_update_raises_version_conflict_on_stale_expected_version(
-    service: IssueService,
+    service: IssueService, workflow_state_repo: FakeWorkflowStateRepository
 ) -> None:
     workspace_id = _workspace_id()
+    await _seed_status(workflow_state_repo, workspace_id)
     actor = _user()
     issue = await service.create(actor, workspace_id, IssueCreateRequest(title="Issue"))
     await service.update(actor, workspace_id, issue.id, IssueUpdateRequest(title="Renomeada"))
@@ -283,9 +402,12 @@ async def test_update_raises_version_conflict_on_stale_expected_version(
 
 
 async def test_update_validates_new_project_belongs_to_workspace(
-    service: IssueService, project_repo: FakeProjectRepository
+    service: IssueService,
+    project_repo: FakeProjectRepository,
+    workflow_state_repo: FakeWorkflowStateRepository,
 ) -> None:
     workspace_id = _workspace_id()
+    await _seed_status(workflow_state_repo, workspace_id)
     actor = _user()
     issue = await service.create(actor, workspace_id, IssueCreateRequest(title="Issue"))
     foreign_project = await project_repo.create(
@@ -304,17 +426,18 @@ async def test_update_validates_new_project_belongs_to_workspace(
 
 
 async def test_update_clears_due_date_when_explicitly_set_to_none(
-    service: IssueService, issue_repo: FakeIssueRepository
+    service: IssueService,
+    issue_repo: FakeIssueRepository,
+    workflow_state_repo: FakeWorkflowStateRepository,
 ) -> None:
     workspace_id = _workspace_id()
+    await _seed_status(workflow_state_repo, workspace_id)
     actor = _user()
     issue = await service.create(
         actor, workspace_id, IssueCreateRequest(title="Issue", due_date=date(2026, 1, 1))
     )
 
-    updated = await service.update(
-        actor, workspace_id, issue.id, IssueUpdateRequest(due_date=None)
-    )
+    updated = await service.update(actor, workspace_id, issue.id, IssueUpdateRequest(due_date=None))
 
     assert updated.due_date is None
     assert updated.version == 2
@@ -325,9 +448,12 @@ async def test_update_clears_due_date_when_explicitly_set_to_none(
 
 
 async def test_update_omitting_due_date_leaves_it_unchanged(
-    service: IssueService, issue_repo: FakeIssueRepository
+    service: IssueService,
+    issue_repo: FakeIssueRepository,
+    workflow_state_repo: FakeWorkflowStateRepository,
 ) -> None:
     workspace_id = _workspace_id()
+    await _seed_status(workflow_state_repo, workspace_id)
     actor = _user()
     issue = await service.create(
         actor, workspace_id, IssueCreateRequest(title="Issue", due_date=date(2026, 1, 1))
@@ -359,9 +485,12 @@ def test_due_date_within_business_range_is_accepted(request_cls: type) -> None:
 
 
 async def test_delete_by_creator_succeeds_via_ownership_override(
-    service: IssueService, issue_repo: FakeIssueRepository
+    service: IssueService,
+    issue_repo: FakeIssueRepository,
+    workflow_state_repo: FakeWorkflowStateRepository,
 ) -> None:
     workspace_id = _workspace_id()
+    await _seed_status(workflow_state_repo, workspace_id)
     creator = _user()
     issue = await service.create(creator, workspace_id, IssueCreateRequest(title="Issue"))
     creator_member = _member(workspace_id, creator.id, WorkspaceRole.MEMBER)
@@ -373,9 +502,12 @@ async def test_delete_by_creator_succeeds_via_ownership_override(
 
 
 async def test_delete_by_non_creator_member_raises_permission_denied(
-    service: IssueService, issue_repo: FakeIssueRepository
+    service: IssueService,
+    issue_repo: FakeIssueRepository,
+    workflow_state_repo: FakeWorkflowStateRepository,
 ) -> None:
     workspace_id = _workspace_id()
+    await _seed_status(workflow_state_repo, workspace_id)
     creator = _user()
     issue = await service.create(creator, workspace_id, IssueCreateRequest(title="Issue"))
     other_member = _member(workspace_id, uuid.uuid4(), WorkspaceRole.MEMBER)
@@ -387,9 +519,12 @@ async def test_delete_by_non_creator_member_raises_permission_denied(
 
 
 async def test_delete_by_admin_succeeds_without_being_creator(
-    service: IssueService, issue_repo: FakeIssueRepository
+    service: IssueService,
+    issue_repo: FakeIssueRepository,
+    workflow_state_repo: FakeWorkflowStateRepository,
 ) -> None:
     workspace_id = _workspace_id()
+    await _seed_status(workflow_state_repo, workspace_id)
     creator = _user()
     issue = await service.create(creator, workspace_id, IssueCreateRequest(title="Issue"))
     admin_member = _member(workspace_id, uuid.uuid4(), WorkspaceRole.ADMIN)
@@ -400,9 +535,13 @@ async def test_delete_by_admin_succeeds_without_being_creator(
 
 
 async def test_add_label_links_label_and_records_activity(
-    service: IssueService, issue_repo: FakeIssueRepository, label_repo: FakeLabelRepository
+    service: IssueService,
+    issue_repo: FakeIssueRepository,
+    label_repo: FakeLabelRepository,
+    workflow_state_repo: FakeWorkflowStateRepository,
 ) -> None:
     workspace_id = _workspace_id()
+    await _seed_status(workflow_state_repo, workspace_id)
     actor = _user()
     issue = await service.create(actor, workspace_id, IssueCreateRequest(title="Issue"))
     label = await label_repo.create(Label(workspace_id=workspace_id, name="bug", color="#FF0000"))
@@ -415,9 +554,13 @@ async def test_add_label_links_label_and_records_activity(
 
 
 async def test_add_label_rejects_label_from_another_workspace(
-    service: IssueService, issue_repo: FakeIssueRepository, label_repo: FakeLabelRepository
+    service: IssueService,
+    issue_repo: FakeIssueRepository,
+    label_repo: FakeLabelRepository,
+    workflow_state_repo: FakeWorkflowStateRepository,
 ) -> None:
     workspace_id = _workspace_id()
+    await _seed_status(workflow_state_repo, workspace_id)
     actor = _user()
     issue = await service.create(actor, workspace_id, IssueCreateRequest(title="Issue"))
     foreign_label = await label_repo.create(
@@ -429,9 +572,13 @@ async def test_add_label_rejects_label_from_another_workspace(
 
 
 async def test_add_label_twice_raises_conflict(
-    service: IssueService, issue_repo: FakeIssueRepository, label_repo: FakeLabelRepository
+    service: IssueService,
+    issue_repo: FakeIssueRepository,
+    label_repo: FakeLabelRepository,
+    workflow_state_repo: FakeWorkflowStateRepository,
 ) -> None:
     workspace_id = _workspace_id()
+    await _seed_status(workflow_state_repo, workspace_id)
     actor = _user()
     issue = await service.create(actor, workspace_id, IssueCreateRequest(title="Issue"))
     label = await label_repo.create(Label(workspace_id=workspace_id, name="bug", color="#FF0000"))
@@ -442,9 +589,13 @@ async def test_add_label_twice_raises_conflict(
 
 
 async def test_remove_label_unlinks_and_records_activity(
-    service: IssueService, issue_repo: FakeIssueRepository, label_repo: FakeLabelRepository
+    service: IssueService,
+    issue_repo: FakeIssueRepository,
+    label_repo: FakeLabelRepository,
+    workflow_state_repo: FakeWorkflowStateRepository,
 ) -> None:
     workspace_id = _workspace_id()
+    await _seed_status(workflow_state_repo, workspace_id)
     actor = _user()
     issue = await service.create(actor, workspace_id, IssueCreateRequest(title="Issue"))
     label = await label_repo.create(Label(workspace_id=workspace_id, name="bug", color="#FF0000"))

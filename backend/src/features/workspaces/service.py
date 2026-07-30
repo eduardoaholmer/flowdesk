@@ -9,6 +9,7 @@ from src.core.config import Settings
 from src.core.security import CurrentUser, generate_invitation_token, hash_invitation_token
 from src.core.slug import slugify
 from src.features.auth.repository import UserRepositoryProtocol
+from src.features.workflow_states.service import WorkflowStateService
 from src.features.workspaces.exceptions import (
     AlreadyMemberError,
     CannotLeaveAsSoleOwnerError,
@@ -51,7 +52,10 @@ class InvitationIssued:
 
 class WorkspaceService:
     def __init__(
-        self, workspace_repo: WorkspaceRepositoryProtocol, permission_service: PermissionService
+        self,
+        workspace_repo: WorkspaceRepositoryProtocol,
+        permission_service: PermissionService,
+        workflow_state_service: WorkflowStateService,
     ) -> None:
         """Autorização (posse de tenant e papel) não é mais checada aqui — o
         router já resolveu `Depends(require_permission(...))` antes deste
@@ -59,9 +63,15 @@ class WorkspaceService:
         service só recebe `permission_service` para checagens contextuais que
         dependem de um recurso já buscado (`require_can_manage_member`), que
         não são resolvíveis apenas a partir do path da requisição.
+
+        `workflow_state_service` (Sprint 9.2/ADR-056) semeia os 6 status
+        padrão de todo workspace novo — *service* de outra feature, não o
+        repository (`docs/02-architecture.md`), mesmo padrão de
+        `IssueService._notification_service`.
         """
         self._workspace_repo = workspace_repo
         self._permission_service = permission_service
+        self._workflow_state_service = workflow_state_service
 
     async def create(self, current_user: CurrentUser, payload: WorkspaceCreateRequest) -> Workspace:
         slug = await self._resolve_slug(payload.name, payload.slug)
@@ -78,6 +88,7 @@ class WorkspaceService:
                 workspace_id=workspace.id, user_id=current_user.id, role=WorkspaceRole.OWNER
             )
         )
+        await self._workflow_state_service.seed_defaults(workspace.id)
         await self._record_activity(
             workspace.id, current_user.id, "workspace.created", {"name": workspace.name}
         )

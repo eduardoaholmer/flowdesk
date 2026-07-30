@@ -12,8 +12,10 @@ from src.features.issues.repository import IssueRepository
 from src.features.labels.models import Label
 from src.features.labels.repository import LabelRepository
 from src.features.notifications.repository import NotificationRepository
-from src.features.teams.models import Team, WorkflowState, WorkflowStateCategory
+from src.features.teams.models import Team
 from src.features.teams.repository import TeamRepository
+from src.features.workflow_states.models import WorkflowState, WorkflowStateCategory
+from src.features.workflow_states.repository import WorkflowStateRepository
 from src.features.workspaces.models import Workspace, WorkspaceMember, WorkspaceRole
 from src.features.workspaces.repository import InvitationRepository, WorkspaceRepository
 
@@ -45,6 +47,11 @@ def invitation_repo(db_session: AsyncSession) -> InvitationRepository:
 @pytest.fixture
 def team_repo(db_session: AsyncSession) -> TeamRepository:
     return TeamRepository(db_session)
+
+
+@pytest.fixture
+def workflow_state_repo(db_session: AsyncSession) -> WorkflowStateRepository:
+    return WorkflowStateRepository(db_session)
 
 
 @pytest.fixture
@@ -102,18 +109,18 @@ async def team(team_repo: TeamRepository, workspace: Workspace) -> Team:
 
 
 @pytest.fixture
-async def workflow_state(db_session: AsyncSession, team: Team) -> WorkflowState:
-    state = WorkflowState(
-        team_id=team.id,
-        workspace_id=team.workspace_id,
-        name="Todo",
-        category=WorkflowStateCategory.UNSTARTED,
-        position=1,
-        is_default=True,
+async def workflow_state(
+    workflow_state_repo: WorkflowStateRepository, workspace: Workspace
+) -> WorkflowState:
+    return await workflow_state_repo.create(
+        WorkflowState(
+            workspace_id=workspace.id,
+            name="Todo",
+            category=WorkflowStateCategory.UNSTARTED,
+            position=0,
+            is_default=True,
+        )
     )
-    db_session.add(state)
-    await db_session.flush()
-    return state
 
 
 @pytest.fixture
@@ -125,6 +132,7 @@ async def label(label_repo: LabelRepository, workspace: Workspace) -> Label:
 async def issue(
     issue_repo: IssueRepository,
     workspace: Workspace,
+    workflow_state: WorkflowState,
     user: User,
 ) -> Issue:
     number = await issue_repo.next_number(workspace.id)
@@ -135,6 +143,7 @@ async def issue(
             title="Corrigir bug de login",
             priority=IssuePriority.MEDIUM,
             creator_id=user.id,
+            status_id=workflow_state.id,
         )
     )
 

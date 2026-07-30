@@ -11,6 +11,7 @@ from src.features.issues.schemas import IssueCreateRequest
 from src.features.issues.service import IssueService
 from src.features.notifications.models import NotificationType
 from src.features.notifications.service import NotificationService
+from src.features.workflow_states.models import WorkflowState, WorkflowStateCategory
 from src.features.workspaces.models import WorkspaceMember, WorkspaceRole
 
 from tests.unit.features.comments.fakes import FakeCommentRepository
@@ -18,6 +19,7 @@ from tests.unit.features.issues.fakes import FakeIssueRepository
 from tests.unit.features.labels.fakes import FakeLabelRepository
 from tests.unit.features.notifications.fakes import FakeNotificationRepository
 from tests.unit.features.projects.fakes import FakeProjectRepository
+from tests.unit.features.workflow_states.fakes import FakeWorkflowStateRepository
 from tests.unit.features.workspaces.fakes import FakeWorkspaceRepository
 
 
@@ -72,12 +74,23 @@ def service(
 
 
 async def _create_issue(issue_repo: FakeIssueRepository, workspace_id: uuid.UUID) -> uuid.UUID:
+    workflow_state_repo = FakeWorkflowStateRepository()
+    await workflow_state_repo.create(
+        WorkflowState(
+            workspace_id=workspace_id,
+            name="Backlog",
+            category=WorkflowStateCategory.BACKLOG,
+            position=0,
+            is_default=True,
+        )
+    )
     issue_service = IssueService(
         issue_repo,
         PermissionService(),
         FakeProjectRepository(),
         FakeLabelRepository(),
         NotificationService(FakeNotificationRepository()),
+        workflow_state_repo,
     )
     issue = await issue_service.create(_user(), workspace_id, IssueCreateRequest(title="Issue"))
     return issue.id

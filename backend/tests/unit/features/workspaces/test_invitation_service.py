@@ -6,6 +6,7 @@ from src.core.authorization import PermissionService
 from src.core.config import Settings
 from src.core.security import CurrentUser
 from src.features.auth.models import User
+from src.features.workflow_states.service import WorkflowStateService
 from src.features.workspaces.exceptions import (
     AlreadyMemberError,
     InvitationAlreadyAcceptedError,
@@ -19,6 +20,7 @@ from src.features.workspaces.schemas import InvitationCreateRequest, WorkspaceCr
 from src.features.workspaces.service import InvitationService, WorkspaceService
 
 from tests.unit.features.auth.fakes import FakeUserRepository
+from tests.unit.features.workflow_states.fakes import FakeWorkflowStateRepository
 from tests.unit.features.workspaces.fakes import FakeInvitationRepository, FakeWorkspaceRepository
 
 # Autorização (quem pode convidar/cancelar) não é mais uma regra deste service
@@ -46,7 +48,8 @@ def user_repo() -> FakeUserRepository:
 
 @pytest.fixture
 def workspace_service(workspace_repo: FakeWorkspaceRepository) -> WorkspaceService:
-    return WorkspaceService(workspace_repo, PermissionService())
+    workflow_state_service = WorkflowStateService(FakeWorkflowStateRepository())
+    return WorkspaceService(workspace_repo, PermissionService(), workflow_state_service)
 
 
 @pytest.fixture
