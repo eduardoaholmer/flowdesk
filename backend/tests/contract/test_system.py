@@ -84,3 +84,19 @@ async def test_metrics_groups_unmatched_routes_under_a_single_label(client: Asyn
     unmatched = [entry for entry in endpoints if entry["route"] == "<unmatched>"]
     assert len(unmatched) == 1
     assert unmatched[0]["request_count"] == 2
+
+
+async def test_cors_allows_any_vercel_preview_subdomain(client: AsyncClient) -> None:
+    origin = "https://flowdesk-git-feature-x-eduardoaholmer.vercel.app"
+
+    response = await client.get("/health", headers={"Origin": origin})
+
+    assert response.headers["access-control-allow-origin"] == origin
+
+
+async def test_cors_rejects_lookalike_non_vercel_origin(client: AsyncClient) -> None:
+    response = await client.get(
+        "/health", headers={"Origin": "https://evil.com/.vercel.app"}
+    )
+
+    assert "access-control-allow-origin" not in response.headers

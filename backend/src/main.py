@@ -72,6 +72,10 @@ app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
+    # Deploys de preview da Vercel geram um subdomínio novo por PR/branch
+    # (ex.: flowdesk-git-feature-x.vercel.app) — não cabem na lista fixa de
+    # CORS_ORIGINS, então uma regex separada cobre qualquer *.vercel.app.
+    allow_origin_regex=r"^https://[a-zA-Z0-9-]+\.vercel\.app$",
     allow_credentials=True,
     allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "X-CSRF-Token"],
