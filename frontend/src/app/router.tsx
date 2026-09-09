@@ -10,9 +10,11 @@ import {
   IssuesPage,
   LabelsPage,
   OAuthCallbackPage,
+  PrivacyPolicyPage,
   ProjectDetailPage,
   ProjectsPage,
   ResetPasswordPage,
+  TermsOfServicePage,
   WorkspaceSettingsPage,
 } from "@/app/lazyPages";
 import { AppLayout } from "@/shared/components/layout/AppLayout";
@@ -31,6 +33,8 @@ function withPageSuspense(element: ReactNode) {
 export const router = createBrowserRouter([
   { path: "/login", element: <LoginPage /> },
   { path: "/oauth/callback", element: withPageSuspense(<OAuthCallbackPage />) },
+  { path: "/privacy", element: withPageSuspense(<PrivacyPolicyPage />) },
+  { path: "/terms", element: withPageSuspense(<TermsOfServicePage />) },
   { path: "/forgot-password", element: withPageSuspense(<ForgotPasswordPage />) },
   { path: routePatterns.resetPassword, element: withPageSuspense(<ResetPasswordPage />) },
   {
