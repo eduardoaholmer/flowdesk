@@ -1,13 +1,16 @@
 import secrets
 
 from fastapi import APIRouter, Depends, Request, Response, status
+from fastapi.responses import RedirectResponse
 
 from src.core.config import Settings, get_settings
 from src.core.dependencies import get_current_user
+from src.core.exceptions import FlowDeskError
 from src.core.schemas import DataEnvelope
 from src.core.security import CurrentUser
 from src.features.auth.dependencies import get_auth_service
-from src.features.auth.exceptions import InvalidRefreshTokenError
+from src.features.auth.exceptions import InvalidRefreshTokenError, OAuthProviderError
+from src.features.auth.oauth_providers import OAuthProvider
 from src.features.auth.schemas import (
     AccessTokenResponse,
     LoginRequest,
@@ -26,6 +29,9 @@ CSRF_COOKIE_NAME = "csrf_token"
 REMEMBER_COOKIE_NAME = "remember_me"
 CSRF_HEADER_NAME = "X-CSRF-Token"
 COOKIE_PATH = "/api/v1/auth"
+
+OAUTH_STATE_COOKIE_NAME = "oauth_state"
+_OAUTH_STATE_MAX_AGE_SECONDS = 10 * 60
 
 
 async def verify_csrf_token(request: Request) -> None:
@@ -195,3 +201,99 @@ async def confirm_password_reset(
     service: AuthService = Depends(get_auth_service),
 ) -> None:
     await service.confirm_password_reset(payload.token, payload.new_password)
+
+
+@router.get("/{provider}/login")
+async def oauth_login(
+    provider: OAuthProvider,
+    service: AuthService = Depends(get_auth_service),
+    settings: Settings = Depends(get_settings),
+) -> RedirectResponse:
+    """Início do Authorization Code flow: redireciona o navegador para o provedor.
+
+    `state` é gerado aqui e guardado em cookie próprio (nunca no cookie de CSRF do
+    resto do fluxo — semânticas de proteção diferentes) para o `callback` comparar
+    depois; `SameSite=Lax` (não `Strict`, diferente dos outros cookies deste
+    router) porque este cookie precisa sobreviver à navegação de nível superior de
+    volta ao nosso domínio vinda de `accounts.google.com`/`github.com` — um cookie
+    `Strict` seria descartado pelo navegador nesse retorno. Mesma exceção à regra de
+    "rota não trata exceção" do `callback` abaixo, pelo mesmo motivo: um provedor
+    desligado neste ambiente (`OAuthProviderNotConfiguredError`) também precisa
+    virar um redirect de volta à SPA, não um JSON cru na aba do navegador.
+    """
+    state = secrets.token_urlsafe(32)
+    try:
+        authorize_url = service.build_oauth_authorize_url(provider, state)
+    except FlowDeskError as exc:
+        return RedirectResponse(
+            f"{settings.frontend_base_url}/oauth/callback?error={exc.code}",
+            status_code=status.HTTP_302_FOUND,
+        )
+
+    response = RedirectResponse(authorize_url, status_code=status.HTTP_302_FOUND)
+    response.set_cookie(
+        OAUTH_STATE_COOKIE_NAME,
+        state,
+        max_age=_OAUTH_STATE_MAX_AGE_SECONDS,
+        path=COOKIE_PATH,
+        httponly=True,
+        secure=settings.is_production,
+        samesite="lax",
+    )
+    return response
+
+
+@router.get("/{provider}/callback")
+async def oauth_callback(
+    provider: OAuthProvider,
+    request: Request,
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+    service: AuthService = Depends(get_auth_service),
+    settings: Settings = Depends(get_settings),
+) -> RedirectResponse:
+    """Fim do Authorization Code flow.
+
+    Diferente de toda outra rota deste router, aqui a exceção de domínio é
+    capturada manualmente (não sobe para o exception handler global, CLAUDE.md
+    §7/§4) — de propósito: quem chega aqui é o navegador fazendo uma navegação de
+    página inteira vinda do provedor, não um cliente JS lendo um envelope JSON.
+    Deixar a exceção subir devolveria um JSON cru numa aba do navegador; em vez
+    disso traduzimos para um redirect de volta à SPA com o `code` do erro na
+    query string, que é quem sabe mostrar isso decentemente ao usuário.
+    """
+    cookie_state = request.cookies.get(OAUTH_STATE_COOKIE_NAME)
+    try:
+        state_is_valid = (
+            state is not None
+            and cookie_state is not None
+            and secrets.compare_digest(state, cookie_state)
+        )
+        if error or not code or not state_is_valid:
+            raise OAuthProviderError()
+
+        result = await service.login_with_oauth(
+            provider,
+            code,
+            user_agent=request.headers.get("user-agent"),
+            ip_address=request.client.host if request.client else None,
+        )
+    except FlowDeskError as exc:
+        redirect = RedirectResponse(
+            f"{settings.frontend_base_url}/oauth/callback?error={exc.code}",
+            status_code=status.HTTP_302_FOUND,
+        )
+        redirect.delete_cookie(OAUTH_STATE_COOKIE_NAME, path=COOKIE_PATH)
+        return redirect
+
+    response = RedirectResponse(
+        f"{settings.frontend_base_url}/oauth/callback", status_code=status.HTTP_302_FOUND
+    )
+    # Não há um checkbox de "lembrar de mim" neste fluxo (não passa por um
+    # formulário) — login social sempre se comporta como se estivesse marcado.
+    _set_auth_cookies(
+        response, refresh_token=result.refresh_token, settings=settings, remember_me=True
+    )
+    response.delete_cookie(OAUTH_STATE_COOKIE_NAME, path=COOKIE_PATH)
+    return response

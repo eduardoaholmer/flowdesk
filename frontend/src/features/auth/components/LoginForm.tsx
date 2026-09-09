@@ -10,10 +10,44 @@ import { Checkbox } from "@/shared/components/ui/checkbox";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
 import { PasswordInput } from "@/shared/components/forms/PasswordInput";
+import { GitHubIcon, GoogleIcon } from "@/shared/components/icons/ProviderIcons";
 import { cn } from "@/shared/lib/utils";
 import { useAuthStore } from "@/shared/stores/authStore";
 
-import { login, register as registerUser } from "../api";
+import { login, oauthLoginUrl, register as registerUser } from "../api";
+
+/** Idêntico para login e cadastro: os dois modos resolvem no mesmo find-or-create
+ * no backend (`AuthService.login_with_oauth`), então não há um formulário
+ * separado para "criar conta com Google" — é a mesma navegação de página
+ * inteira em qualquer aba. */
+function SocialLoginButtons() {
+  return (
+    <div className="flex flex-col gap-2">
+      <Button
+        type="button"
+        variant="outline"
+        className="w-full"
+        onClick={() => {
+          window.location.href = oauthLoginUrl("google");
+        }}
+      >
+        <GoogleIcon className="size-4" />
+        Continuar com Google
+      </Button>
+      <Button
+        type="button"
+        variant="outline"
+        className="w-full"
+        onClick={() => {
+          window.location.href = oauthLoginUrl("github");
+        }}
+      >
+        <GitHubIcon className="size-4" />
+        Continuar com GitHub
+      </Button>
+    </div>
+  );
+}
 
 const loginSchema = z.object({
   email: z.string().min(1, "Informe o e-mail.").email("E-mail inválido."),
@@ -230,6 +264,12 @@ export function LoginForm({ redirectTo = "/" }: { redirectTo?: string }) {
         ) : (
           <RegisterTab onRegistered={() => setMode("login")} />
         )}
+        <div className="my-4 flex items-center gap-3">
+          <div className="h-px flex-1 bg-border" />
+          <span className="text-xs text-t3">ou</span>
+          <div className="h-px flex-1 bg-border" />
+        </div>
+        <SocialLoginButtons />
       </div>
     </div>
   );

@@ -39,3 +39,6 @@ export const ForgotPasswordPage = lazy(() =>
 export const ResetPasswordPage = lazy(() =>
   import("@/pages/ResetPasswordPage").then((module) => ({ default: module.ResetPasswordPage })),
 );
+export const OAuthCallbackPage = lazy(() =>
+  import("@/pages/OAuthCallbackPage").then((module) => ({ default: module.OAuthCallbackPage })),
+);

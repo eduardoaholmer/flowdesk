@@ -110,6 +110,19 @@ class Settings(BaseSettings):
     # `cors_origins_raw` para o ambiente local.
     frontend_base_url: str = "http://localhost:5173"
 
+    # Login social (Google/GitHub) — Authorization Code flow (`docs/09-decision-log.md`
+    # ADR-061). Cada provedor é opt-in: um `client_id` ausente desliga o provedor
+    # (`AuthService` simplesmente não constrói um client para ele, e a rota
+    # correspondente responde `oauth_provider_not_configured`) sem exigir os três
+    # campos de nenhum provedor que o ambiente não use. Client secret nunca chega
+    # ao frontend — só o backend troca o `code` pelo profile do provedor.
+    google_client_id: str | None = None
+    google_client_secret: str | None = None
+    google_redirect_uri: str | None = None
+    github_client_id: str | None = None
+    github_client_secret: str | None = None
+    github_redirect_uri: str | None = None
+
     @field_validator("database_url")
     @classmethod
     def _normalize_database_url_driver(cls, value: str) -> str:
@@ -171,6 +184,24 @@ class Settings(BaseSettings):
     def _require_smtp_config_when_smtp_provider(self) -> "Settings":
         if self.mail_provider == "smtp" and not (self.smtp_host and self.smtp_from_email):
             raise ValueError("MAIL_PROVIDER=smtp exige SMTP_HOST e SMTP_FROM_EMAIL configurados.")
+        return self
+
+    @model_validator(mode="after")
+    def _require_full_oauth_config_per_provider(self) -> "Settings":
+        """Ao contrário de `storage_provider`/`mail_provider` (single-select), os dois
+        provedores sociais podem estar ligados ao mesmo tempo — por isso a validação é
+        por provedor: se `google_client_id` está presente, `google_client_secret` e
+        `google_redirect_uri` também precisam estar (idem para GitHub). Um provedor
+        totalmente ausente (`client_id=None`) é uma escolha válida: só significa que ele
+        está desligado."""
+        if self.google_client_id and not (self.google_client_secret and self.google_redirect_uri):
+            raise ValueError(
+                "GOOGLE_CLIENT_ID exige GOOGLE_CLIENT_SECRET e GOOGLE_REDIRECT_URI configurados."
+            )
+        if self.github_client_id and not (self.github_client_secret and self.github_redirect_uri):
+            raise ValueError(
+                "GITHUB_CLIENT_ID exige GITHUB_CLIENT_SECRET e GITHUB_REDIRECT_URI configurados."
+            )
         return self
 
 

@@ -60,4 +60,33 @@ describe("LoginForm", () => {
 
     expect(await screen.findByText("Home page")).toBeInTheDocument();
   });
+
+  it("renders Google and GitHub buttons that redirect to the backend OAuth login route", async () => {
+    const user = userEvent.setup();
+    const originalLocation = window.location;
+    // Atribuir `window.location.href` de verdade navegaria o jsdom para fora da
+    // página de teste — substitui por um objeto simples só para capturar o
+    // valor atribuído, restaurado ao final do teste.
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: { ...originalLocation, href: "" },
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/login"]}>
+        <LoginForm />
+      </MemoryRouter>,
+    );
+
+    await user.click(screen.getByRole("button", { name: /Continuar com Google/ }));
+    expect(window.location.href).toContain("/auth/google/login");
+
+    await user.click(screen.getByRole("button", { name: /Continuar com GitHub/ }));
+    expect(window.location.href).toContain("/auth/github/login");
+
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: originalLocation,
+    });
+  });
 });
