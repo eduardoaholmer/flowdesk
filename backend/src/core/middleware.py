@@ -24,9 +24,18 @@ _PASSWORD_RESET_PATHS = {
     f"{_API_PREFIX}/auth/password-reset/request",
     f"{_API_PREFIX}/auth/password-reset/confirm",
 }
+_OAUTH_LOGIN_PATHS = {
+    f"{_API_PREFIX}/auth/google/login",
+    f"{_API_PREFIX}/auth/github/login",
+}
+_OAUTH_CALLBACK_PATHS = {
+    f"{_API_PREFIX}/auth/google/callback",
+    f"{_API_PREFIX}/auth/github/callback",
+}
 _LOGIN_REGISTER_LIMIT = 5
 _REFRESH_LIMIT = 10
 _PASSWORD_RESET_LIMIT = 5
+_OAUTH_CALLBACK_LIMIT = 10
 _GENERAL_LIMIT = 300
 _UNAUTHENTICATED_LIMIT = 60
 _WINDOW_SECONDS = 60
@@ -144,6 +153,12 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
       — a identidade do usuário só é conhecida após consulta ao banco, então
       chegar lá primeiro derrotaria o propósito de limitar antes de tocar o banco;
       ver ADR-008), com IP como fallback se o cookie não vier.
+    - `/auth/{google,github}/login`: 5/min por IP — mesmo limite de login/register,
+      mesmo racional (esta rota também é um passo de autenticação, só que via
+      redirect em vez de formulário).
+    - `/auth/{google,github}/callback`: 10/min por IP — mesmo limite de
+      `/auth/refresh`: alguém tentando adivinhar/reusar um `code` de autorização
+      não deveria conseguir metralhar o endpoint que faz a troca com o provedor.
     - Demais rotas de `/api/v1` com Bearer decodificável: 300/min por usuário.
     - Demais rotas de `/api/v1` sem Bearer decodificável (ausente, malformado,
       expirado): 60/min por IP — antes esta chamada simplesmente não era limitada
@@ -190,6 +205,12 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             refresh_cookie = request.cookies.get("refresh_token")
             identity = hash_refresh_token(refresh_cookie) if refresh_cookie else client_ip
             return f"refresh:{identity}", _REFRESH_LIMIT
+
+        if request.method == "GET" and path in _OAUTH_LOGIN_PATHS:
+            return f"ip:{client_ip}:{path}", _LOGIN_REGISTER_LIMIT
+
+        if request.method == "GET" and path in _OAUTH_CALLBACK_PATHS:
+            return f"ip:{client_ip}:{path}", _OAUTH_CALLBACK_LIMIT
 
         if path.startswith(_API_PREFIX):
             auth_header = request.headers.get("authorization", "")

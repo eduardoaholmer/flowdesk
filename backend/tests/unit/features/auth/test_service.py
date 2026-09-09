@@ -15,6 +15,7 @@ from src.features.auth.service import AuthService
 
 from tests.unit.features.auth.fakes import (
     FakeMailSender,
+    FakeOAuthIdentityRepository,
     FakePasswordResetRepository,
     FakeSessionRepository,
     FakeUserRepository,
@@ -42,14 +43,28 @@ def mail_sender() -> FakeMailSender:
 
 
 @pytest.fixture
+def oauth_identity_repo() -> FakeOAuthIdentityRepository:
+    return FakeOAuthIdentityRepository()
+
+
+@pytest.fixture
 def service(
     user_repo: FakeUserRepository,
     session_repo: FakeSessionRepository,
     settings: Settings,
     password_reset_repo: FakePasswordResetRepository,
     mail_sender: FakeMailSender,
+    oauth_identity_repo: FakeOAuthIdentityRepository,
 ) -> AuthService:
-    return AuthService(user_repo, session_repo, settings, password_reset_repo, mail_sender)
+    return AuthService(
+        user_repo,
+        session_repo,
+        settings,
+        password_reset_repo,
+        mail_sender,
+        oauth_identity_repo,
+        {},
+    )
 
 
 def _register_payload(email: str = "ada@example.com") -> RegisterRequest:

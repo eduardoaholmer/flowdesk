@@ -44,3 +44,14 @@ export async function confirmPasswordReset(payload: {
 }): Promise<void> {
   await httpClient.post("/auth/password-reset/confirm", payload);
 }
+
+export type OAuthProvider = "google" | "github";
+
+/**
+ * Navegação de página inteira, não uma chamada de `httpClient` — o backend é
+ * quem redireciona para o provedor (CLAUDE.md §11: client secret nunca chega ao
+ * frontend, o exchange do `code` acontece só no servidor).
+ */
+export function oauthLoginUrl(provider: OAuthProvider): string {
+  return `${import.meta.env.VITE_API_URL}/auth/${provider}/login`;
+}

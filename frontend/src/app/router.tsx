@@ -9,6 +9,7 @@ import {
   IssueDetailPage,
   IssuesPage,
   LabelsPage,
+  OAuthCallbackPage,
   ProjectDetailPage,
   ProjectsPage,
   ResetPasswordPage,
@@ -29,6 +30,7 @@ function withPageSuspense(element: ReactNode) {
 
 export const router = createBrowserRouter([
   { path: "/login", element: <LoginPage /> },
+  { path: "/oauth/callback", element: withPageSuspense(<OAuthCallbackPage />) },
   { path: "/forgot-password", element: withPageSuspense(<ForgotPasswordPage />) },
   { path: routePatterns.resetPassword, element: withPageSuspense(<ResetPasswordPage />) },
   {
