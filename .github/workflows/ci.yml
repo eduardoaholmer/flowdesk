@@ -42,16 +42,20 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
-      # `bitnami/minio` (não a imagem oficial `minio/minio`) de propósito: o
+      # `bitnamilegacy/minio` (não a imagem oficial `minio/minio`) de propósito: o
       # bloco `services:` do GitHub Actions não aceita `command:`, e a imagem
       # oficial exige `server /data` explícito para não só imprimir o help e
       # sair — a variante Bitnami já roda o servidor via env vars sozinha, sem
       # override de comando (mesma razão pela qual `docker-compose.yml`, que
-      # aceita `command:`, usa a imagem oficial). Sem `--health-cmd` aqui — não
-      # há garantia de `curl`/`mc` dentro da imagem para o Docker healthcheck
-      # rodar; a etapa "Aguardar MinIO" abaixo faz o polling pelo runner.
+      # aceita `command:`, usa a imagem oficial). Registro `bitnamilegacy`
+      # (não `bitnami`) porque a Bitnami descontinuou tags versionadas no
+      # repositório `bitnami/*` em 2025 — `bitnamilegacy/*` é o espelho
+      # congelado que mantém as tags antigas resolvíveis. Sem `--health-cmd`
+      # aqui — não há garantia de `curl`/`mc` dentro da imagem para o Docker
+      # healthcheck rodar; a etapa "Aguardar MinIO" abaixo faz o polling pelo
+      # runner.
       minio:
-        image: bitnami/minio:2024
+        image: bitnamilegacy/minio:2025.7.23
         env:
           MINIO_ROOT_USER: flowdesk
           MINIO_ROOT_PASSWORD: flowdesk123
@@ -217,7 +221,7 @@ jobs:
       # travar todo PR — o resultado fica visível no log deste step. Candidata
       # já antecipada em `PRODUCTION_CHECKLIST.md` desde a Sprint 8.7.
       - name: Trivy — scan de vulnerabilidades (backend, não bloqueante)
-        uses: aquasecurity/trivy-action@0.29.0
+        uses: aquasecurity/trivy-action@v0.36.0
         continue-on-error: true
         with:
           image-ref: flowdesk-backend:ci
@@ -226,7 +230,7 @@ jobs:
           exit-code: "0"
 
       - name: Trivy — scan de vulnerabilidades (frontend, não bloqueante)
-        uses: aquasecurity/trivy-action@0.29.0
+        uses: aquasecurity/trivy-action@v0.36.0
         continue-on-error: true
         with:
           image-ref: flowdesk-frontend:ci
