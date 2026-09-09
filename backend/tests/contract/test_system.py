@@ -95,8 +95,6 @@ async def test_cors_allows_any_vercel_preview_subdomain(client: AsyncClient) -> 
 
 
 async def test_cors_rejects_lookalike_non_vercel_origin(client: AsyncClient) -> None:
-    response = await client.get(
-        "/health", headers={"Origin": "https://evil.com/.vercel.app"}
-    )
+    response = await client.get("/health", headers={"Origin": "https://evil.com/.vercel.app"})
 
     assert "access-control-allow-origin" not in response.headers
