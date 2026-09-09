@@ -94,11 +94,23 @@ ao banco. A Parte 2 migrou `DATABASE_URL`/`REDIS_URL` para Supabase/Upstash
 | Domínio final | `https://flowdesk.eduardoaholmer.dev` — ativo, SSL válido |
 | CNAME (Vercel → Namecheap) | Host `flowdesk` → `d992bf47352c080b.vercel-dns-017.com.` |
 
-## Pendências / follow-up sugerido
+## Limpeza pós-migração (feita em 2026-09-08)
 
 - `flowdesk-postgres` e `flowdesk-redis` (recursos nativos do Render, criados
-  pelo Blueprint antigo) ficaram órfãos — o Postgres já está suspenso; considerar
-  deletar os dois no dashboard do Render para não ocupar quota do free tier.
+  pelo Blueprint antigo) foram **deletados** no dashboard do Render — não são
+  mais usados desde a migração para Supabase/Upstash acima.
+- O Blueprint `flowdesk` (Render → Blueprints) tinha **Auto Sync: Yes**, o que
+  faria o Render re-sincronizar `render.yaml` a cada push e **recriar**
+  `flowdesk-postgres`/`flowdesk-redis` (o arquivo ainda os declara como
+  referência — ver nota na Parte 1). Auto Sync foi trocado para **No**
+  (`Sync paused`): `render.yaml` continua só como referência de env vars
+  esperadas, sem provisionar nada automaticamente. Reativar Auto Sync sem
+  antes remover `databases:`/o serviço `flowdesk-redis` do `render.yaml`
+  voltaria a recriar os dois e resetaria `DATABASE_URL`/`REDIS_URL` para
+  `fromDatabase`/`fromService` (quebrando a integração com Supabase/Upstash).
+
+## Follow-up sugerido
+
 - Backend no Render free tier "dorme" após ~15 min de inatividade (delay de
   até 50s na primeira requisição depois disso) — considerar upgrade de plano
   se isso for um problema para demonstrações ao vivo.

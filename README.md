@@ -8,6 +8,12 @@ Toda decisão de produto e arquitetura é documentada e justificada — ver [`CL
 (o manual de engenharia do projeto) e a pasta [`docs/`](./docs), que é a fonte de verdade para
 todo o desenvolvimento.
 
+## Demo
+
+Aplicação publicada em **https://flowdesk.eduardoaholmer.dev** (frontend na Vercel, backend no
+Render, Postgres no Supabase, Redis no Upstash). Detalhes de infraestrutura e valores reais de
+configuração em [`DEPLOY.md`](./DEPLOY.md).
+
 ## Stack
 
 | Camada | Tecnologia |
@@ -46,6 +52,7 @@ FlowDesk/
 ├── docker-compose.yml      # dev (hot-reload)
 ├── docker-compose.prod.yml # produção (imagens imutáveis, sem bind mount)
 ├── PRODUCTION_CHECKLIST.md # checklist de prontidão para produção
+├── DEPLOY.md               # infraestrutura de produção atual (Render/Supabase/Upstash/Vercel)
 └── .github/workflows/     # CI
 ```
 
