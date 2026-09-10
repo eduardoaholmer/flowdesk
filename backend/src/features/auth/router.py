@@ -1,4 +1,5 @@
 import secrets
+from typing import Literal
 
 from fastapi import APIRouter, Depends, Request, Response, status
 from fastapi.responses import RedirectResponse
@@ -61,6 +62,19 @@ def _set_auth_cookies(
     # (http://localhost, sem TLS) — o navegador nunca chega a armazená-lo, então
     # todo reload perdia a sessão. Só exigimos `Secure` em produção (https real).
     secure = settings.is_production
+    # `SameSite=Strict` só é seguro quando frontend e API compartilham o mesmo site
+    # (mesmo domínio registrável) — em dev, `localhost:5173`/`localhost:8000` contam
+    # como mesmo site, então `Strict` funciona sem restrição nenhuma. Em produção,
+    # porém, o deploy real (`DEPLOY.md`) coloca o frontend em `eduardoaholmer.dev` e
+    # a API em `onrender.com` — sites *diferentes* — e `SameSite=Strict`/`Lax` faz o
+    # navegador simplesmente nunca enviar o cookie numa chamada cross-site (XHR do
+    # SPA para a API), quebrando `/auth/refresh` sempre, não às vezes: todo reload
+    # ou expiração do access token em memória (15 min) perdia a sessão silenciosamente.
+    # `SameSite=None` (só permitido com `Secure`, garantido acima) é o ajuste correto
+    # para esse tipo de deploy cross-site; CSRF continua mitigado pelo double-submit
+    # de `csrf_token` (docs/07-security.md §4), não por `SameSite`
+    # (docs/09-decision-log.md ADR-062).
+    samesite: Literal["none", "strict"] = "none" if settings.is_production else "strict"
     response.set_cookie(
         REFRESH_COOKIE_NAME,
         refresh_token,
@@ -68,7 +82,7 @@ def _set_auth_cookies(
         path=COOKIE_PATH,
         httponly=True,
         secure=secure,
-        samesite="strict",
+        samesite=samesite,
     )
     # Path="/" (não COOKIE_PATH): este cookie só existe para o frontend ler via
     # `document.cookie` (docs/07-security.md §4) e ecoar no header X-CSRF-Token —
@@ -81,7 +95,7 @@ def _set_auth_cookies(
         path="/",
         httponly=False,
         secure=secure,
-        samesite="strict",
+        samesite=samesite,
     )
     # Marcador lido em `/auth/refresh` (que não recebe o payload de login de novo)
     # para que a escolha de "Lembrar de mim" sobreviva à rotação do refresh token.
@@ -92,7 +106,7 @@ def _set_auth_cookies(
         path=COOKIE_PATH,
         httponly=True,
         secure=secure,
-        samesite="strict",
+        samesite=samesite,
     )
 
 

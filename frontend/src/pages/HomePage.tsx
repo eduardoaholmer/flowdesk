@@ -2,12 +2,13 @@ import { Navigate } from "react-router-dom";
 
 import { CreateFirstWorkspaceForm } from "@/features/workspaces/components/CreateFirstWorkspaceForm";
 import { EmptyLayout } from "@/shared/components/layout/EmptyLayout";
+import { ErrorState } from "@/shared/components/feedback/ErrorState";
 import { useCurrentUser } from "@/shared/hooks/useCurrentUser";
 import { Skeleton } from "@/shared/components/ui/skeleton";
 import { workspaceRoutes } from "@/shared/lib/routes";
 
 export function HomePage() {
-  const { data: profile, isLoading } = useCurrentUser();
+  const { data: profile, isLoading, isError, refetch } = useCurrentUser();
 
   if (isLoading) {
     return (
@@ -15,6 +16,15 @@ export function HomePage() {
         <Skeleton className="h-6 w-48" />
         <Skeleton className="h-4 w-72" />
       </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <ErrorState
+        message="Não foi possível carregar seus dados. Verifique sua conexão ou tente novamente."
+        onRetry={() => refetch()}
+      />
     );
   }
 
