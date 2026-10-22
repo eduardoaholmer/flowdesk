@@ -1,6 +1,6 @@
 import { useEffect, type ReactNode } from "react";
 
-import { isAuthRejection, refreshAccessToken } from "@/shared/lib/httpClient";
+import { hasSessionCookie, isAuthRejection, refreshAccessToken } from "@/shared/lib/httpClient";
 import { ErrorState } from "@/shared/components/feedback/ErrorState";
 import { useAuthStore } from "@/shared/stores/authStore";
 
@@ -23,6 +23,11 @@ export function AuthBootstrap({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (bootstrapStatus !== "initializing") return;
+
+    if (!hasSessionCookie()) {
+      setBootstrapped();
+      return;
+    }
 
     let cancelled = false;
 

@@ -54,6 +54,17 @@ function readCookie(name: string): string | null {
 }
 
 /**
+ * `csrf_token` só existe se o usuário já logou antes (setado junto do
+ * `refresh_token` em `_set_auth_cookies`, backend). Ausente, não há sessão para
+ * restaurar — `AuthBootstrap` usa isso para pular `refreshAccessToken()` e evitar
+ * esperar o cold start do Render (`REFRESH_TIMEOUT_MS`) por nada, em visitantes
+ * que nunca tiveram sessão.
+ */
+export function hasSessionCookie(): boolean {
+  return readCookie("csrf_token") !== null;
+}
+
+/**
  * `POST /auth/refresh` é protegido por double-submit CSRF (CLAUDE.md §11): o
  * refresh token trafega só no cookie `HttpOnly`, e o header `X-CSRF-Token`
  * precisa bater com o cookie `csrf_token` (não-HttpOnly, por isso legível aqui).
