@@ -19,11 +19,19 @@ function formatIssueSection(issue: Issue, statusName: string, heading: string): 
   return lines.join("\n");
 }
 
-function buildPrompt(issue: Issue, subIssues: Issue[], statusNameById: Map<string, string>): string {
+function buildPrompt(
+  issue: Issue,
+  subIssues: Issue[],
+  statusNameById: Map<string, string>,
+): string {
   const statusName = (id: string) => statusNameById.get(id) ?? "—";
 
   const sections = [
-    formatIssueSection(issue, statusName(issue.status_id), `# [${issue.identifier}] ${issue.title}`),
+    formatIssueSection(
+      issue,
+      statusName(issue.status_id),
+      `# [${issue.identifier}] ${issue.title}`,
+    ),
   ];
 
   if (subIssues.length === 0) {
