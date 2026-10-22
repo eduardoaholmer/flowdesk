@@ -194,7 +194,7 @@ jobs:
       # visível a `docker images`/Trivy no runner. Não fazia diferença antes,
       # já que nada além do próprio build consumia a imagem resultante.
       - name: Build backend (production)
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./backend
           file: ./docker/backend.Dockerfile
@@ -204,7 +204,7 @@ jobs:
           tags: flowdesk-backend:ci
 
       - name: Build frontend (production)
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./frontend
           file: ./docker/frontend.Dockerfile
