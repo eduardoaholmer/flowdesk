@@ -15,6 +15,7 @@ import { cn } from "@/shared/lib/utils";
 import { useUiStore } from "@/shared/stores/uiStore";
 
 import { useIssue, useIssues } from "../hooks";
+import { CopyIssuePromptButton } from "./CopyIssuePromptButton";
 import { IssueActivityTimeline } from "./IssueActivityTimeline";
 import { IssueDetailRail } from "./IssueDetailRail";
 import { IssueRowActions } from "./IssueRowActions";
@@ -137,15 +138,22 @@ export function IssueDetailView({
             <p className="mb-1 text-xs text-t3">{issue.identifier}</p>
             <h1 className="font-heading text-2xl leading-tight font-semibold">{issue.title}</h1>
           </div>
-          <IssueRowActions
-            workspaceId={workspaceId}
-            issue={issue}
-            onDeleted={() =>
-              onClose
-                ? onClose()
-                : navigate(workspaceRoutes.issues(workspaceSlug), { replace: true })
-            }
-          />
+          <div className="flex items-center gap-1">
+            <CopyIssuePromptButton
+              workspaceId={workspaceId}
+              issue={issue}
+              subIssues={subIssuesQuery.data?.data ?? []}
+            />
+            <IssueRowActions
+              workspaceId={workspaceId}
+              issue={issue}
+              onDeleted={() =>
+                onClose
+                  ? onClose()
+                  : navigate(workspaceRoutes.issues(workspaceSlug), { replace: true })
+              }
+            />
+          </div>
         </div>
 
         <p className="mt-5 text-sm leading-relaxed whitespace-pre-wrap text-t2">
