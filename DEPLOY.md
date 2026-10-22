@@ -109,6 +109,24 @@ ao banco. A Parte 2 migrou `DATABASE_URL`/`REDIS_URL` para Supabase/Upstash
   voltaria a recriar os dois e resetaria `DATABASE_URL`/`REDIS_URL` para
   `fromDatabase`/`fromService` (quebrando a integração com Supabase/Upstash).
 
+## Como redeployar (confirmado em 2026-10-22)
+
+- **Vercel (frontend):** auto-deploy já ativo — todo push em `main` dispara
+  build/deploy sozinho, sem passo manual.
+- **Render (backend): auto-deploy está DESLIGADO.** Confirmado checando o
+  histórico de deploys do `flowdesk-backend` — os 11 deploys existentes até
+  essa data foram todos `Trigger: Manual` (ou `Blueprint`, da criação
+  inicial), nenhum automático por push. Um merge em `main` **não** atualiza o
+  backend sozinho.
+  - Para redeployar o backend: dashboard do Render → `flowdesk-backend` →
+    Deploys → botão **Manual Deploy** → **Deploy latest commit** (pega o HEAD
+    de `main`). Build + `alembic upgrade head` + restart levam ~1min quando a
+    imagem já está em cache (build do zero pode levar mais).
+  - Alternativa permanente: Render → `flowdesk-backend` → Settings → Build &
+    Deploy → habilitar "Auto-Deploy". Não habilitado ainda porque não foi
+    testado o impacto de migrations automáticas em todo push — decisão
+    consciente de manter controle manual por ora.
+
 ## Follow-up sugerido
 
 - Backend no Render free tier "dorme" após ~15 min de inatividade (delay de
