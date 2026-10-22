@@ -10,27 +10,27 @@ export function PrivacyPolicyPage() {
         Política de Privacidade
       </h1>
       <p>
-        O FlowDesk é um projeto de portfólio (clone de propósito educacional do Linear) mantido
-        por Eduardo Holmer, sem fins comerciais. Esta página existe para deixar claro como os
-        dados de quem testa a aplicação são tratados.
+        O FlowDesk é um projeto de portfólio (clone de propósito educacional do Linear) mantido por
+        Eduardo Holmer, sem fins comerciais. Esta página existe para deixar claro como os dados de
+        quem testa a aplicação são tratados.
       </p>
       <h2 className="mt-4 font-heading text-lg font-semibold text-t1">Dados coletados</h2>
       <p>
         Ao criar uma conta (por e-mail/senha ou login social via Google/GitHub), armazenamos nome,
         e-mail e, quando aplicável, a foto de perfil fornecida pelo provedor. No login social, o
-        FlowDesk recebe do provedor apenas o necessário para identificar a conta: e-mail
-        verificado, nome e avatar — nenhum dado além do escopo `openid email profile` (Google) ou
-        `read:user user:email` (GitHub) é solicitado.
+        FlowDesk recebe do provedor apenas o necessário para identificar a conta: e-mail verificado,
+        nome e avatar — nenhum dado além do escopo `openid email profile` (Google) ou `read:user
+        user:email` (GitHub) é solicitado.
       </p>
       <p>
-        Dados de uso do produto (issues, projetos, comentários) ficam restritos ao workspace de
-        quem os criou e não são compartilhados com terceiros nem usados para fins publicitários.
+        Dados de uso do produto (issues, projetos, comentários) ficam restritos ao workspace de quem
+        os criou e não são compartilhados com terceiros nem usados para fins publicitários.
       </p>
       <h2 className="mt-4 font-heading text-lg font-semibold text-t1">Retenção e exclusão</h2>
       <p>
-        Como este é um ambiente de demonstração, dados podem ser removidos periodicamente sem
-        aviso prévio. Para solicitar a exclusão da sua conta e dos dados associados antes disso,
-        entre em contato pelo e-mail abaixo.
+        Como este é um ambiente de demonstração, dados podem ser removidos periodicamente sem aviso
+        prévio. Para solicitar a exclusão da sua conta e dos dados associados antes disso, entre em
+        contato pelo e-mail abaixo.
       </p>
       <h2 className="mt-4 font-heading text-lg font-semibold text-t1">Contato</h2>
       <p>
