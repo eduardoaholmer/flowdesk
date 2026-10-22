@@ -190,6 +190,17 @@ class AuthService:
             raise InvalidRefreshTokenError()
 
         if token.revoked_at is not None:
+            grace = timedelta(seconds=self._settings.refresh_token_reuse_grace_seconds)
+            within_grace = (
+                token.replaced_by_id is not None and datetime.now(UTC) - token.revoked_at < grace
+            )
+            if within_grace:
+                # Corrida entre duas requisições quase simultâneas com o mesmo cookie
+                # (ex.: duas abas renovando ao mesmo tempo) — este token já foi
+                # rotacionado há poucos segundos por uma requisição legítima, não é
+                # reuso malicioso. Falha só esta requisição; a sessão e o token
+                # vencedor da corrida continuam válidos (docs/09-decision-log.md ADR-062).
+                raise InvalidRefreshTokenError()
             # Token já revogado (rotacionado ou sessão deslogada) sendo reapresentado
             # — possível roubo. Revoga toda a sessão como precaução (docs/07-security.md §2).
             logger.warning("refresh_token_reuse_detected", session_id=str(token.session_id))

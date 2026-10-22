@@ -159,11 +159,13 @@ async def test_refresh_rejects_expired_token(
         await service.refresh(login_result.refresh_token)
 
 
-async def test_refresh_reuse_revokes_whole_session(
+async def test_refresh_reuse_after_grace_window_revokes_whole_session(
     service: AuthService, session_repo: FakeSessionRepository
 ) -> None:
-    """Reapresentar um refresh token já rotacionado deve revogar toda a sessão —
-    inclusive o token novo emitido na rotação — não só recusar a requisição atual.
+    """Reapresentar um refresh token rotacionado há tempo (fora da janela de graça
+    de corrida concorrente, `refresh_token_reuse_grace_seconds`) deve revogar toda a
+    sessão — inclusive o token novo emitido na rotação — não só recusar a requisição
+    atual. Distingue do reuso "de corrida" (abas concorrentes, ver teste abaixo).
     """
     await service.register(_register_payload())
     login_result = await service.login(
@@ -171,6 +173,13 @@ async def test_refresh_reuse_revokes_whole_session(
     )
 
     refresh_result = await service.refresh(login_result.refresh_token)
+
+    old_token_hash = hash_refresh_token(login_result.refresh_token)
+    old_token = await session_repo.get_refresh_token_by_hash(old_token_hash)
+    assert old_token is not None
+    # Simula que a rotação aconteceu há tempo (fora da janela de graça de 5s) —
+    # uma reapresentação agora não pode ser uma corrida legítima entre abas.
+    old_token.revoked_at = datetime.now(UTC) - timedelta(seconds=30)
 
     with pytest.raises(InvalidRefreshTokenError):
         await service.refresh(login_result.refresh_token)
@@ -182,6 +191,35 @@ async def test_refresh_reuse_revokes_whole_session(
 
     with pytest.raises(InvalidRefreshTokenError):
         await service.refresh(refresh_result.refresh_token)
+
+
+async def test_refresh_concurrent_race_within_grace_window_does_not_revoke_session(
+    service: AuthService, session_repo: FakeSessionRepository
+) -> None:
+    """Duas requisições quase simultâneas com o mesmo refresh token (ex.: duas abas
+    renovando ao mesmo tempo logo após o access token em memória expirar) não devem
+    derrubar a sessão inteira — só a segunda ("perdedora") falha; a sessão e o token
+    vencedor da corrida continuam válidos (docs/09-decision-log.md ADR-062).
+    """
+    await service.register(_register_payload())
+    login_result = await service.login(
+        "ada@example.com", "Str0ng!Passw0rd", user_agent=None, ip_address=None
+    )
+
+    refresh_result = await service.refresh(login_result.refresh_token)
+
+    # "Segunda aba" reapresenta o mesmo token original poucos instantes depois.
+    with pytest.raises(InvalidRefreshTokenError):
+        await service.refresh(login_result.refresh_token)
+
+    new_token_hash = hash_refresh_token(refresh_result.refresh_token)
+    new_token = await session_repo.get_refresh_token_by_hash(new_token_hash)
+    assert new_token is not None
+    assert new_token.revoked_at is None  # sessão sobrevive, token vencedor segue válido
+
+    # O token vencedor continua utilizável normalmente depois da corrida.
+    next_refresh = await service.refresh(refresh_result.refresh_token)
+    assert next_refresh.access_token
 
 
 async def test_logout_revokes_session(

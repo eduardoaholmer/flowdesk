@@ -1,6 +1,8 @@
 import uuid
 
 from httpx import AsyncClient, Response
+from src.core.config import get_settings
+from src.main import app
 
 
 def _unique_email() -> str:
@@ -89,6 +91,26 @@ async def test_login_returns_access_token_and_sets_cookies(client: AsyncClient) 
     # descartar o cookie em http://localhost e derrubar a sessão a cada reload.
     assert "secure" not in set_cookie_headers
     assert "samesite=strict" in set_cookie_headers
+
+
+async def test_login_sets_samesite_none_and_secure_cookies_in_production(
+    client: AsyncClient,
+) -> None:
+    """Em produção, o frontend (Vercel/domínio próprio) e a API (Render) são sites
+    diferentes (`DEPLOY.md`) — `SameSite=Strict`/`Lax` faz o navegador nunca enviar
+    o cookie numa chamada cross-site do SPA para a API, quebrando `/auth/refresh`
+    sempre. `SameSite=None` (só válido com `Secure`) é o ajuste correto para esse
+    deploy (docs/09-decision-log.md ADR-062)."""
+    production_settings = get_settings().model_copy(update={"environment": "production"})
+    app.dependency_overrides[get_settings] = lambda: production_settings
+    try:
+        _, response = await _register_and_login(client)
+    finally:
+        app.dependency_overrides.pop(get_settings, None)
+
+    set_cookie_headers = "\n".join(response.headers.get_list("set-cookie")).lower()
+    assert "samesite=none" in set_cookie_headers
+    assert "secure" in set_cookie_headers
 
 
 async def test_login_rejects_wrong_password(client: AsyncClient) -> None:
