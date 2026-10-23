@@ -24,10 +24,10 @@ para este arquivo nem para o repositório** — só nos painéis do Render/Verce
   (readiness — checa Postgres/Redis). `render.yaml` aponta
   `healthCheckPath: /health/ready`.
 - **CORS**: `backend/src/main.py` aceita a origem exata de `CORS_ORIGINS`
-  (configurada no Render como `https://flowdesk.eduardoaholmer.dev`) mais
-  qualquer preview da Vercel via `allow_origin_regex`
-  (`^https://[a-zA-Z0-9-]+\.vercel\.app$`) — previews geram um subdomínio novo
-  por PR e não cabem numa lista fixa.
+  (configurada no Render como `https://flowdesk.eduardoaholmer.dev`) e,
+  opcionalmente, `CORS_ORIGIN_REGEX`. A regex fixa `*.vercel.app` foi removida
+  (ADR-065): confiava em qualquer site de qualquer conta da Vercel. Com o
+  proxy same-origin abaixo, nem produção nem previews precisam de CORS.
 - **`render.yaml`** (raiz, não em `backend/`): é um Blueprint — já provisiona
   Postgres (`flowdesk-postgres`) e Redis (`flowdesk-redis`) do próprio Render
   junto com o Web Service, então **não é usado neste deploy** (Supabase/Upstash
@@ -90,7 +90,7 @@ ao banco. A Parte 2 migrou `DATABASE_URL`/`REDIS_URL` para Supabase/Upstash
 | URL pública do backend (Render) | `https://flowdesk-backend-ngcl.onrender.com` |
 | Connection string Postgres (Supabase) | só no painel do Render — não registrada aqui (session pooler, `aws-0-us-west-2.pooler.supabase.com:5432`) |
 | URL Redis (Upstash) | só no painel do Render — não registrada aqui (`guided-grizzly-87434.upstash.io:6379`, TLS) |
-| `VITE_API_URL` (Vercel) | `https://flowdesk-backend-ngcl.onrender.com/api/v1` |
+| `VITE_API_URL` (Vercel) | `https://flowdesk-backend-ngcl.onrender.com/api/v1` — trocar para `/api/v1` (ver ADR-065 abaixo) |
 | Domínio final | `https://flowdesk.eduardoaholmer.dev` — ativo, SSL válido |
 | CNAME (Vercel → Namecheap) | Host `flowdesk` → `d992bf47352c080b.vercel-dns-017.com.` |
 
@@ -126,6 +126,52 @@ ao banco. A Parte 2 migrou `DATABASE_URL`/`REDIS_URL` para Supabase/Upstash
     Deploy → habilitar "Auto-Deploy". Não habilitado ainda porque não foi
     testado o impacto de migrations automáticas em todo push — decisão
     consciente de manter controle manual por ora.
+
+## Sessão same-origin via proxy da Vercel (ADR-065) — migração pendente
+
+**Problema**: com o SPA em `flowdesk.eduardoaholmer.dev` chamando a API direto
+em `flowdesk-backend-ngcl.onrender.com`, os cookies de sessão (`refresh_token`,
+`csrf_token`) ficam gravados no domínio do Render. O JavaScript do SPA não lê
+cookie de outro domínio, então `csrf_token` nunca é visível: o bootstrap pula o
+refresh (`hasSessionCookie()` é sempre falso) e todo reload desloga. Além disso,
+`onrender.com` está na Public Suffix List — Safari/Firefox tratam esses cookies
+como de terceiros e podem bloqueá-los.
+
+**Solução**: `frontend/vercel.json` agora repassa `/api/*` para o Render. O SPA
+chama `/api/v1/...` no próprio domínio e os cookies passam a ser first-party.
+O rewrite já está no repo e é inofensivo sozinho; a troca efetiva depende dos
+passos manuais abaixo, **nesta ordem**:
+
+1. **Vercel → Settings → Environment Variables**: `VITE_API_URL` = `/api/v1`
+   (Production e Preview). Redeploy do frontend (a variável é embutida no build).
+2. **Login social (se configurado)**: no Render, `GOOGLE_REDIRECT_URI` =
+   `https://flowdesk.eduardoaholmer.dev/api/v1/auth/google/callback` e
+   `GITHUB_REDIRECT_URI` = `https://flowdesk.eduardoaholmer.dev/api/v1/auth/github/callback`;
+   cadastrar as mesmas URLs no Google Cloud Console e no GitHub OAuth App.
+   Redeploy manual do backend (auto-deploy está desligado, ver acima).
+3. **Previews**: com `VITE_API_URL=/api/v1` também em Preview, cada preview usa
+   o próprio proxy — nenhuma `CORS_ORIGIN_REGEX` é necessária.
+4. **Validar em produção**:
+   - Login, depois F5: a sessão precisa continuar.
+   - DevTools → Application → Cookies: `refresh_token` (path `/api/v1/auth`) e
+     `csrf_token` (path `/`) devem aparecer em `flowdesk.eduardoaholmer.dev`.
+   - Fechar e reabrir o navegador com "Lembrar de mim" marcado.
+   - Primeira requisição após o Render "dormir" (~50s de cold start): confirmar
+     que o proxy da Vercel não corta a requisição antes do Render responder.
+5. Usuários com sessão antiga precisam logar uma vez de novo (os cookies
+   antigos ficaram no domínio do Render e deixam de ser usados).
+
+**Follow-up depois da migração**: com tudo same-origin, os cookies de auth
+podem voltar a `SameSite=Strict` em produção (hoje `None`, ADR-062), e
+`CORS_ORIGINS` no Render pode ficar só com o domínio final.
+
+**Rate limit por IP (não resolvido)**: o Uvicorn roda sem
+`--forwarded-allow-ips`, então `request.client.host` é o IP do proxy (Render, e
+agora também Vercel), não o do usuário — o limite de 5 logins/min por IP vira,
+na prática, um limite global compartilhado. Corrigir exige confirmar em
+produção qual cabeçalho/posição de `X-Forwarded-For` carrega o IP real depois
+dos dois proxies; confiar cegamente em `X-Forwarded-For` deixaria o cliente
+forjar o próprio IP e furar o limite.
 
 ## Follow-up sugerido
 
