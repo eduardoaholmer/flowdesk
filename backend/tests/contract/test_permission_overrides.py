@@ -264,3 +264,29 @@ async def test_granted_issue_delete_lets_member_delete_others_issue(client: Asyn
     )
 
     assert response.status_code == 204
+
+
+async def test_member_granted_invite_cannot_invite_above_own_role(client: AsyncClient) -> None:
+    _, owner_token = await _register_and_login(client)
+    workspace_id = await _create_workspace(client, owner_token)
+    _, member_token = await _invite_and_accept_member(client, workspace_id, owner_token)
+    await client.put(
+        f"/api/v1/workspaces/{workspace_id}/permission-overrides",
+        json={"role": "MEMBER", "permission": "workspace.invite", "granted": True},
+        headers=_auth(owner_token),
+    )
+
+    as_admin = await client.post(
+        f"/api/v1/workspaces/{workspace_id}/invitations",
+        json={"email": _unique_email(), "role": "ADMIN"},
+        headers=_auth(member_token),
+    )
+    as_member = await client.post(
+        f"/api/v1/workspaces/{workspace_id}/invitations",
+        json={"email": _unique_email(), "role": "MEMBER"},
+        headers=_auth(member_token),
+    )
+
+    assert as_admin.status_code == 403
+    assert as_admin.json()["error"]["code"] == "cannot_grant_role_above_own"
+    assert as_member.status_code == 201

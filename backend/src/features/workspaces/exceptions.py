@@ -77,6 +77,15 @@ class CannotManageOwnMembershipError(ConflictError):
     message = "Use o endpoint de sair do workspace para alterar sua própria associação."
 
 
+class CannotGrantRoleAboveOwnError(PermissionDeniedError):
+    """Convidar alguém com papel acima do próprio: sem isso, um MEMBER que o
+    OWNER habilitou a convidar (override de `workspace.invite`) podia convidar
+    uma segunda conta sua como ADMIN."""
+
+    code = "cannot_grant_role_above_own"
+    message = "Você não pode conceder um papel acima do seu."
+
+
 class CannotManageOwnerError(PermissionDeniedError):
     """Regra contextual de `docs/07-security.md` §8: um ADMIN pode gerenciar
     qualquer membro, exceto outro OWNER — evita que um ADMIN rebaixe ou remova

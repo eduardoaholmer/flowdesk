@@ -39,7 +39,11 @@ from src.core.logging import get_logger
 from src.core.permissions import Permission
 from src.core.security import CurrentUser
 from src.features.permissions.repository import PermissionOverrideRepository
-from src.features.workspaces.exceptions import CannotManageOwnerError, WorkspaceNotFoundError
+from src.features.workspaces.exceptions import (
+    CannotGrantRoleAboveOwnError,
+    CannotManageOwnerError,
+    WorkspaceNotFoundError,
+)
 from src.features.workspaces.models import Workspace, WorkspaceMember, WorkspaceRole
 from src.features.workspaces.repository import WorkspaceRepository, WorkspaceRepositoryProtocol
 
@@ -96,6 +100,16 @@ ROLE_PERMISSIONS: dict[WorkspaceRole, frozenset[Permission]] = {
             Permission.ATTACHMENT_CREATE,
         }
     ),
+}
+
+# Hierarquia dos papéis, usada só para "não conceder acima do próprio papel"
+# (`PermissionService.can_grant_role`) — a matriz acima continua sendo a única
+# fonte do que cada papel pode fazer.
+_ROLE_RANK: dict[WorkspaceRole, int] = {
+    WorkspaceRole.GUEST: 0,
+    WorkspaceRole.MEMBER: 1,
+    WorkspaceRole.ADMIN: 2,
+    WorkspaceRole.OWNER: 3,
 }
 
 # Permissões concedidas a QUALQUER papel quando o chamador é o dono do recurso
@@ -225,6 +239,22 @@ class PermissionService:
         if actor_role == WorkspaceRole.ADMIN:
             return target_role != WorkspaceRole.OWNER
         return False
+
+    def can_grant_role(self, *, actor_role: WorkspaceRole, target_role: WorkspaceRole) -> bool:
+        return _ROLE_RANK[target_role] <= _ROLE_RANK[actor_role]
+
+    def require_can_grant_role(
+        self, *, actor_role: WorkspaceRole, target_role: WorkspaceRole
+    ) -> None:
+        if self.can_grant_role(actor_role=actor_role, target_role=target_role):
+            return
+        logger.warning(
+            "permission_denied",
+            reason="cannot_grant_role_above_own",
+            actor_role=actor_role.value,
+            target_role=target_role.value,
+        )
+        raise CannotGrantRoleAboveOwnError()
 
     def require_can_manage_member(
         self, *, actor_role: WorkspaceRole, target_role: WorkspaceRole
