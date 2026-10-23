@@ -1,11 +1,12 @@
 import uuid
 from collections.abc import Sequence
 
-from src.core.authorization import PermissionService
+from src.core.authorization import PermissionService, WorkspaceContext
 from src.core.permissions import Permission
 from src.core.security import CurrentUser
 from src.features.issues.exceptions import (
     InvalidParentIssueError,
+    IssueAssigneeNotInWorkspaceError,
     IssueHasSubIssuesError,
     IssueLabelAlreadyAppliedError,
     IssueNotFoundError,
@@ -24,7 +25,7 @@ from src.features.projects.repository import ProjectRepositoryProtocol
 from src.features.workflow_states.exceptions import WorkflowStateNotFoundError
 from src.features.workflow_states.models import WorkflowState
 from src.features.workflow_states.repository import WorkflowStateRepositoryProtocol
-from src.features.workspaces.models import WorkspaceMember
+from src.features.workspaces.repository import WorkspaceRepositoryProtocol
 
 
 class IssueService:
@@ -36,6 +37,7 @@ class IssueService:
         label_repo: LabelRepositoryProtocol,
         notification_service: NotificationService,
         workflow_state_repo: WorkflowStateRepositoryProtocol,
+        workspace_repo: WorkspaceRepositoryProtocol,
     ) -> None:
         """Recebe `PermissionService`, ao contrário de `ProjectService`: excluir
         uma issue tem posse-como-exceção (`Permission.ISSUE_DELETE` está em
@@ -62,6 +64,9 @@ class IssueService:
         workspace quando `status_id` é omitido na criação, e valida que um
         `status_id` informado pertence ao mesmo workspace — mesmo racional de
         `project_repo` acima, status deixou de ser um enum fixo.
+
+        `workspace_repo` valida que `assignee_id` é membro do workspace — mesmo
+        racional de `ProjectService` para `lead_id`.
         """
         self._issue_repo = issue_repo
         self._permission_service = permission_service
@@ -69,6 +74,7 @@ class IssueService:
         self._label_repo = label_repo
         self._workflow_state_repo = workflow_state_repo
         self._notification_service = notification_service
+        self._workspace_repo = workspace_repo
 
     async def create(
         self, current_user: CurrentUser, workspace_id: uuid.UUID, payload: IssueCreateRequest
@@ -79,6 +85,8 @@ class IssueService:
             await self._validate_parent_link(
                 workspace_id, parent_id=payload.parent_id, child_id=None
             )
+        if payload.assignee_id is not None:
+            await self._validate_assignee(workspace_id, payload.assignee_id)
         status_id = await self._resolve_status_id(workspace_id, payload.status_id)
 
         number = await self._issue_repo.next_number(workspace_id)
@@ -232,7 +240,7 @@ class IssueService:
             issue.title = payload.title
             changed = True
 
-        if payload.description is not None and payload.description != issue.description:
+        if "description" in payload.model_fields_set and payload.description != issue.description:
             await self._record_activity(
                 workspace_id,
                 issue.id,
@@ -245,8 +253,9 @@ class IssueService:
             issue.description = payload.description
             changed = True
 
-        if payload.project_id is not None and payload.project_id != issue.project_id:
-            await self._get_active_project(workspace_id, payload.project_id)
+        if "project_id" in payload.model_fields_set and payload.project_id != issue.project_id:
+            if payload.project_id is not None:
+                await self._get_active_project(workspace_id, payload.project_id)
             await self._record_activity(
                 workspace_id,
                 issue.id,
@@ -254,7 +263,7 @@ class IssueService:
                 "issue.updated",
                 field="project_id",
                 old_value=str(issue.project_id) if issue.project_id else None,
-                new_value=str(payload.project_id),
+                new_value=str(payload.project_id) if payload.project_id else None,
             )
             issue.project_id = payload.project_id
             changed = True
@@ -305,7 +314,9 @@ class IssueService:
             issue.priority = payload.priority
             changed = True
 
-        if payload.assignee_id is not None and payload.assignee_id != issue.assignee_id:
+        if "assignee_id" in payload.model_fields_set and payload.assignee_id != issue.assignee_id:
+            if payload.assignee_id is not None:
+                await self._validate_assignee(workspace_id, payload.assignee_id)
             await self._record_activity(
                 workspace_id,
                 issue.id,
@@ -313,12 +324,12 @@ class IssueService:
                 "issue.assignee_changed",
                 field="assignee_id",
                 old_value=str(issue.assignee_id) if issue.assignee_id else None,
-                new_value=str(payload.assignee_id),
+                new_value=str(payload.assignee_id) if payload.assignee_id else None,
             )
             issue.assignee_id = payload.assignee_id
             changed = True
 
-        if payload.estimate is not None and payload.estimate != issue.estimate:
+        if "estimate" in payload.model_fields_set and payload.estimate != issue.estimate:
             await self._record_activity(
                 workspace_id,
                 issue.id,
@@ -326,7 +337,7 @@ class IssueService:
                 "issue.updated",
                 field="estimate",
                 old_value=str(issue.estimate) if issue.estimate is not None else None,
-                new_value=str(payload.estimate),
+                new_value=str(payload.estimate) if payload.estimate is not None else None,
             )
             issue.estimate = payload.estimate
             changed = True
@@ -350,11 +361,11 @@ class IssueService:
         return issue
 
     async def delete(
-        self, acting_member: WorkspaceMember, workspace_id: uuid.UUID, issue_id: uuid.UUID
+        self, acting: WorkspaceContext, workspace_id: uuid.UUID, issue_id: uuid.UUID
     ) -> None:
         issue = await self._get_active_issue(workspace_id, issue_id)
-        self._permission_service.require(
-            member=acting_member,
+        self._permission_service.require_in_context(
+            context=acting,
             permission=Permission.ISSUE_DELETE,
             resource_owner_id=issue.creator_id,
         )
@@ -364,7 +375,7 @@ class IssueService:
         await self._record_activity(
             workspace_id,
             issue_id,
-            acting_member.user_id,
+            acting.member.user_id,
             "issue.deleted",
             old_value=issue.identifier,
         )
@@ -379,6 +390,10 @@ class IssueService:
         project = await self._project_repo.get_by_id(workspace_id, project_id)
         if project is None:
             raise ProjectNotFoundError()
+
+    async def _validate_assignee(self, workspace_id: uuid.UUID, assignee_id: uuid.UUID) -> None:
+        if await self._workspace_repo.get_member(workspace_id, assignee_id) is None:
+            raise IssueAssigneeNotInWorkspaceError()
 
     async def _validate_parent_link(
         self, workspace_id: uuid.UUID, *, parent_id: uuid.UUID, child_id: uuid.UUID | None

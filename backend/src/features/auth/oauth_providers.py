@@ -89,7 +89,9 @@ class GoogleOAuthClient:
 
         email = payload.get("email")
         subject = payload.get("sub")
-        if not email or not subject:
+        # `AuthService` vincula contas por e-mail — só um e-mail que o Google
+        # confirma ter verificado pode servir de prova de posse.
+        if not email or not subject or payload.get("email_verified") is not True:
             raise OAuthProviderError()
 
         return OAuthProfile(

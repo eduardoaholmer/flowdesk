@@ -76,6 +76,9 @@ class IssueUpdateRequest(BaseModel):
     `parent_id`, como `due_date` (ADR-055/Sprint 23.1), precisa distinguir
     "campo omitido" (preserva o vínculo atual) de "`null` explícito"
     (desvincula) — o service checa `model_fields_set`, não `is not None`.
+    O mesmo vale para os demais campos anuláveis da issue (`description`,
+    `project_id`, `assignee_id`, `estimate`); `title`, `status_id` e
+    `priority` não aceitam ficar vazios, então `null` neles é ignorado.
     """
 
     title: str | None = None

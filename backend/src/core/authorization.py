@@ -39,7 +39,11 @@ from src.core.logging import get_logger
 from src.core.permissions import Permission
 from src.core.security import CurrentUser
 from src.features.permissions.repository import PermissionOverrideRepository
-from src.features.workspaces.exceptions import CannotManageOwnerError, WorkspaceNotFoundError
+from src.features.workspaces.exceptions import (
+    CannotGrantRoleAboveOwnError,
+    CannotManageOwnerError,
+    WorkspaceNotFoundError,
+)
 from src.features.workspaces.models import Workspace, WorkspaceMember, WorkspaceRole
 from src.features.workspaces.repository import WorkspaceRepository, WorkspaceRepositoryProtocol
 
@@ -98,6 +102,16 @@ ROLE_PERMISSIONS: dict[WorkspaceRole, frozenset[Permission]] = {
     ),
 }
 
+# Hierarquia dos papéis, usada só para "não conceder acima do próprio papel"
+# (`PermissionService.can_grant_role`) — a matriz acima continua sendo a única
+# fonte do que cada papel pode fazer.
+_ROLE_RANK: dict[WorkspaceRole, int] = {
+    WorkspaceRole.GUEST: 0,
+    WorkspaceRole.MEMBER: 1,
+    WorkspaceRole.ADMIN: 2,
+    WorkspaceRole.OWNER: 3,
+}
+
 # Permissões concedidas a QUALQUER papel quando o chamador é o dono do recurso
 # (`resource_owner_id == member.user_id`), além do que a matriz acima já
 # concede pelo papel. Modela "excluir comentário/issue própria" sem precisar
@@ -111,6 +125,26 @@ OWNERSHIP_OVERRIDE_PERMISSIONS: frozenset[Permission] = frozenset(
         Permission.ATTACHMENT_DELETE,
     }
 )
+
+
+@dataclass(frozen=True)
+class WorkspaceContext:
+    """Resultado da etapa "Workspace Context" do fluxo de autorização —
+    confirma que o workspace existe e que o chamador é membro dele antes de
+    qualquer permissão específica ser avaliada. Não-membro e workspace
+    inexistente colapsam no mesmo `WorkspaceNotFoundError` (404), mesmo
+    racional anti-enumeration já usado em toda a feature de workspaces
+    (`docs/07-security.md` §9.1).
+
+    `granted_overrides`/`revoked_overrides` (Sprint 9.3, ADR-058): os
+    `PermissionOverride` do workspace já resolvidos para `member.role` — vazios
+    (`frozenset()`) no caso comum de nenhum override configurado.
+    """
+
+    workspace: Workspace
+    member: WorkspaceMember
+    granted_overrides: frozenset[Permission] = field(default_factory=frozenset)
+    revoked_overrides: frozenset[Permission] = field(default_factory=frozenset)
 
 
 class PermissionService:
@@ -173,6 +207,27 @@ class PermissionService:
         )
         raise PermissionDeniedError()
 
+    def require_in_context(
+        self,
+        *,
+        context: WorkspaceContext,
+        permission: Permission,
+        resource_owner_id: uuid.UUID | None = None,
+    ) -> None:
+        """Forma preferida de checar permissão a partir de um `WorkspaceContext`:
+        repassa os overrides do workspace junto com a membership. Checagens
+        contextuais nos services (posse sobre issue/comentário/anexo) chamando
+        `require(member=...)` sem os overrides ignoravam silenciosamente uma
+        permissão revogada ou concedida pelo OWNER (ADR-063).
+        """
+        self.require(
+            member=context.member,
+            permission=permission,
+            resource_owner_id=resource_owner_id,
+            granted_overrides=context.granted_overrides,
+            revoked_overrides=context.revoked_overrides,
+        )
+
     def can_manage_member(self, *, actor_role: WorkspaceRole, target_role: WorkspaceRole) -> bool:
         """Regra contextual de `docs/07-security.md` §8 ("Alterar papel de
         membro": ADMIN pode, exceto sobre um OWNER) — não expressável na
@@ -184,6 +239,22 @@ class PermissionService:
         if actor_role == WorkspaceRole.ADMIN:
             return target_role != WorkspaceRole.OWNER
         return False
+
+    def can_grant_role(self, *, actor_role: WorkspaceRole, target_role: WorkspaceRole) -> bool:
+        return _ROLE_RANK[target_role] <= _ROLE_RANK[actor_role]
+
+    def require_can_grant_role(
+        self, *, actor_role: WorkspaceRole, target_role: WorkspaceRole
+    ) -> None:
+        if self.can_grant_role(actor_role=actor_role, target_role=target_role):
+            return
+        logger.warning(
+            "permission_denied",
+            reason="cannot_grant_role_above_own",
+            actor_role=actor_role.value,
+            target_role=target_role.value,
+        )
+        raise CannotGrantRoleAboveOwnError()
 
     def require_can_manage_member(
         self, *, actor_role: WorkspaceRole, target_role: WorkspaceRole
@@ -201,26 +272,6 @@ class PermissionService:
 
 def get_permission_service() -> PermissionService:
     return PermissionService()
-
-
-@dataclass(frozen=True)
-class WorkspaceContext:
-    """Resultado da etapa "Workspace Context" do fluxo de autorização —
-    confirma que o workspace existe e que o chamador é membro dele antes de
-    qualquer permissão específica ser avaliada. Não-membro e workspace
-    inexistente colapsam no mesmo `WorkspaceNotFoundError` (404), mesmo
-    racional anti-enumeration já usado em toda a feature de workspaces
-    (`docs/07-security.md` §9.1).
-
-    `granted_overrides`/`revoked_overrides` (Sprint 9.3, ADR-058): os
-    `PermissionOverride` do workspace já resolvidos para `member.role` — vazios
-    (`frozenset()`) no caso comum de nenhum override configurado.
-    """
-
-    workspace: Workspace
-    member: WorkspaceMember
-    granted_overrides: frozenset[Permission] = field(default_factory=frozenset)
-    revoked_overrides: frozenset[Permission] = field(default_factory=frozenset)
 
 
 async def get_workspace_context(
@@ -262,12 +313,7 @@ def require_permission(permission: Permission) -> Callable[..., Awaitable[Worksp
         context: WorkspaceContext = Depends(get_workspace_context),
         permission_service: PermissionService = Depends(get_permission_service),
     ) -> WorkspaceMember:
-        permission_service.require(
-            member=context.member,
-            permission=permission,
-            granted_overrides=context.granted_overrides,
-            revoked_overrides=context.revoked_overrides,
-        )
+        permission_service.require_in_context(context=context, permission=permission)
         return context.member
 
     return _require_permission

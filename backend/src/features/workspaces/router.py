@@ -167,10 +167,12 @@ async def create_invitation(
     workspace_id: uuid.UUID,
     payload: InvitationCreateRequest,
     current_user: CurrentUser = Depends(get_current_user),
-    _member: WorkspaceMember = Depends(require_permission(Permission.WORKSPACE_INVITE)),
+    acting_member: WorkspaceMember = Depends(require_permission(Permission.WORKSPACE_INVITE)),
     service: InvitationService = Depends(get_invitation_service),
 ) -> DataEnvelope[InvitationCreatedResponse]:
-    issued = await service.create(current_user, workspace_id, payload)
+    issued = await service.create(
+        current_user, workspace_id, payload, acting_role=acting_member.role
+    )
     response = InvitationCreatedResponse.from_issued(issued.invitation, issued.token)
     return DataEnvelope(data=response)
 
