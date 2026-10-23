@@ -57,7 +57,21 @@ export interface IssueCreateInput {
   due_date?: string | null;
 }
 
-export type IssueUpdateInput = Partial<IssueCreateInput>;
+/**
+ * `null` limpa o campo; omitir (ou `undefined`, que some no JSON) preserva o
+ * valor atual — o backend distingue os dois casos via `model_fields_set`.
+ */
+export interface IssueUpdateInput {
+  title?: string;
+  description?: string | null;
+  project_id?: string | null;
+  parent_id?: string | null;
+  status_id?: string;
+  priority?: IssuePriority;
+  assignee_id?: string | null;
+  estimate?: number | null;
+  due_date?: string | null;
+}
 
 export interface IssueActivityLogEntry {
   id: string;

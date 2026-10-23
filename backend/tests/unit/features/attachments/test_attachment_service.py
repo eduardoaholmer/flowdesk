@@ -25,6 +25,7 @@ from tests.unit.features.labels.fakes import FakeLabelRepository
 from tests.unit.features.notifications.fakes import FakeNotificationRepository
 from tests.unit.features.projects.fakes import FakeProjectRepository
 from tests.unit.features.workflow_states.fakes import FakeWorkflowStateRepository
+from tests.unit.features.workspaces.fakes import FakeWorkspaceRepository
 
 _ALLOWED_TYPES = frozenset({"image/png", "application/pdf"})
 _MAX_SIZE = 1024
@@ -98,6 +99,7 @@ async def _create_issue(issue_repo: FakeIssueRepository, workspace_id: uuid.UUID
         FakeLabelRepository(),
         NotificationService(FakeNotificationRepository()),
         workflow_state_repo,
+        FakeWorkspaceRepository(),
     )
     issue = await issue_service.create(_user(), workspace_id, IssueCreateRequest(title="Issue"))
     return issue.id

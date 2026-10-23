@@ -103,6 +103,7 @@ async def _create_issue(issue_repo: FakeIssueRepository, workspace_id: uuid.UUID
         FakeLabelRepository(),
         NotificationService(FakeNotificationRepository()),
         workflow_state_repo,
+        FakeWorkspaceRepository(),
     )
     issue = await issue_service.create(_user(), workspace_id, IssueCreateRequest(title="Issue"))
     return issue.id
