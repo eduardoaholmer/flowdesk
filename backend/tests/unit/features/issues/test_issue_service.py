@@ -8,8 +8,9 @@ import pytest
 # models isoladamente — ver `src/db/models_registry.py`.
 import src.db.models_registry  # noqa: F401
 from pydantic import ValidationError
-from src.core.authorization import PermissionService
+from src.core.authorization import PermissionService, WorkspaceContext
 from src.core.exceptions import PermissionDeniedError
+from src.core.permissions import Permission
 from src.core.security import CurrentUser
 from src.features.issues.exceptions import (
     InvalidParentIssueError,
@@ -29,7 +30,7 @@ from src.features.projects.exceptions import ProjectNotFoundError
 from src.features.projects.models import Project
 from src.features.workflow_states.exceptions import WorkflowStateNotFoundError
 from src.features.workflow_states.models import WorkflowState, WorkflowStateCategory
-from src.features.workspaces.models import WorkspaceMember, WorkspaceRole
+from src.features.workspaces.models import Workspace, WorkspaceMember, WorkspaceRole
 
 from tests.unit.features.issues.fakes import FakeIssueRepository
 from tests.unit.features.labels.fakes import FakeLabelRepository
@@ -99,8 +100,19 @@ def _workspace_id() -> uuid.UUID:
     return uuid.uuid4()
 
 
-def _member(workspace_id: uuid.UUID, user_id: uuid.UUID, role: WorkspaceRole) -> WorkspaceMember:
-    return WorkspaceMember(workspace_id=workspace_id, user_id=user_id, role=role)
+def _acting(
+    workspace_id: uuid.UUID,
+    user_id: uuid.UUID,
+    role: WorkspaceRole,
+    *,
+    granted: frozenset[Permission] = frozenset(),
+    revoked: frozenset[Permission] = frozenset(),
+) -> WorkspaceContext:
+    member = WorkspaceMember(workspace_id=workspace_id, user_id=user_id, role=role)
+    workspace = Workspace(id=workspace_id, name="Acme", slug="acme", owner_id=uuid.uuid4())
+    return WorkspaceContext(
+        workspace=workspace, member=member, granted_overrides=granted, revoked_overrides=revoked
+    )
 
 
 async def _seed_status(
@@ -497,9 +509,9 @@ async def test_delete_by_creator_succeeds_via_ownership_override(
     await _seed_status(workflow_state_repo, workspace_id)
     creator = _user()
     issue = await service.create(creator, workspace_id, IssueCreateRequest(title="Issue"))
-    creator_member = _member(workspace_id, creator.id, WorkspaceRole.MEMBER)
+    creator_acting = _acting(workspace_id, creator.id, WorkspaceRole.MEMBER)
 
-    await service.delete(creator_member, workspace_id, issue.id)
+    await service.delete(creator_acting, workspace_id, issue.id)
 
     assert issue_repo.issues[issue.id].deleted_at is not None
     assert any(entry.action == "issue.deleted" for entry in issue_repo.activity_log)
@@ -514,12 +526,53 @@ async def test_delete_by_non_creator_member_raises_permission_denied(
     await _seed_status(workflow_state_repo, workspace_id)
     creator = _user()
     issue = await service.create(creator, workspace_id, IssueCreateRequest(title="Issue"))
-    other_member = _member(workspace_id, uuid.uuid4(), WorkspaceRole.MEMBER)
+    other_acting = _acting(workspace_id, uuid.uuid4(), WorkspaceRole.MEMBER)
 
     with pytest.raises(PermissionDeniedError):
-        await service.delete(other_member, workspace_id, issue.id)
+        await service.delete(other_acting, workspace_id, issue.id)
 
     assert issue_repo.issues[issue.id].deleted_at is None
+
+
+async def test_delete_by_admin_denied_when_workspace_revoked_issue_delete(
+    service: IssueService,
+    issue_repo: FakeIssueRepository,
+    workflow_state_repo: FakeWorkflowStateRepository,
+) -> None:
+    workspace_id = _workspace_id()
+    await _seed_status(workflow_state_repo, workspace_id)
+    issue = await service.create(_user(), workspace_id, IssueCreateRequest(title="Issue"))
+    admin_acting = _acting(
+        workspace_id,
+        uuid.uuid4(),
+        WorkspaceRole.ADMIN,
+        revoked=frozenset({Permission.ISSUE_DELETE}),
+    )
+
+    with pytest.raises(PermissionDeniedError):
+        await service.delete(admin_acting, workspace_id, issue.id)
+
+    assert issue_repo.issues[issue.id].deleted_at is None
+
+
+async def test_delete_others_issue_allowed_when_workspace_granted_issue_delete(
+    service: IssueService,
+    issue_repo: FakeIssueRepository,
+    workflow_state_repo: FakeWorkflowStateRepository,
+) -> None:
+    workspace_id = _workspace_id()
+    await _seed_status(workflow_state_repo, workspace_id)
+    issue = await service.create(_user(), workspace_id, IssueCreateRequest(title="Issue"))
+    other_acting = _acting(
+        workspace_id,
+        uuid.uuid4(),
+        WorkspaceRole.MEMBER,
+        granted=frozenset({Permission.ISSUE_DELETE}),
+    )
+
+    await service.delete(other_acting, workspace_id, issue.id)
+
+    assert issue_repo.issues[issue.id].deleted_at is not None
 
 
 async def test_delete_by_admin_succeeds_without_being_creator(
@@ -531,9 +584,9 @@ async def test_delete_by_admin_succeeds_without_being_creator(
     await _seed_status(workflow_state_repo, workspace_id)
     creator = _user()
     issue = await service.create(creator, workspace_id, IssueCreateRequest(title="Issue"))
-    admin_member = _member(workspace_id, uuid.uuid4(), WorkspaceRole.ADMIN)
+    admin_acting = _acting(workspace_id, uuid.uuid4(), WorkspaceRole.ADMIN)
 
-    await service.delete(admin_member, workspace_id, issue.id)
+    await service.delete(admin_acting, workspace_id, issue.id)
 
     assert issue_repo.issues[issue.id].deleted_at is not None
 
@@ -742,10 +795,10 @@ async def test_delete_blocks_when_issue_has_sub_issues(
     await service.create(
         creator, workspace_id, IssueCreateRequest(title="Filho", parent_id=parent.id)
     )
-    creator_member = _member(workspace_id, creator.id, WorkspaceRole.MEMBER)
+    creator_acting = _acting(workspace_id, creator.id, WorkspaceRole.MEMBER)
 
     with pytest.raises(IssueHasSubIssuesError):
-        await service.delete(creator_member, workspace_id, parent.id)
+        await service.delete(creator_acting, workspace_id, parent.id)
 
     assert issue_repo.issues[parent.id].deleted_at is None
 

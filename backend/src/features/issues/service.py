@@ -1,7 +1,7 @@
 import uuid
 from collections.abc import Sequence
 
-from src.core.authorization import PermissionService
+from src.core.authorization import PermissionService, WorkspaceContext
 from src.core.permissions import Permission
 from src.core.security import CurrentUser
 from src.features.issues.exceptions import (
@@ -24,7 +24,6 @@ from src.features.projects.repository import ProjectRepositoryProtocol
 from src.features.workflow_states.exceptions import WorkflowStateNotFoundError
 from src.features.workflow_states.models import WorkflowState
 from src.features.workflow_states.repository import WorkflowStateRepositoryProtocol
-from src.features.workspaces.models import WorkspaceMember
 
 
 class IssueService:
@@ -350,11 +349,11 @@ class IssueService:
         return issue
 
     async def delete(
-        self, acting_member: WorkspaceMember, workspace_id: uuid.UUID, issue_id: uuid.UUID
+        self, acting: WorkspaceContext, workspace_id: uuid.UUID, issue_id: uuid.UUID
     ) -> None:
         issue = await self._get_active_issue(workspace_id, issue_id)
-        self._permission_service.require(
-            member=acting_member,
+        self._permission_service.require_in_context(
+            context=acting,
             permission=Permission.ISSUE_DELETE,
             resource_owner_id=issue.creator_id,
         )
@@ -364,7 +363,7 @@ class IssueService:
         await self._record_activity(
             workspace_id,
             issue_id,
-            acting_member.user_id,
+            acting.member.user_id,
             "issue.deleted",
             old_value=issue.identifier,
         )

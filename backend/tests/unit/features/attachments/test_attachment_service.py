@@ -2,8 +2,9 @@ import io
 import uuid
 
 import pytest
-from src.core.authorization import PermissionService
+from src.core.authorization import PermissionService, WorkspaceContext
 from src.core.exceptions import PermissionDeniedError
+from src.core.permissions import Permission
 from src.core.security import CurrentUser
 from src.features.attachments.exceptions import (
     AttachmentNotFoundError,
@@ -16,7 +17,7 @@ from src.features.issues.schemas import IssueCreateRequest
 from src.features.issues.service import IssueService
 from src.features.notifications.service import NotificationService
 from src.features.workflow_states.models import WorkflowState, WorkflowStateCategory
-from src.features.workspaces.models import WorkspaceMember, WorkspaceRole
+from src.features.workspaces.models import Workspace, WorkspaceMember, WorkspaceRole
 
 from tests.unit.features.attachments.fakes import FakeAttachmentRepository, FakeStorageProvider
 from tests.unit.features.issues.fakes import FakeIssueRepository
@@ -33,8 +34,19 @@ def _user() -> CurrentUser:
     return CurrentUser(id=uuid.uuid4(), email="ada@example.com", name="Ada Lovelace")
 
 
-def _member(workspace_id: uuid.UUID, user_id: uuid.UUID, role: WorkspaceRole) -> WorkspaceMember:
-    return WorkspaceMember(workspace_id=workspace_id, user_id=user_id, role=role)
+def _acting(
+    workspace_id: uuid.UUID,
+    user_id: uuid.UUID,
+    role: WorkspaceRole,
+    *,
+    granted: frozenset[Permission] = frozenset(),
+    revoked: frozenset[Permission] = frozenset(),
+) -> WorkspaceContext:
+    member = WorkspaceMember(workspace_id=workspace_id, user_id=user_id, role=role)
+    workspace = Workspace(id=workspace_id, name="Acme", slug="acme", owner_id=uuid.uuid4())
+    return WorkspaceContext(
+        workspace=workspace, member=member, granted_overrides=granted, revoked_overrides=revoked
+    )
 
 
 @pytest.fixture
@@ -230,9 +242,9 @@ async def test_delete_by_uploader_succeeds_via_ownership_override(
         size=4,
         stream=io.BytesIO(b"data"),
     )
-    uploader_member = _member(workspace_id, uploader.id, WorkspaceRole.MEMBER)
+    uploader_acting = _acting(workspace_id, uploader.id, WorkspaceRole.MEMBER)
 
-    await service.delete(uploader_member, workspace_id, attachment.id)
+    await service.delete(uploader_acting, workspace_id, attachment.id)
 
     assert attachment_repo.attachments[attachment.id].deleted_at is not None
     assert attachment.storage_key in storage.deleted
@@ -253,7 +265,32 @@ async def test_delete_by_non_uploader_member_raises_permission_denied(
         size=4,
         stream=io.BytesIO(b"data"),
     )
-    other_member = _member(workspace_id, uuid.uuid4(), WorkspaceRole.MEMBER)
+    other_acting = _acting(workspace_id, uuid.uuid4(), WorkspaceRole.MEMBER)
 
     with pytest.raises(PermissionDeniedError):
-        await service.delete(other_member, workspace_id, attachment.id)
+        await service.delete(other_acting, workspace_id, attachment.id)
+
+
+async def test_delete_by_admin_denied_when_workspace_revoked_attachment_delete(
+    service: AttachmentService, issue_repo: FakeIssueRepository
+) -> None:
+    workspace_id = uuid.uuid4()
+    issue_id = await _create_issue(issue_repo, workspace_id)
+    attachment = await service.upload_to_issue(
+        _user(),
+        workspace_id,
+        issue_id,
+        file_name="print.png",
+        content_type="image/png",
+        size=4,
+        stream=io.BytesIO(b"data"),
+    )
+    admin_acting = _acting(
+        workspace_id,
+        uuid.uuid4(),
+        WorkspaceRole.ADMIN,
+        revoked=frozenset({Permission.ATTACHMENT_DELETE}),
+    )
+
+    with pytest.raises(PermissionDeniedError):
+        await service.delete(admin_acting, workspace_id, attachment.id)

@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, UploadFile, status
 from fastapi.responses import FileResponse
 from starlette.background import BackgroundTask
 
-from src.core.authorization import require_permission
+from src.core.authorization import WorkspaceContext, get_workspace_context, require_permission
 from src.core.dependencies import get_current_user
 from src.core.permissions import Permission
 from src.core.schemas import DataEnvelope
@@ -97,7 +97,8 @@ async def download_attachment(
 async def delete_attachment(
     workspace_id: uuid.UUID,
     attachment_id: uuid.UUID,
-    acting_member: WorkspaceMember = Depends(require_permission(Permission.ISSUE_READ)),
+    _member: WorkspaceMember = Depends(require_permission(Permission.ISSUE_READ)),
+    acting: WorkspaceContext = Depends(get_workspace_context),
     service: AttachmentService = Depends(get_attachment_service),
 ) -> None:
-    await service.delete(acting_member, workspace_id, attachment_id)
+    await service.delete(acting, workspace_id, attachment_id)

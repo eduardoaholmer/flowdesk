@@ -213,3 +213,54 @@ async def test_cannot_override_a_locked_permission(client: AsyncClient) -> None:
 
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "locked_permission"
+
+
+async def test_revoked_issue_delete_blocks_admin(client: AsyncClient) -> None:
+    """`issue.delete` faz parte do padrão de ADMIN; revogado pelo OWNER, o
+    service ainda autorizava a exclusão porque a checagem contextual ignorava
+    os overrides — regressão da auditoria de 2026-10 (ADR-063)."""
+    _, owner_token = await _register_and_login(client)
+    workspace_id = await _create_workspace(client, owner_token)
+    _, admin_token = await _invite_and_accept_member(
+        client, workspace_id, owner_token, role="ADMIN"
+    )
+    created = await client.post(
+        f"/api/v1/workspaces/{workspace_id}/issues",
+        json={"title": "Issue do dono"},
+        headers=_auth(owner_token),
+    )
+    issue_id = created.json()["data"]["id"]
+    await client.put(
+        f"/api/v1/workspaces/{workspace_id}/permission-overrides",
+        json={"role": "ADMIN", "permission": "issue.delete", "granted": False},
+        headers=_auth(owner_token),
+    )
+
+    response = await client.delete(
+        f"/api/v1/workspaces/{workspace_id}/issues/{issue_id}", headers=_auth(admin_token)
+    )
+
+    assert response.status_code == 403
+
+
+async def test_granted_issue_delete_lets_member_delete_others_issue(client: AsyncClient) -> None:
+    _, owner_token = await _register_and_login(client)
+    workspace_id = await _create_workspace(client, owner_token)
+    _, member_token = await _invite_and_accept_member(client, workspace_id, owner_token)
+    created = await client.post(
+        f"/api/v1/workspaces/{workspace_id}/issues",
+        json={"title": "Issue do dono"},
+        headers=_auth(owner_token),
+    )
+    issue_id = created.json()["data"]["id"]
+    await client.put(
+        f"/api/v1/workspaces/{workspace_id}/permission-overrides",
+        json={"role": "MEMBER", "permission": "issue.delete", "granted": True},
+        headers=_auth(owner_token),
+    )
+
+    response = await client.delete(
+        f"/api/v1/workspaces/{workspace_id}/issues/{issue_id}", headers=_auth(member_token)
+    )
+
+    assert response.status_code == 204
