@@ -6,6 +6,7 @@ from fastapi.responses import FileResponse
 from starlette.background import BackgroundTask
 
 from src.core.authorization import WorkspaceContext, get_workspace_context, require_permission
+from src.core.config import Settings, get_settings
 from src.core.dependencies import get_current_user
 from src.core.permissions import Permission
 from src.core.schemas import DataEnvelope
@@ -34,6 +35,7 @@ async def upload_issue_attachment(
     current_user: CurrentUser = Depends(get_current_user),
     _member: WorkspaceMember = Depends(require_permission(Permission.ATTACHMENT_CREATE)),
     service: AttachmentService = Depends(get_attachment_service),
+    settings: Settings = Depends(get_settings),
 ) -> DataEnvelope[AttachmentResponse]:
     """Lê o corpo inteiro do upload em memória (`UploadFile.read()`) antes de
     validar/persistir: para o teto de tamanho desta sprint (`Settings.max_upload_size_bytes`,
@@ -41,8 +43,13 @@ async def upload_issue_attachment(
     de HTTP (recebe `BinaryIO`/`bytes`, nunca o `UploadFile` do Starlette —
     CLAUDE.md §5). Um volume de upload maior no futuro trocaria isso por
     streaming direto ao `StorageProvider` sem mudar o contrato do service.
+
+    Lê no máximo o teto + 1 byte: suficiente para o service detectar
+    `attachment_too_large` sem carregar em memória um upload arbitrariamente
+    grande (antes, `read()` sem limite deixava qualquer GUEST derrubar o
+    processo por falta de memória).
     """
-    content = await file.read()
+    content = await file.read(settings.max_upload_size_bytes + 1)
     attachment = await service.upload_to_issue(
         current_user,
         workspace_id,

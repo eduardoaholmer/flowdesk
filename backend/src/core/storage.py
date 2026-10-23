@@ -1,13 +1,28 @@
 import asyncio
+import re
 import tempfile
 import uuid
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import BinaryIO, Protocol
 
 import boto3
 from fastapi import Depends
 
 from src.core.config import Settings, get_settings
+
+_UNSAFE_KEY_CHARS = re.compile(r"[^A-Za-z0-9._-]")
+_MAX_KEY_SUFFIX_LENGTH = 100
+
+
+def build_storage_key(suggested_name: str) -> str:
+    """O nome vem do cliente (`UploadFile.filename`): `/` ou `\\` nele virariam
+    subdiretórios inexistentes (500) no disco local. Só o basename, com
+    caracteres seguros, entra na chave — o nome original continua em
+    `Attachment.file_name` para exibição/download.
+    """
+    basename = PurePosixPath(suggested_name.replace("\\", "/")).name
+    safe = _UNSAFE_KEY_CHARS.sub("_", basename)[:_MAX_KEY_SUFFIX_LENGTH] or "arquivo"
+    return f"{uuid.uuid4().hex}-{safe}"
 
 
 class StorageProvider(Protocol):
@@ -44,7 +59,7 @@ class LocalStorageProvider:
         return self._upload_dir / storage_key
 
     async def save(self, *, stream: BinaryIO, suggested_name: str) -> str:
-        storage_key = f"{uuid.uuid4().hex}-{suggested_name}"
+        storage_key = build_storage_key(suggested_name)
         destination = self._resolve(storage_key)
 
         def _write() -> None:
@@ -82,7 +97,7 @@ class S3StorageProvider:
         self._client = boto3.client("s3", region_name=region_name, endpoint_url=endpoint_url)
 
     async def save(self, *, stream: BinaryIO, suggested_name: str) -> str:
-        storage_key = f"{uuid.uuid4().hex}-{suggested_name}"
+        storage_key = build_storage_key(suggested_name)
         await asyncio.to_thread(self._client.upload_fileobj, stream, self._bucket_name, storage_key)
         return storage_key
 
