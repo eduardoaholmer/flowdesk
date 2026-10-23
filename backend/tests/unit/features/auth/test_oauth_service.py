@@ -1,6 +1,11 @@
 import pytest
 from src.core.config import Settings
-from src.features.auth.exceptions import InvalidCredentialsError, OAuthProviderNotConfiguredError
+from src.features.auth.exceptions import (
+    InvalidCredentialsError,
+    OAuthEmailAlreadyRegisteredError,
+    OAuthProviderNotConfiguredError,
+)
+from src.features.auth.models import User
 from src.features.auth.oauth_providers import OAuthProfile, OAuthProvider
 from src.features.auth.schemas import RegisterRequest
 from src.features.auth.service import AuthService
@@ -100,17 +105,15 @@ async def test_login_with_oauth_reuses_user_on_second_login(
     assert len(user_repo.users) == 1
 
 
-async def test_login_with_oauth_links_existing_account_by_email(
+async def test_login_with_oauth_links_existing_social_account_by_email(
     service: AuthService,
     google_client: FakeOAuthClient,
     user_repo: FakeUserRepository,
     oauth_identity_repo: FakeOAuthIdentityRepository,
 ) -> None:
-    """Alguém que já tem conta tradicional (senha) usa Google pela primeira vez com o
-    mesmo e-mail — deve logar na MESMA conta, nunca criar uma segunda."""
-    existing_user = await service.register(
-        RegisterRequest(name="Ada Antiga", email="ada@example.com", password="Str0ng!Passw0rd")
-    )
+    """Conta sem senha (criada por outro provedor) usando Google pela primeira vez
+    com o mesmo e-mail — deve logar na MESMA conta, nunca criar uma segunda."""
+    existing_user = await user_repo.create(User(name="Ada", email="ada@example.com"))
     google_client.register_profile("valid-code", _profile())
 
     result = await service.login_with_oauth(
@@ -122,13 +125,40 @@ async def test_login_with_oauth_links_existing_account_by_email(
     assert len(oauth_identity_repo.identities) == 1
 
 
+async def test_login_with_oauth_refuses_to_link_account_with_password(
+    service: AuthService,
+    google_client: FakeOAuthClient,
+    user_repo: FakeUserRepository,
+    session_repo: FakeSessionRepository,
+    oauth_identity_repo: FakeOAuthIdentityRepository,
+) -> None:
+    """Pre-account takeover (ADR-064): o cadastro por senha não verifica e-mail,
+    então quem registrou a senha pode não ser o dono do e-mail."""
+    await service.register(
+        RegisterRequest(name="Atacante", email="ada@example.com", password="Str0ng!Passw0rd")
+    )
+    google_client.register_profile("valid-code", _profile())
+
+    with pytest.raises(OAuthEmailAlreadyRegisteredError):
+        await service.login_with_oauth(
+            OAuthProvider.GOOGLE, "valid-code", user_agent=None, ip_address=None
+        )
+
+    assert len(user_repo.users) == 1
+    assert oauth_identity_repo.identities == {}
+    assert session_repo.sessions == {}
+
+
 async def test_login_with_oauth_does_not_overwrite_existing_avatar(
     service: AuthService, google_client: FakeOAuthClient, user_repo: FakeUserRepository
 ) -> None:
-    existing_user = await service.register(
-        RegisterRequest(name="Ada", email="ada@example.com", password="Str0ng!Passw0rd")
+    await user_repo.create(
+        User(
+            name="Ada",
+            email="ada@example.com",
+            avatar_url="https://existing.example/avatar.png",
+        )
     )
-    user_repo.users[existing_user.id].avatar_url = "https://existing.example/avatar.png"
     google_client.register_profile("valid-code", _profile())
 
     result = await service.login_with_oauth(
@@ -141,9 +171,7 @@ async def test_login_with_oauth_does_not_overwrite_existing_avatar(
 async def test_login_with_oauth_fills_missing_avatar_on_existing_account(
     service: AuthService, google_client: FakeOAuthClient, user_repo: FakeUserRepository
 ) -> None:
-    user = await service.register(
-        RegisterRequest(name="Ada", email="ada@example.com", password="Str0ng!Passw0rd")
-    )
+    user = await user_repo.create(User(name="Ada", email="ada@example.com"))
     assert user.avatar_url is None
     google_client.register_profile("valid-code", _profile())
 

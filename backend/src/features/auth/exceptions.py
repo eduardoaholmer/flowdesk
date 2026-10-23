@@ -43,6 +43,16 @@ class OAuthProviderNotConfiguredError(NotFoundError):
     message = "Este provedor de login não está disponível."
 
 
+class OAuthEmailAlreadyRegisteredError(ConflictError):
+    """Login social com o e-mail de uma conta que tem senha (ADR-064). Sem
+    verificação de e-mail no cadastro, essa senha pode ter sido criada por
+    outra pessoa — vincular a identidade do provedor entregaria ao dono da
+    senha a conta de quem acabou de provar posse do e-mail."""
+
+    code = "oauth_email_already_registered"
+    message = "Já existe uma conta com este e-mail. Entre com e-mail e senha."
+
+
 class OAuthProviderError(AuthenticationError):
     """Cobre todo o espectro de falha do handshake OAuth: `state` ausente/divergente
     do cookie (possível CSRF), provedor retornou `error=`, troca de `code` por
