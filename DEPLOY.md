@@ -118,7 +118,8 @@ derrubando a sessão a cada reload. Passos manuais para ativar:
    "Authorization callback URL" = a URL de callback do GitHub acima (o host
    precisa ser o mesmo do `redirect_uri` enviado, senão o GitHub recusa).
 
-Ordem recomendada: 2 → 3 → 4 → 1. `CORS_ORIGINS` não precisa mudar (com o
+Feito e validado em produção em 2026-10-26 (login com Google e GitHub
+concluindo na home, sessão mantida após reload). Ordem recomendada: 2 → 3 → 4 → 1. `CORS_ORIGINS` não precisa mudar (com o
 proxy as chamadas do SPA são same-origin e nem passam por CORS).
 
 ## Limpeza pós-migração (feita em 2026-09-08)
@@ -150,8 +151,20 @@ proxy as chamadas do SPA são same-origin e nem passam por CORS).
 
     consciente de manter controle manual por ora.
 
-## Follow-up sugerido
+## Keep-alive do backend (UptimeRobot, configurado em 2026-10-26)
 
-- Backend no Render free tier "dorme" após ~15 min de inatividade (delay de
-  até 50s na primeira requisição depois disso) — considerar upgrade de plano
-  se isso for um problema para demonstrações ao vivo.
+O Render free tier "dorme" o serviço após ~15 min sem requisições, e a
+primeira requisição seguinte espera ~1 min pelo cold start. No login social
+isso aparecia como a página de carregamento do Render antes do redirect para
+o Google/GitHub.
+
+- **Monitor**: UptimeRobot (plano free), tipo HTTP(s), intervalo de 5 min,
+  alerta por e-mail para o dono da conta.
+- **URL**: `https://flowdesk-backend-ngcl.onrender.com/health/ready`. Usa
+  `/health/ready` (não `/health`) para que o ping também toque Postgres
+  (Supabase) e Redis (Upstash): o Supabase free pausa o projeto após 7 dias
+  sem atividade. Custo: ~9 mil requisições/mês, dentro dos limites free.
+- **Horas do Render**: um serviço acordado 24/7 consome ~744 h/mês, dentro das
+  750 h/mês do free tier — não sobra margem para um segundo serviço free
+  acordado o tempo todo.
+- Alternativa sem keep-alive: plano pago do Render (Starter), que não dorme.
