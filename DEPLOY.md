@@ -109,7 +109,8 @@ derrubando a sessão a cada reload. Passos manuais para ativar:
    - `GITHUB_REDIRECT_URI` = `https://flowdesk.eduardoaholmer.dev/api/v1/auth/github/callback`
    - `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`/`GITHUB_CLIENT_ID`/`GITHUB_CLIENT_SECRET`
      preenchidos (sem eles o botão cai em `oauth_provider_not_configured`).
-   - Deploy manual (auto-deploy do Render está desligado, ver abaixo).
+   - Salvar com "Save, rebuild, and deploy" (mudança de env var não entra no
+     serviço em execução sem um novo deploy).
 3. **Google Cloud Console → APIs & Services → Credentials → OAuth client**:
    em "Authorized redirect URIs", adicionar a URL de callback do Google acima
    (precisa bater exatamente, senão o Google responde `redirect_uri_mismatch`).
@@ -135,22 +136,18 @@ proxy as chamadas do SPA são same-origin e nem passam por CORS).
   voltaria a recriar os dois e resetaria `DATABASE_URL`/`REDIS_URL` para
   `fromDatabase`/`fromService` (quebrando a integração com Supabase/Upstash).
 
-## Como redeployar (confirmado em 2026-10-22)
+## Como redeployar (atualizado em 2026-10-26)
 
-- **Vercel (frontend):** auto-deploy já ativo — todo push em `main` dispara
-  build/deploy sozinho, sem passo manual.
-- **Render (backend): auto-deploy está DESLIGADO.** Confirmado checando o
-  histórico de deploys do `flowdesk-backend` — os 11 deploys existentes até
-  essa data foram todos `Trigger: Manual` (ou `Blueprint`, da criação
-  inicial), nenhum automático por push. Um merge em `main` **não** atualiza o
-  backend sozinho.
-  - Para redeployar o backend: dashboard do Render → `flowdesk-backend` →
-    Deploys → botão **Manual Deploy** → **Deploy latest commit** (pega o HEAD
-    de `main`). Build + `alembic upgrade head` + restart levam ~1min quando a
-    imagem já está em cache (build do zero pode levar mais).
-  - Alternativa permanente: Render → `flowdesk-backend` → Settings → Build &
-    Deploy → habilitar "Auto-Deploy". Não habilitado ainda porque não foi
-    testado o impacto de migrations automáticas em todo push — decisão
+- **Vercel (frontend):** auto-deploy já ativo — todo push em `main- **Render (backend): auto-deploy LIGADO (`On Commit`).** Visto no dashboard
+  em 2026-10-26 (`flowdesk-backend` → Settings → Deploy → Auto-Deploy). Até
+  2026-10-22 os deploys eram todos `Trigger: Manual`; não há registro de quem
+  ligou nem quando. Hoje todo push em `main` redeploya o backend, rodando
+  `alembic upgrade head` (`backend/render_start.sh`).
+  - Deploy manual continua disponível: `flowdesk-backend` → **Manual Deploy**
+    → **Deploy latest commit**.
+  - Para voltar ao controle manual: Settings → Deploy → Auto-Deploy → `Off`.
+
+
     consciente de manter controle manual por ora.
 
 ## Follow-up sugerido
