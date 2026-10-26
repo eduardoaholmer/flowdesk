@@ -90,9 +90,35 @@ ao banco. A Parte 2 migrou `DATABASE_URL`/`REDIS_URL` para Supabase/Upstash
 | URL pública do backend (Render) | `https://flowdesk-backend-ngcl.onrender.com` |
 | Connection string Postgres (Supabase) | só no painel do Render — não registrada aqui (session pooler, `aws-0-us-west-2.pooler.supabase.com:5432`) |
 | URL Redis (Upstash) | só no painel do Render — não registrada aqui (`guided-grizzly-87434.upstash.io:6379`, TLS) |
-| `VITE_API_URL` (Vercel) | `https://flowdesk-backend-ngcl.onrender.com/api/v1` |
+| `VITE_API_URL` (Vercel) | `/api/v1` — relativo, via proxy da Vercel (ADR-063). Antes: `https://flowdesk-backend-ngcl.onrender.com/api/v1` |
 | Domínio final | `https://flowdesk.eduardoaholmer.dev` — ativo, SSL válido |
 | CNAME (Vercel → Namecheap) | Host `flowdesk` → `d992bf47352c080b.vercel-dns-017.com.` |
+
+## API same-origin via proxy da Vercel + login social (ADR-063)
+
+O SPA não chama mais `onrender.com` direto: `frontend/vercel.json` reescreve
+`/api/*` para `https://flowdesk-backend-ngcl.onrender.com/api/*`. Sem isso, o
+cookie `csrf_token` ficava no domínio da API (ilegível pelo SPA) e o
+`/auth/refresh` falhava sempre — quebrando o login com Google/GitHub e
+derrubando a sessão a cada reload. Passos manuais para ativar:
+
+1. **Vercel → Settings → Environment Variables**: `VITE_API_URL` = `/api/v1`
+   (Production e Preview) e redeploy (variável `VITE_*` entra no build).
+2. **Render → `flowdesk-backend` → Environment**:
+   - `GOOGLE_REDIRECT_URI` = `https://flowdesk.eduardoaholmer.dev/api/v1/auth/google/callback`
+   - `GITHUB_REDIRECT_URI` = `https://flowdesk.eduardoaholmer.dev/api/v1/auth/github/callback`
+   - `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`/`GITHUB_CLIENT_ID`/`GITHUB_CLIENT_SECRET`
+     preenchidos (sem eles o botão cai em `oauth_provider_not_configured`).
+   - Deploy manual (auto-deploy do Render está desligado, ver abaixo).
+3. **Google Cloud Console → APIs & Services → Credentials → OAuth client**:
+   em "Authorized redirect URIs", adicionar a URL de callback do Google acima
+   (precisa bater exatamente, senão o Google responde `redirect_uri_mismatch`).
+4. **GitHub → Settings → Developer settings → OAuth Apps → FlowDesk**:
+   "Authorization callback URL" = a URL de callback do GitHub acima (o host
+   precisa ser o mesmo do `redirect_uri` enviado, senão o GitHub recusa).
+
+Ordem recomendada: 2 → 3 → 4 → 1. `CORS_ORIGINS` não precisa mudar (com o
+proxy as chamadas do SPA são same-origin e nem passam por CORS).
 
 ## Limpeza pós-migração (feita em 2026-09-08)
 
