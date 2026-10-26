@@ -118,6 +118,58 @@ async def test_create_issue_requires_authentication(client: AsyncClient) -> None
     assert response.status_code == 401
 
 
+async def _create_label(client: AsyncClient, workspace_id: str, token: str, name: str) -> str:
+    response = await client.post(
+        f"/api/v1/workspaces/{workspace_id}/labels",
+        json={"name": name, "color": "#4F46E5"},
+        headers=_auth(token),
+    )
+    label_id: str = response.json()["data"]["id"]
+    return label_id
+
+
+async def test_create_issue_with_label_ids_applies_labels(client: AsyncClient) -> None:
+    _, owner_token = await _register_and_login(client)
+    workspace_id = await _create_workspace(client, owner_token)
+    bug_id = await _create_label(client, workspace_id, owner_token, "bug")
+    ui_id = await _create_label(client, workspace_id, owner_token, "ui")
+
+    response = await client.post(
+        f"/api/v1/workspaces/{workspace_id}/issues",
+        json={"title": "Issue", "label_ids": [bug_id, ui_id]},
+        headers=_auth(owner_token),
+    )
+
+    assert response.status_code == 201
+    issue_id = response.json()["data"]["id"]
+    labels = await client.get(
+        f"/api/v1/workspaces/{workspace_id}/issues/{issue_id}/labels",
+        headers=_auth(owner_token),
+    )
+    assert {label["id"] for label in labels.json()["data"]} == {bug_id, ui_id}
+
+
+async def test_create_issue_rejects_label_from_another_workspace(client: AsyncClient) -> None:
+    _, owner_token = await _register_and_login(client)
+    workspace_id = await _create_workspace(client, owner_token)
+    _, other_owner_token = await _register_and_login(client)
+    other_workspace_id = await _create_workspace(client, other_owner_token)
+    foreign_label_id = await _create_label(client, other_workspace_id, other_owner_token, "bug")
+
+    response = await client.post(
+        f"/api/v1/workspaces/{workspace_id}/issues",
+        json={"title": "Issue", "label_ids": [foreign_label_id]},
+        headers=_auth(owner_token),
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "label_not_found"
+    issues = await client.get(
+        f"/api/v1/workspaces/{workspace_id}/issues", headers=_auth(owner_token)
+    )
+    assert issues.json()["meta"]["total"] == 0
+
+
 async def test_create_issue_rejects_project_from_another_workspace(client: AsyncClient) -> None:
     _, owner_token = await _register_and_login(client)
     workspace_id = await _create_workspace(client, owner_token)
