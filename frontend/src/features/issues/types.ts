@@ -55,9 +55,10 @@ export interface IssueCreateInput {
   assignee_id?: string;
   estimate?: number;
   due_date?: string | null;
+  label_ids?: string[];
 }
 
-export type IssueUpdateInput = Partial<IssueCreateInput>;
+export type IssueUpdateInput = Partial<Omit<IssueCreateInput, "label_ids">>;
 
 export interface IssueActivityLogEntry {
   id: string;

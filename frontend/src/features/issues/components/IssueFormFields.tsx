@@ -27,6 +27,7 @@ export interface IssueFormValues {
   assignee_id?: string;
   estimate?: string;
   due_date?: string;
+  label_ids?: string[];
 }
 
 const NONE = "__none__";
