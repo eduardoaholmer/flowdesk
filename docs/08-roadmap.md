@@ -15,6 +15,7 @@ A partir da conclusão do Milestone 1, o roadmap passa a ser acompanhado em dois
 - ✅ **M7 — Redesign** (concluído, fechado 2026-07-21, ADR-044–054): recriou as 6 telas do produto a partir de um handoff de design de alta fidelidade (`docs/design-handoff/2026-07-20-redesign-gestor/`) sobre a marca Ring Gate já existente — não identidade nova, refinamento visual/comportamental do que já existia. Aberto pela fundação (tokens + linguagem visual de Status/Prioridade, Sprint 18.1), seguido por 5 fases de gap-analysis + sub-sprints: fase 1 — Início/Issues/Board (Sprints 18.1–18.5); fase 2 — Projetos/Labels, incluindo o único gap estrutural de schema do milestone (`Project.key`/`ProjectMember`/agregações, Sprint 19.1–19.3); fase 3 — Administração, com dois gaps funcionais reais (reenvio de convite, type-to-confirm para excluir workspace, Sprint 20.1–20.2); fase 4 — Autenticação, incluindo um endpoint público novo para pré-visualizar convite antes do login (Sprint 21.1); fase 5 — Sidebar/NotifBell/CommandPalette, com dois gaps funcionais reais (persistência do colapso da Sidebar, atalho global de Nova issue, Sprint 22.1–22.2). Ressalva: QA visual em navegador real não foi possível em várias sub-sprints (sandbox sem Chromium funcional, ver ADR-054) — verificação feita via tipos/lint/testes automatizados nesses casos, não visualmente.
 - 🔄 **M8 — Pré-Lançamento** (em andamento — Sprints 23.1/23.2 concluídas, ADR-055): gate de pré-lançamento aberto a partir de uma auditoria externa completa (equipe multidisciplinar QA/Engenharia/UX/UI/Produto/Segurança/Acessibilidade, sessão de 2026-07-28) que deu nota geral 6.5/10 e veredito "não pronto para produção" — sem nenhum bug P0, mas com um bug de integridade de dado real (P1), a página de Projeto sem mostrar as issues do próprio projeto, e responsividade mobile não confirmada como funcional. Segurança validada como ponto forte (XSS/SQLi/isolamento de workspace resistiram a testes adversariais). Roadmap de 3 sprints da própria auditoria, renumerado em sub-sprints finas seguindo o mesmo padrão de M7: 23.1 (concluída) — bug P1 de `due_date` (validação de faixa ausente + `PATCH` que nunca conseguia limpar o campo, causa dupla em `IssueService.update` e no payload do frontend); 23.2 (concluída) — issues no detalhe do Projeto; 23.3 — verificação de RBAC com contas ADMIN/MEMBER/GUEST reais; 23.4 — responsividade mobile nos fluxos críticos. Achados adicionais da auditoria (P2/P3, gaps de UX/UI/produto, sprints 2/3 do roadmap externo) registrados em ADR-055 para priorização futura, fora do escopo dos itens críticos de 23.x.
 - 🔄 **M9 — UX & Expansão de Produto** (aberto 2026-07-29 — Sprints 9.1/9.2/9.3/9.4/9.5 concluídas, ADR-056/057/058/059/060): lista extensa de sugestões de UX/produto trazida diretamente pelo usuário (perfil, multi-workspace, board, issues, projetos, labels, permissões), quebrada em sub-sprints finas após auditoria de gap read-only. Duas decisões de arquitetura tomadas: reabrir a ADR-035 para status de Board customizável (Sprint 9.2, concluída); meio-termo de permissões toggleáveis dentro dos 4 papéis fixos em vez de cargos arbitrários (Sprint 9.3, concluída). Sprint 9.1 (concluída) fechou perfil consolidado, "+ Criar workspace" no seletor e coluna de Projeto na tabela de issues. Sprint 9.2 (concluída, ADR-057) converteu `Issue.status` de enum fixo para `status_id` dinâmico com CRUD/reorder/exclusão-com-reatribuição completos, backend e frontend. Sprint 9.3 (concluída, ADR-058) adiciona `PermissionOverride` — permissões individualmente ligáveis/desligáveis por workspace dentro de `ADMIN`/`MEMBER`/`GUEST`, com `PermissionService.can()` resolvendo os overrides e uma aba "Permissões" nova em Configurações do workspace (matriz de switches, `OWNER` apenas). Sprint 9.4 (concluída, ADR-059) adiciona `Issue.parent_id` — sub-issues limitadas a um único nível de hierarquia, com um campo "Issue pai" no rail de detalhe e uma seção "Sub-issues" com botão "Nova sub-issue" na página de detalhe. Sprint 9.5 (concluída, ADR-060, só frontend) adiciona painel lateral (split view) à listagem de Issues — abrir uma issue não navega mais para longe da lista, com navegação anterior/próxima por teclado (J/K, setas) entre as issues carregadas. Detalhamento completo, ordem das sub-sprints 9.6–9.10 e achados da auditoria em ADR-056.
+- 📋 **M10 — Integração com GitHub** (planejado 2026-10-27, ADR-068/069/070, nenhuma sprint iniciada): GitHub App conectado por workspace, webhook de pull request autenticado por assinatura e automação de status configurável (PR em draft → "In Progress", PR aberto → "In Review", PR mergeado → "Done"), no molde do Linear. Quebrado nas Sprints 10.1–10.5 (conexão → webhook → vínculo PR↔issue → automação → produção). O pedido irmão, execução de tarefas por agente de código, está registrado só como direção (ADR-071) e depende de M10 concluído.
 
 ---
 
@@ -678,6 +679,100 @@ Lista extensa de sugestões de UX/produto trazida diretamente pelo usuário (per
 
 Próximos passos planejados (ADR-056, ordem: bugs reais → gaps pequenos → features novas → arquitetura maior): **9.6** — fotos de usuário/workspace; **9.7** — Projeto: imagem + comentários; **9.8** — Labels: navegação para issues vinculadas + filtro na toolbar; **9.9** — redimensionamento de colunas da tabela de issues; **9.10** — QA ao vivo dos bugs de busca/labels relatados pelo usuário mas não reproduzidos estaticamente na auditoria.
 
+## M10 — Integração com GitHub (planejado 2026-10-27, ADR-068)
+
+Pedido do usuário: receber eventos de pull request do GitHub e automatizar o status das issues. Antes de qualquer código, uma análise de viabilidade confirmou que a arquitetura atual comporta a feature sem worker nem fila novos, e encontrou quatro pontos que exigiam decisão. Todos foram registrados:
+- **Mecanismo**: GitHub App em vez de reaproveitar o OAuth do login, com prova de posse da instalação no callback (ADR-068).
+- **Rota pública**: rota autenticada por HMAC fora de `/workspaces/{id}`, como exceção explícita a `CLAUDE.md` §4/§10 (ADR-069).
+- **Autoria**: `activity_logs.actor_id` anulável com `actor_source`, para registrar quem fez uma mudança vinda do GitHub (ADR-070).
+- **Entregas perdidas**: o GitHub não reenvia sozinho uma entrega que falhou, risco relevante no Render free tier (ADR-069).
+
+Ordem das sub-sprints: cada uma é utilizável e testável sozinha, e nenhuma automação muda status antes de o vínculo PR↔issue estar visível e conferível pelo usuário (10.3 antes de 10.4).
+
+### Sprint 10.1 — M10: GitHub App e conexão de workspace (planejada)
+
+- **Objetivo**: um ADMIN consegue conectar e desconectar uma instalação do GitHub App ao workspace, com o vínculo provado pelo servidor.
+- **Escopo (backend)**:
+  - Configuração opt-in: `GITHUB_APP_*` e `GITHUB_WEBHOOK_SECRET` em `core/config.py`, com validação de conjunto completo; `.env.example` atualizado.
+  - Feature nova `features/github/`, com `client.py` (`Protocol`: JWT do app, troca de `code`, `GET /user/installations`).
+  - Tabela `github_installations` (único parcial por `installation_id` ativo).
+  - Permissão nova `workspace.manage_integrations` (`ADMIN`+).
+  - Rotas: `POST .../integrations/github/connect` (devolve `install_url` com `state` assinado), `GET /integrations/github/setup` (callback com verificação de posse; erros viram `302`, ADR-068), `GET .../integrations/github` (status e instalações) e `DELETE .../integrations/github/installations/{id}`.
+- **Escopo (frontend)**: aba "Integrações" em `WorkspaceSettingsPage`, visível com `workspace.manage_integrations`. Mostra os estados "indisponível neste ambiente", "não conectado" e "conectado (conta, data, quem conectou)", com botões conectar e desconectar e o tratamento de `?github=` no retorno.
+- **Fora de escopo**: webhook (10.2) e qualquer efeito em issue.
+- **Dependências**: nenhuma.
+- **DoD**: DoD-base, mais:
+  - testes unitários de `GitHubIntegrationService` com cliente fake: `state` expirado/adulterado, instalação fora de `/user/installations` recusada, instalação já ligada a outro workspace → `409`, reconexão após soft delete;
+  - testes de contrato: `403` sem permissão, `404` para não-membro, `422` sem configuração;
+  - `docs/03-database.md`, `docs/04-api-design.md` e `docs/07-security.md` (§8.2/§8.3 e o fluxo de conexão) atualizados no mesmo conjunto de mudanças.
+
+### Sprint 10.2 — M10: endpoint de webhook (planejada)
+
+- **Objetivo**: o FlowDesk recebe e registra eventos do GitHub com segurança, sem ainda agir sobre issues.
+- **Escopo**:
+  - `POST /webhooks/github`: corpo bruto → limite de tamanho → HMAC (`verify_github_signature`) → parse → idempotência.
+  - Tabela `github_webhook_deliveries`.
+  - Eventos `installation` (`deleted`/`suspend`/`unsuspend`) e `installation_repositories`.
+  - Resposta `200` com `outcome` para eventos ignorados.
+  - Regra nova no `RateLimitMiddleware`; métrica por `event`/`outcome` em `GET /metrics`.
+  - Log estruturado com `delivery_id`/`event`/`installation_id`, nunca o corpo nem a assinatura (`CLAUDE.md` §9).
+- **Dependências**: 10.1.
+- **DoD**: DoD-base, mais:
+  - testes de contrato com payloads reais do GitHub como fixtures, assinados no próprio teste: assinatura válida, inválida e ausente; corpo acima do limite; entrega duplicada sem efeito duplicado; instalação desconhecida ignorada; `installation.deleted` desconectando o workspace;
+  - `docs/04-api-design.md` e `docs/07-security.md` (rota pública autenticada por HMAC como exceção registrada) atualizados.
+
+### Sprint 10.3 — M10: vínculo PR ↔ issue (planejada)
+
+- **Objetivo**: o usuário vê, no detalhe da issue, os PRs que a referenciam e o estado de cada um. É a etapa de conferência antes de qualquer automação.
+- **Escopo (backend)**:
+  - Tabela `issue_github_links`.
+  - Parser de identificador (`FD-<n>` em branch/título/corpo, restrito ao workspace da instalação).
+  - Evento `pull_request` (`opened`/`reopened`/`edited`/`ready_for_review`/`converted_to_draft`/`closed`) criando, atualizando e removendo vínculos.
+  - `GET .../issues/{issue_id}/github-links` (`issue.read`).
+- **Escopo (frontend)**:
+  - Bloco "Pull requests" no `IssueDetailRail`, com repositório#número, título, autor e badge de estado (aberto/draft/mergeado/fechado), linkando para o GitHub.
+  - Ação "Copiar nome da branch" (`fd-123-titulo-em-slug`) no detalhe da issue.
+- **Dependências**: 10.2.
+- **DoD**: DoD-base, mais:
+  - testes unitários do parser: maiúsculas e minúsculas; fronteira de palavra (`FD-12` não casa em `FD-123`); vários identificadores; número inexistente; identificador de issue soft-deletada;
+  - teste de contrato do fluxo completo (webhook assinado → vínculo visível na rota de leitura);
+  - teste de isolamento: PR de uma instalação nunca vincula issue de outro workspace, mesmo com o mesmo número;
+  - `docs/03-database.md` e `docs/04-api-design.md` atualizados.
+
+### Sprint 10.4 — M10: automação de status (planejada)
+
+- **Objetivo**: eventos de PR movem a issue de status conforme regras visíveis e editáveis pelo workspace.
+- **Escopo (backend)**:
+  - Tabela `github_status_automations`, com defaults gravados na conexão (ADR-070); instalações conectadas antes desta sprint recebem os defaults via migration de backfill.
+  - `GET`/`PUT .../integrations/github/automations`.
+  - `IssueService.apply_automation_transition`, com a guarda de status terminal (`COMPLETED`/`CANCELED` nunca são movidos).
+  - `activity_logs.actor_id` anulável + `actor_source`, com mapeamento do `sender` via `OAuthIdentity`.
+  - Notificação de mudança de status com `actor_name` "GitHub" quando não houver usuário mapeado.
+  - `WorkflowStateService.delete` reapontando regras para `reassign_to_id`.
+- **Escopo (frontend)**:
+  - Editor de regras na aba Integrações (um select de status por evento, com "sem ação" como opção).
+  - Feed de atividade e notificações renderizando "via GitHub" e autor nulo.
+- **Dependências**: 10.3.
+- **DoD**: DoD-base, mais:
+  - testes unitários do service: cada evento aplica a regra certa; status terminal não retrocede; regra `NULL` não faz nada; `version` é incrementada; autor mapeado vs. não mapeado;
+  - teste de contrato ponta a ponta (PR mergeado → issue em "Done" → atividade com `actor_source = GITHUB`);
+  - ciclo `alembic upgrade`/`downgrade`/`upgrade` da migration de `activity_logs`;
+  - `docs/03-database.md`, `docs/04-api-design.md` (mudança de `IssueActivityLogResponse`) e `docs/07-security.md` atualizados.
+
+### Sprint 10.5 — M10: produção, runbook e validação real (planejada)
+
+- **Objetivo**: integração funcionando de verdade no ambiente publicado.
+- **Escopo**:
+  - Registro do GitHub App de produção: permissões e eventos da ADR-068, webhook apontando para o domínio público via proxy da Vercel, "Request user authorization during installation" ligado.
+  - Variáveis no Render.
+  - Passo a passo em `DEPLOY.md`, incluindo um app separado para dev local e túnel (`smee.io`) para webhooks.
+  - Seção nova em `docs/11-production-runbook.md`: reenvio de entregas falhas (painel do app ou `GET /app/hook/deliveries`), expurgo de `github_webhook_deliveries` com mais de 30 dias e rotação de `GITHUB_WEBHOOK_SECRET` e da chave privada do app.
+  - Confirmar que o rewrite da Vercel repassa o corpo sem alteração (pré-condição do HMAC, ADR-069).
+- **Dependências**: 10.4.
+- **DoD**: DoD-base, mais:
+  - validação manual ponta a ponta pelo usuário em produção: conectar, abrir PR com `FD-<n>`, ver o vínculo, marcar como ready, mergear e ver a issue em "Done";
+  - E2E Playwright do fluxo de conexão até o estado "conectado", com o cliente do GitHub mockado no backend de teste. O webhook real fica fora do E2E, já coberto por contrato.
+
 ## Sprint 15+ — Extensões futuras (pós-portfólio)
 
-Não planejadas em detalhe agora (evita over-engineering especulativo, `CLAUDE.md` §1.6); candidatas registradas para não serem esquecidas: integrações externas (GitHub, Slack), colaboração em tempo real via WebSocket, papel `GUEST` completo, anexos de arquivo em UI (schema de `Attachment` já existe desde a Sprint 2, falta a feature), refinamento avançado da command palette (ex.: paginação de resultados, busca por label), página dedicada de notificações (hoje o popover do Topbar trunca nas 10 mais recentes, achado na auditoria de M2 fase 2 mas fora do escopo redefinido do milestone), app mobile, migrar `LabelsToolbar`/demais toolbars futuras para `SearchInput` (`shared/components/forms/SearchInput.tsx`, fundação da Sprint 8.5 ainda sem call site — fora do escopo da Sprint 13.5, que só corrigiu o reflow, não substituiu o markup de busca). Command palette em sua forma funcional básica deixou de estar nesta lista — entregue na Sprint 10/M2. Playwright/regressão visual automatizada (M4, ver ressalva da Sprint 11 acima) também deixa de ser "futuro distante" para virar candidato concreto do próximo milestone.
+Não planejadas em detalhe agora (evita over-engineering especulativo, `CLAUDE.md` §1.6); candidatas registradas para não serem esquecidas: integração com Slack (GitHub saiu desta lista e virou o M10, ADR-068), execução de tarefas por agente de código (direção registrada na ADR-071, depende do M10), colaboração em tempo real via WebSocket, papel `GUEST` completo, anexos de arquivo em UI (schema de `Attachment` já existe desde a Sprint 2, falta a feature), refinamento avançado da command palette (ex.: paginação de resultados, busca por label), página dedicada de notificações (hoje o popover do Topbar trunca nas 10 mais recentes, achado na auditoria de M2 fase 2 mas fora do escopo redefinido do milestone), app mobile, migrar `LabelsToolbar`/demais toolbars futuras para `SearchInput` (`shared/components/forms/SearchInput.tsx`, fundação da Sprint 8.5 ainda sem call site — fora do escopo da Sprint 13.5, que só corrigiu o reflow, não substituiu o markup de busca). Command palette em sua forma funcional básica deixou de estar nesta lista — entregue na Sprint 10/M2. Playwright/regressão visual automatizada (M4, ver ressalva da Sprint 11 acima) também deixa de ser "futuro distante" para virar candidato concreto do próximo milestone.

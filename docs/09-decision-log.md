@@ -1483,3 +1483,125 @@ Hardening de rate limit por rota (mesma sprint, gap independente encontrado ao r
 **Decisão**: a regex fixa sai de `main.py` e vira `CORS_ORIGIN_REGEX` (`Settings.cors_origin_regex`), opcional e sem default. Sem ela, só as origens exatas de `CORS_ORIGINS` são aceitas. Quem precisar liberar previews que chamem a API do Render direto define uma regex restrita ao próprio projeto.
 
 **Pendências**: com o proxy validado em produção (ADR-063), os cookies de auth podem voltar a `SameSite=Strict` e `CORS_ORIGINS` no Render pode ficar só com o domínio final. Rate limit por IP continua usando o IP do proxy (Uvicorn sem `--forwarded-allow-ips`) — exige confirmar em produção qual posição de `X-Forwarded-For` é confiável depois de Vercel + Render.
+
+## ADR-068 — M10: integração com GitHub via GitHub App, conectada por workspace
+
+**Status**: aceita, não implementada. Abre o M10, quebrado nas Sprints 10.1–10.5 (`docs/08-roadmap.md`).
+
+**Contexto**: pedido do usuário: conectar o FlowDesk ao GitHub para receber eventos de pull request e automatizar o status das issues (PR aberto → "In Review", PR mergeado → "Done"), como o Linear faz. "Integrações externas (GitHub, Slack)" já estava listada em "Sprint 15+ — Extensões futuras" sem detalhamento. O único contato atual com o GitHub é o login social (ADR-061), com escopo `read:user user:email`, que identifica a pessoa e não dá acesso a repositório nem a eventos.
+
+**Problema**: como um workspace autoriza o FlowDesk a receber eventos dos repositórios dele de forma que (a) o vínculo repositório → workspace seja verificável pelo servidor, e nunca alegado pelo cliente (`CLAUDE.md` §10); (b) nenhum segredo do usuário fique guardado no FlowDesk; (c) a conexão possa ser desfeita dos dois lados.
+
+**Alternativas consideradas**:
+- **Reaproveitar o OAuth App do login (ADR-061) com escopo `repo`/`admin:repo_hook`**: o FlowDesk criaria webhooks repositório a repositório com o token do usuário. Rejeitado: `repo` dá leitura e escrita em **todo** código privado da pessoa, muito acima do necessário; o webhook fica preso ao token de um indivíduo (se ele sair do time ou revogar o acesso, a integração do workspace inteiro para); e o mesmo app passaria a servir para login e para integração, misturando dois consentimentos diferentes.
+- **Webhook configurado à mão** (o usuário cola URL e segredo nas configurações do repositório): sem app nenhum, mas o segredo seria um por workspace, digitado e copiado pelo usuário; o FlowDesk não tem como listar repositórios, saber se a conexão foi desfeita nem chamar a API depois. Rejeitado pela experiência ruim e pela falta de ciclo de vida.
+- **Personal Access Token**: guardaria um segredo de longa duração do usuário no banco. Rejeitado pelo mesmo motivo de (b).
+- **GitHub App** (escolhida): instalado por organização ou conta, com permissões granulares escolhidas pelo app (só o que se pede), com repositórios selecionáveis pelo dono, e com um único webhook e segredo para todas as instalações. O GitHub emite eventos `installation`/`installation_repositories` quando a instalação é removida, suspensa ou tem os repositórios alterados. Tokens de API, quando necessários, são de instalação e expiram em 1 hora; nada de longa duração do usuário fica guardado.
+
+**Decisão — permissões mínimas do app**: `Pull requests: Read` e `Metadata: Read` (esta última é obrigatória para todo GitHub App); evento assinado: `Pull request`. Nada de `Contents`, `Actions` nem permissão de escrita. Uma automação futura que precise de mais (ADR-071) pede um novo consentimento ao dono da instalação; isso não vem implícito.
+
+**Decisão — fluxo de conexão com verificação de posse da instalação**:
+1. Um usuário com `workspace.manage_integrations` (permissão nova, `ADMIN`+, entra em `ROLE_PERMISSIONS` e é customizável via overrides, ADR-058) chama `POST /workspaces/{workspace_id}/integrations/github/connect` (XHR autenticada). A resposta traz `install_url` = `https://github.com/apps/<slug>/installations/new?state=<state>`; o `state` é assinado (HMAC com segredo do servidor) e carrega `workspace_id`, `user_id` e expiração de 10 minutos. O SPA navega até essa URL. A navegação de página inteira não poderia ir direto ao backend: o access token só existe em memória (`CLAUDE.md` §11) e não acompanha um redirect.
+2. O app é configurado com "Request user authorization (OAuth) during installation". O GitHub devolve para `GET /integrations/github/setup?installation_id=…&code=…&state=…` (rota de navegação do navegador, no mesmo molde de `/auth/{provider}/callback`; ver a exceção abaixo).
+3. O callback valida o `state`, troca o `code` por um token de usuário e **confirma que `installation_id` aparece em `GET /user/installations` desse token**; só então grava a conexão. O token de usuário é descartado em seguida.
+
+O passo 3 é o que impede o ataque concreto deste fluxo: sem ele, qualquer pessoa com um `state` válido do próprio workspace poderia trocar `installation_id` na URL pelo id da instalação de outra organização e passar a receber os eventos de PR dela (títulos, branches, autores) no workspace do atacante. O `installation_id` sozinho é um número sequencial, não prova de posse.
+
+**Decisão — exceção documentada a "rotas não tratam exceção" (`CLAUDE.md` §7)**: `GET /integrations/github/setup` é alvo de navegação de página inteira, assim como os callbacks de OAuth (ADR-061). Por isso traduz qualquer `FlowDeskError` em `302` para `{FRONTEND_BASE_URL}/settings/integrations?github=<connected|error_code>`, nunca em JSON cru numa aba do navegador. É a mesma exceção já aceita na ADR-061, não uma nova.
+
+**Decisão — modelo de dados**: `github_installations` (`workspace_id`, `installation_id` bigint, `account_login`, `account_type` `User`/`Organization`, `connected_by_id`, `suspended_at`, timestamps, soft delete). Índice único parcial em `installation_id WHERE deleted_at IS NULL`: **uma instalação pertence a no máximo um workspace**. Isso não é só simplificação. É o que torna o `FD-123` de um PR inequívoco, já que o prefixo `FD` é igual em todos os workspaces (`_IDENTIFIER_PREFIX`, `issues/models.py`) e o workspace sai da instalação, não do texto. Tentar conectar uma instalação já ligada a outro workspace responde `409 github_installation_already_connected`. Um workspace pode ter mais de uma instalação (duas organizações no GitHub).
+
+**Decisão — desconectar**: `DELETE /workspaces/{workspace_id}/integrations/github/installations/{id}` faz soft delete local; eventos posteriores daquela instalação passam a ser ignorados (ADR-069). Desinstalar o app no GitHub continua sendo ação do dono no GitHub. Na direção contrária, o evento `installation.deleted` faz o soft delete local automaticamente.
+
+**Decisão — opt-in por ambiente**: `GITHUB_APP_ID`, `GITHUB_APP_SLUG`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET` e `GITHUB_WEBHOOK_SECRET` em `core/config.py`, todos `str | None`, com `model_validator` exigindo o conjunto completo quando qualquer um estiver presente (mesmo padrão dos provedores de OAuth). São credenciais **diferentes** das de `GITHUB_CLIENT_ID` do login: são dois apps no GitHub, com consentimentos diferentes. Sem configuração, `connect` responde `422 github_integration_not_configured` e a aba de Integrações mostra o estado "indisponível neste ambiente".
+
+**Decisão — organização de código**: feature nova `backend/src/features/github/` com o esqueleto padrão (router/service/repository/schemas/models/exceptions/dependencies) mais `client.py`, um `Protocol` para as chamadas à API do GitHub (troca de `code`, `GET /user/installations`, JWT do app), no mesmo molde de `oauth_providers.py`, para que o service seja testável com cliente fake. Sem SDK de terceiros (`PyGithub`, `githubkit`): são quatro chamadas HTTP, e `httpx` + `PyJWT` (este já é dependência) cobrem tudo. Mesmo racional da ADR-061. Frontend: `frontend/src/features/github/`, mais uma aba "Integrações" em `WorkspaceSettingsPage`.
+
+**Vantagens**: nenhum segredo de usuário guardado; menor permissão possível; ciclo de vida da conexão observável dos dois lados; o vínculo repositório → workspace é provado ao servidor, não alegado.
+
+**Desvantagens aceitas**: registrar um GitHub App é um passo manual de infraestrutura por ambiente (Sprint 10.5, `DEPLOY.md`); dev local precisa de um app próprio e de um túnel (ex.: `smee.io`) para receber webhooks; e uma organização não consegue ligar repositórios diferentes a workspaces diferentes com uma única instalação.
+
+**Impacto futuro**: Slack ou outra integração reaproveitaria a aba de Integrações e a permissão `workspace.manage_integrations`, mas não o modelo de dados, que é específico do GitHub por decisão (sem tabela genérica `integrations` antes de existir uma segunda integração, `CLAUDE.md` §1.6).
+
+## ADR-069 — Webhook do GitHub: rota pública autenticada por assinatura, idempotente e síncrona
+
+**Status**: aceita, não implementada (Sprint 10.2).
+
+**Contexto**: o GitHub entrega eventos por `POST` em uma URL única do app (ADR-068), sem nenhuma credencial do FlowDesk. É a primeira rota do sistema chamada por uma máquina de terceiros em vez do SPA.
+
+**Problema**: como receber esses eventos sem abrir uma porta de escrita não autenticada no sistema, sem processar duas vezes a mesma entrega e dentro do prazo de 10 segundos que o GitHub dá antes de considerar a entrega falha.
+
+**Decisão — `POST /webhooks/github`, fora de `/workspaces/{workspace_id}`**: é uma exceção explícita ao §4 do `CLAUDE.md` ("recursos com escopo de tenant sempre aninhados sob `/workspaces/{workspace_id}`"). O GitHub não sabe o que é um workspace do FlowDesk; o tenant é derivado do `installation.id` do payload **depois** de a assinatura ser validada, e resolvido contra `github_installations` (ADR-068). O espírito da regra (isolamento nunca vem de dado não verificado) continua valendo: o `installation.id` é confiável porque está dentro de um corpo assinado com um segredo que só o GitHub e o FlowDesk conhecem.
+
+**Decisão — autenticação por HMAC, não por JWT nem RBAC**: a rota não usa `get_current_user` nem `require_permission` (também uma exceção ao §10, registrada aqui). O router lê o corpo **bruto** (`await request.body()`, antes de qualquer parse), calcula `HMAC-SHA256(GITHUB_WEBHOOK_SECRET, body)` e compara com `X-Hub-Signature-256` via `hmac.compare_digest`. Assinatura ausente ou divergente → `401 invalid_webhook_signature`, sem tocar no banco. Só depois disso o corpo é validado com Pydantic. A verificação fica numa dependency (`verify_github_signature`) para o router continuar fino. Considerado e rejeitado: allowlist dos IPs de webhook do GitHub (`GET /meta`). As faixas mudam, e o backend hoje vê o IP do proxy, não o do cliente (ADR-063/067).
+
+**Decisão — limite de corpo**: `Settings.github_webhook_max_body_bytes` (default 1 MB) aplicado antes do HMAC, com `413` acima disso. Eventos de PR têm tipicamente dezenas de KB; o limite existe para que um corpo gigante não custe memória e CPU antes de a assinatura ser recusada.
+
+**Decisão — idempotência no banco, na mesma transação do efeito**: o GitHub reenvia uma entrega (manualmente ou via API) com o **mesmo** `X-GitHub-Delivery`. Tabela `github_webhook_deliveries` (`delivery_id` PK, `event`, `action`, `installation_id`, `outcome` `PROCESSED`/`IGNORED`, `received_at`) com inserção dentro da mesma transação que aplica o efeito (vínculo de PR, mudança de status). Entrega repetida: conflito na PK → `200` com `outcome` da primeira vez, sem efeito novo. Considerado e rejeitado: `SET NX` no Redis. Não é atômico com o commit do Postgres: se o processamento falhasse depois do `SET`, o reenvio legítimo seria descartado como duplicado. A tabela também serve de trilha para depuração ("o GitHub mandou e o FlowDesk ignorou por quê?"). Retenção de 30 dias, com expurgo documentado no runbook (Sprint 10.5); um job automático fica fora de escopo.
+
+**Decisão — processamento síncrono, sem worker**: o efeito de um evento é um punhado de consultas e um `UPDATE` (ADR-070), bem dentro de 10 segundos, então o evento é processado na própria requisição. O projeto não tem fila nem worker hoje, e introduzir um (`arq`, Celery) só para isso seria infraestrutura especulativa (`CLAUDE.md` §1.6). A ser revisto se algum evento passar a exigir chamada à API do GitHub ou trabalho pesado.
+
+**Decisão — resposta sempre 2xx para eventos válidos que não interessam**: assinatura válida mas instalação desconhecida ou desconectada, evento não assinado, ação sem regra: `200 { "data": { "outcome": "ignored" } }` (envelope padrão). Responder 4xx faria o GitHub marcar a entrega como falha, poluindo o painel de entregas, sem nenhum benefício. Só assinatura inválida (401) e corpo grande demais (413) são erro.
+
+**Decisão — eventos tratados**: `installation` (`deleted` → soft delete da conexão; `suspend`/`unsuspend` → `suspended_at`), `installation_repositories` (só registrado) e `pull_request` (`opened`, `reopened`, `edited`, `ready_for_review`, `converted_to_draft`, `closed`; ver ADR-070). Todo o resto é ignorado.
+
+**Decisão — URL pública**: `https://flowdesk.eduardoaholmer.dev/api/v1/webhooks/github`, pelo proxy da Vercel (ADR-063), e não o host do Render direto. É o mesmo host já usado pelos callbacks de OAuth: trocar o provedor do backend não exige reconfigurar o app no GitHub. O rewrite da Vercel repassa o corpo sem alteração, o que é condição para o HMAC bater; isso precisa ser confirmado na Sprint 10.5.
+
+**Decisão — rate limit**: regra nova em `RateLimitMiddleware` por IP, generosa (300/min), só como freio contra abuso grosseiro. A proteção real é o HMAC. O limite por IP continua limitado pelo IP do proxy (pendência da ADR-067).
+
+**Riscos aceitos**: o GitHub **não reenvia automaticamente** entregas que falharam. Se o backend estiver fora do ar ou em cold start (Render free tier, ~1 min, maior que os 10 s de prazo), o evento se perde até alguém reenviá-lo pelo painel do app ou via API (`GET /app/hook/deliveries` + `POST .../attempts`). O keep-alive do UptimeRobot (`DEPLOY.md`) reduz bastante a janela de cold start, mas não a elimina (deploys, quedas). O runbook (Sprint 10.5) documenta o reenvio manual. Um job de reconciliação automático fica como candidato futuro, se a perda de eventos se mostrar real.
+
+## ADR-070 — Vínculo PR ↔ issue e automação de status por evento de pull request
+
+**Status**: aceita, não implementada (Sprints 10.3 e 10.4).
+
+**Contexto**: com o webhook recebendo eventos (ADR-069), falta decidir (a) como um PR aponta para uma issue, (b) qual status cada evento aplica, e (c) quem aparece como autor de uma mudança que nenhum usuário do FlowDesk fez. Hoje `ActivityLog.actor_id` é `NOT NULL` com FK para `users`, e `IssueService.update` exige um `CurrentUser` autorizado por RBAC.
+
+**Decisão — identificação por identificador no título, na branch ou no corpo**: um PR é vinculado a toda issue cujo identificador (`FD-<n>`, sem diferenciar maiúsculas, com fronteira de palavra) aparecer no nome da branch de origem, no título ou no corpo do PR, procurando **apenas no workspace da instalação** (ADR-068). Número sem issue correspondente nesse workspace é ignorado silenciosamente. Um PR pode fechar várias issues, e uma issue pode ter vários PRs. O evento `edited` recalcula os vínculos (o identificador pode ser adicionado ao título depois de o PR ser aberto); vínculos que deixaram de constar são removidos. Para facilitar a adoção, o detalhe da issue ganha "Copiar nome da branch" (`fd-123-titulo-em-slug`, mesma convenção do Linear).
+
+**Decisão — `issue_github_links` como agregado próprio**: (`workspace_id`, `issue_id`, `installation_id`, `repository_full_name`, `pr_number`, `pr_url`, `pr_title`, `pr_state` `OPEN`/`DRAFT`/`MERGED`/`CLOSED`, `author_login`, timestamps), único por (`issue_id`, `repository_full_name`, `pr_number`). Fica atualizado a cada evento, então a UI lê o estado do PR do banco sem chamar a API do GitHub. `GET /workspaces/{workspace_id}/issues/{issue_id}/github-links` (`issue.read`) alimenta um bloco "Pull requests" no `IssueDetailRail`.
+
+**Decisão — regras de automação configuráveis, com defaults gravados na conexão**: tabela `github_status_automations` (`workspace_id`, `event`, `target_state_id` nullable, único por `workspace_id` + `event`). Eventos de regra:
+
+| `event` | Ações do GitHub que o disparam | Default gravado ao conectar |
+|---|---|---|
+| `PR_DRAFT` | `opened` como draft, `converted_to_draft` | primeiro status `STARTED` por `position` (seed: "In Progress") |
+| `PR_OPEN` | `opened` não-draft, `reopened`, `ready_for_review` | último status `STARTED` por `position` (seed: "In Review") |
+| `PR_MERGED` | `closed` com `merged = true` | primeiro status `COMPLETED` por `position` (seed: "Done") |
+| `PR_CLOSED` | `closed` com `merged = false` | nenhum (`target_state_id = NULL`, sem ação) |
+
+Os defaults são resolvidos **uma vez**, na conexão, e gravados como ids concretos, não reavaliados a cada evento. Assim o usuário vê e edita exatamente o que vai acontecer (`GET`/`PUT /workspaces/{workspace_id}/integrations/github/automations`, `workspace.manage_integrations`). Usar só `WorkflowStateCategory` em tempo de execução foi descartado: "In Progress" e "In Review" têm a mesma categoria `STARTED`, então a categoria sozinha não distingue "PR aberto" de "em andamento".
+
+**Decisão — sem retrocesso automático de status terminal**: a automação **nunca** move uma issue que já está em status de categoria `COMPLETED` ou `CANCELED`. Uma mudança manual para "Canceled" não pode ser desfeita por um PR reaberto, e um segundo PR aberto numa issue já concluída não a puxa de volta para revisão. Fora isso, o evento mais recente vence. Com vários PRs, a issue vai para "Done" no primeiro merge, e isso é aceito: é o comportamento do Linear, e quem quer outro comportamento separa as issues.
+
+**Decisão — autor da mudança: `activity_logs.actor_id` passa a aceitar nulo, com `actor_source`**: coluna nova `actor_source` (`USER`/`GITHUB`, default `USER`) e `CHECK (actor_source <> 'USER' OR actor_id IS NOT NULL)`. Regra de resolução: se o `sender` do evento tem uma `OAuthIdentity` GitHub (ADR-061) cujo usuário é membro do workspace, `actor_id` = esse usuário; senão `actor_id = NULL`. Nos dois casos `actor_source = GITHUB`, e a UI mostra "via GitHub" ("Eduardo via GitHub" ou só "GitHub"). Alternativas descartadas:
+- **Usuário-bot por workspace** (uma linha "GitHub" em `users`): apareceria em listas de membros e seletores de responsável, precisaria de bloqueio de login e criaria uma conta fantasma por tenant. Mais exceções espalhadas do que uma coluna anulável.
+- **Atribuir sempre a quem conectou a integração**: falsifica a autoria. A trilha diria que o admin mudou o status quando foi um merge de outra pessoa.
+
+Migration puramente aditiva (`actor_id` passa de `NOT NULL` para `NULL`, coluna nova com default); nenhuma linha existente muda. Consumidores de `actor_id` (feed de atividade, `IssueActivityLogResponse.actor_id` → `UUID | None` + `actor_source`) são ajustados na mesma sprint, o que é **mudança de contrato** registrada em `docs/04-api-design.md`. Isso não é breaking para o próprio SPA, atualizado junto, mas é para um cliente externo hipotético.
+
+**Decisão — caminho de service próprio, sem RBAC de usuário**: `IssueService.apply_automation_transition(workspace_id, issue_id, target_state_id, actor)` é separado de `update`. Não recebe `CurrentUser`, não checa `issue.change_status` e não usa `expected_version` (mas incrementa `version`, então uma edição concorrente na UI recebe o `409` de conflito otimista de sempre). A autorização dessa mudança é a configuração da automação, feita por quem tem `workspace.manage_integrations`, e não a permissão individual de quem fez o merge. Isso vale também quando o autor é mapeado para um membro que teve `issue.change_status` revogado: a regra do workspace vence. O webhook nunca passa por `update`, para que a regra "toda mutação de usuário passa por RBAC" continue sem exceção no caminho do usuário. A notificação ao responsável (`_notify_status_change`) é reaproveitada, com `actor_name` = nome do usuário mapeado ou "GitHub".
+
+**Decisão — exclusão de status com regra apontando para ele**: `WorkflowStateService.delete` passa a reapontar as regras de `github_status_automations` que referenciam o status excluído para o mesmo `reassign_to_id` já usado para as issues (Sprint 9.2/ADR-057). Sem isso, a FK apontaria para um status soft-deletado e a regra viraria um no-op silencioso. Com zero issues e sem `reassign_to_id`, a regra vai para `NULL` (sem ação), e a aba de Integrações sinaliza a regra como desativada.
+
+**Vantagens**: a convenção de identificador é a mesma do Linear, que o público-alvo já conhece; as regras são explícitas e editáveis, sem mágica por nome de status; a autoria fica correta na trilha de auditoria.
+
+**Desvantagens aceitas**: só quem fez login com GitHub (conta 100% social, ADR-066) é mapeado; os demais aparecem como "GitHub" até existir um fluxo de "vincular provedor" autenticado (pendência da ADR-066). PR sem identificador nenhum não é vinculado; não há vínculo manual pela UI nesta versão (candidato futuro).
+
+## ADR-071 — Execução de tarefas por agente de código (Claude Code): direção registrada, não planejada
+
+**Status**: proposta. Nada implementado nem quebrado em sprints. Depende do M10 concluído.
+
+**Contexto**: segundo pedido do usuário, junto com o da ADR-068: algo como "uma extensão em container, rodando do lado do usuário, que recebe requisição do FlowDesk e executa o Claude Code para a task". Registrado agora para que as decisões do M10 não fechem portas, e para fixar a direção antes de qualquer código.
+
+**Decisão — a conexão parte do executor para o FlowDesk, nunca o contrário**: se houver um runner próprio, ele segue o modelo dos self-hosted runners do GitHub Actions. O container do usuário se registra com um token de runner (por workspace, guardado com hash, revogável, no mesmo molde de `RefreshToken`) e busca jobs por long-poll HTTP. O FlowDesk nunca abre conexão para a máquina do usuário: isso exigiria porta exposta, atravessar NAT e firewall, e um endpoint de execução de código alcançável pela internet.
+
+**Decisão — v1 sem runner próprio: disparo de GitHub Actions no repositório do usuário**: "Executar com agente" numa issue dispara um `repository_dispatch` no repositório vinculado; um workflow do próprio usuário roda a action oficial `anthropics/claude-code-action` com o título e a descrição da issue, abre um PR com `FD-<n>` no título, e o webhook do M10 (ADR-070) leva a issue para "In Review". Isso dispensa infraestrutura do lado do usuário, e o log fica no GitHub. Exige ampliar as permissões do GitHub App (`Contents: Read & write` para o dispatch), o que pede novo consentimento do dono da instalação (ADR-068). O runner em container fica como v2, se houver demanda por execução local ou em rede privada.
+
+**Decisão — a credencial do modelo nunca passa pelo FlowDesk**: a chave da Anthropic fica no runner ou nos secrets do repositório do usuário. Custo e cota são do usuário; o FlowDesk não guarda nem repassa essa chave. Exigir chave de API em vez de login de assinatura do Claude, e confirmar os termos de uso da Anthropic para esse cenário antes de implementar.
+
+**Riscos que a futura implementação precisa endereçar**:
+- **Prompt injection**: título e descrição da issue viram instrução para um agente que executa código. Hoje `MEMBER` (e `GUEST`, conforme overrides) escreve issues. Mitigações mínimas: permissão nova `agent.run` (`ADMIN`+); ferramentas do agente restritas por configuração; ambiente de execução sem segredos além do necessário; o resultado é sempre um PR revisado por humano, nunca push direto na branch padrão.
+- **Estado e logs de job no FlowDesk**: fila com estados (`QUEUED`/`RUNNING`/`SUCCEEDED`/`FAILED`) e streaming de log, que o sistema não tem hoje. Na v1, o estado vem dos eventos do próprio GitHub (`workflow_run`) e o log fica no GitHub.
+
+**Pendência de decisão do usuário**: o critério de aceite da Sprint 1.5 (`docs/08-roadmap.md`) diz "nenhuma referência a IA/Claude em código ou histórico de commits". Uma feature de integração com um agente de IA coloca essa referência no código do produto por definição. O critério precisa ser revisto explicitamente, em uma ADR que o supere, antes de qualquer implementação deste item.
