@@ -66,7 +66,7 @@ class NotificationRepository:
             .values(read_at=datetime.now(UTC))
         )
 
-    def _filtered(self, user_id: uuid.UUID, *, read: bool | None) -> Select[tuple[Notification]]:
+    def _filtered(self, user_id: uuid.UUID, *, read: bool | None) -> Select[Notification]:
         stmt = select(Notification).where(Notification.user_id == user_id)
         if read is True:
             stmt = stmt.where(Notification.read_at.is_not(None))

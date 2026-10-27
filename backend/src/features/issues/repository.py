@@ -156,7 +156,7 @@ class IssueRepository:
         assignee_id: uuid.UUID | None,
         creator_id: uuid.UUID | None,
         search: str | None,
-    ) -> Select[tuple[Issue]]:
+    ) -> Select[Issue]:
         stmt = select(Issue).where(Issue.workspace_id == workspace_id, Issue.deleted_at.is_(None))
         if project_id is not None:
             stmt = stmt.where(Issue.project_id == project_id)
