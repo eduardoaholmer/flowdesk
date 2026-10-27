@@ -8,9 +8,14 @@ from typing import Protocol
 
 from redis.asyncio import Redis
 from sqlalchemy import select, update
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.features.github.models import GitHubInstallation
+from src.features.github.models import (
+    GitHubInstallation,
+    GitHubWebhookDelivery,
+    GitHubWebhookOutcome,
+)
 
 _CONNECT_STATE_KEY_PREFIX = "github:connect:"
 
@@ -36,6 +41,26 @@ class GitHubInstallationRepositoryProtocol(Protocol):
     async def list_by_workspace(self, workspace_id: uuid.UUID) -> Sequence[GitHubInstallation]: ...
     async def update(self, installation: GitHubInstallation) -> GitHubInstallation: ...
     async def soft_delete(self, workspace_id: uuid.UUID, installation_pk: uuid.UUID) -> None: ...
+
+
+class GitHubWebhookDeliveryRepositoryProtocol(Protocol):
+    async def claim(
+        self,
+        *,
+        delivery_id: str,
+        event: str,
+        action: str | None,
+        installation_id: int | None,
+    ) -> bool: ...
+    async def get(self, delivery_id: str) -> GitHubWebhookDelivery | None: ...
+    async def finish(
+        self,
+        delivery_id: str,
+        *,
+        outcome: GitHubWebhookOutcome,
+        reason: str | None,
+        workspace_id: uuid.UUID | None,
+    ) -> None: ...
 
 
 class GitHubConnectStateRepositoryProtocol(Protocol):
@@ -101,6 +126,60 @@ class GitHubInstallationRepository:
                 GitHubInstallation.workspace_id == workspace_id,
             )
             .values(deleted_at=datetime.now(UTC))
+        )
+
+
+class GitHubWebhookDeliveryRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def claim(
+        self,
+        *,
+        delivery_id: str,
+        event: str,
+        action: str | None,
+        installation_id: int | None,
+    ) -> bool:
+        """Grava a entrega se for a primeira vez que este `delivery_id` aparece;
+        `False` se já existe. `ON CONFLICT DO NOTHING` na chave primária, e não
+        `SELECT` antes do `INSERT`: dois reenvios simultâneos da mesma entrega
+        serializam no índice — o segundo espera o commit do primeiro e então cai no
+        conflito, em vez de os dois aplicarem o efeito. O `outcome` gravado aqui é
+        provisório; `finish` grava o definitivo na mesma transação."""
+        stmt = (
+            insert(GitHubWebhookDelivery)
+            .values(
+                delivery_id=delivery_id,
+                event=event,
+                action=action,
+                installation_id=installation_id,
+                outcome=GitHubWebhookOutcome.PROCESSED,
+            )
+            .on_conflict_do_nothing(index_elements=[GitHubWebhookDelivery.delivery_id])
+            .returning(GitHubWebhookDelivery.delivery_id)
+        )
+        inserted = await self._session.scalar(stmt)
+        return inserted is not None
+
+    async def get(self, delivery_id: str) -> GitHubWebhookDelivery | None:
+        result: GitHubWebhookDelivery | None = await self._session.get(
+            GitHubWebhookDelivery, delivery_id
+        )
+        return result
+
+    async def finish(
+        self,
+        delivery_id: str,
+        *,
+        outcome: GitHubWebhookOutcome,
+        reason: str | None,
+        workspace_id: uuid.UUID | None,
+    ) -> None:
+        await self._session.execute(
+            update(GitHubWebhookDelivery)
+            .where(GitHubWebhookDelivery.delivery_id == delivery_id)
+            .values(outcome=outcome, reason=reason, workspace_id=workspace_id)
         )
 
 

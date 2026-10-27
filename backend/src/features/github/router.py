@@ -1,21 +1,39 @@
 import uuid
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, Request, Response, status
+from fastapi import APIRouter, Depends, Header, Request, Response, status
 from fastapi.responses import RedirectResponse
 
 from src.core.authorization import require_permission
 from src.core.config import Settings, get_settings
 from src.core.exceptions import FlowDeskError
+from src.core.metrics import increment_counter
 from src.core.permissions import Permission
 from src.core.schemas import DataEnvelope
-from src.features.github.dependencies import get_github_integration_service
-from src.features.github.schemas import GitHubConnectResponse, GitHubIntegrationResponse
-from src.features.github.service import CONNECT_STATE_TTL_SECONDS, GitHubIntegrationService
+from src.features.github.dependencies import (
+    DELIVERY_HEADER,
+    EVENT_HEADER,
+    get_github_integration_service,
+    get_github_webhook_service,
+    verify_github_webhook,
+)
+from src.features.github.schemas import (
+    GitHubConnectResponse,
+    GitHubIntegrationResponse,
+    GitHubWebhookDeliveryInput,
+    GitHubWebhookResponse,
+)
+from src.features.github.service import (
+    CONNECT_STATE_TTL_SECONDS,
+    HANDLED_WEBHOOK_EVENTS,
+    GitHubIntegrationService,
+    GitHubWebhookService,
+)
 from src.features.workspaces.models import WorkspaceMember
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/integrations/github", tags=["github"])
 setup_router = APIRouter(prefix="/integrations/github", tags=["github"])
+webhook_router = APIRouter(prefix="/webhooks/github", tags=["github"])
 
 CONNECT_STATE_COOKIE_NAME = "github_connect_state"
 # Cobre só a rota de retorno (`setup_router`): o cookie é gravado pela resposta do
@@ -110,3 +128,29 @@ async def complete_github_setup(
         redirect = RedirectResponse(callback_url, status_code=status.HTTP_302_FOUND)
     redirect.delete_cookie(CONNECT_STATE_COOKIE_NAME, path=CONNECT_STATE_COOKIE_PATH)
     return redirect
+
+
+@webhook_router.post("", response_model=DataEnvelope[GitHubWebhookResponse])
+async def receive_github_webhook(
+    body: bytes = Depends(verify_github_webhook),
+    delivery_id: str | None = Header(default=None, alias=DELIVERY_HEADER),
+    event: str | None = Header(default=None, alias=EVENT_HEADER),
+    service: GitHubWebhookService = Depends(get_github_webhook_service),
+) -> DataEnvelope[GitHubWebhookResponse]:
+    """Entregas do webhook do GitHub App (ADR-069). Fora de `/workspaces/{id}` e sem
+    JWT: o GitHub não conhece o workspace, e quem autentica é o HMAC do corpo
+    (`verify_github_webhook`). O workspace sai do `installation.id` do corpo já
+    verificado.
+
+    Evento válido que não interessa responde 200 com `outcome=IGNORED`: um 4xx faria
+    o GitHub marcar a entrega como falha sem nenhum benefício."""
+    delivery = GitHubWebhookDeliveryInput.parse(delivery_id=delivery_id, event=event, body=body)
+    result = await service.handle(delivery)
+    # O rótulo do evento é limitado aos tratados: cada valor distinto vira uma chave
+    # nova no Redis (`increment_counter`).
+    event_label = delivery.event if delivery.event in HANDLED_WEBHOOK_EVENTS else "other"
+    outcome_label = "DUPLICATE" if result.duplicate else result.outcome.value
+    await increment_counter(f"github_webhook.{event_label}.{outcome_label}")
+    return DataEnvelope(
+        data=GitHubWebhookResponse(outcome=result.outcome, duplicate=result.duplicate)
+    )

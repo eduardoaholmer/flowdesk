@@ -1,5 +1,6 @@
 import secrets
 import uuid
+from datetime import UTC, datetime
 
 from src.core.authorization import PermissionService
 from src.core.logging import get_logger
@@ -14,13 +15,19 @@ from src.features.github.exceptions import (
     GitHubInstallationPendingApprovalError,
     GitHubIntegrationNotConfiguredError,
 )
-from src.features.github.models import GitHubInstallation
+from src.features.github.models import GitHubInstallation, GitHubWebhookOutcome
 from src.features.github.repository import (
     GitHubConnectIntent,
     GitHubConnectStateRepositoryProtocol,
     GitHubInstallationRepositoryProtocol,
+    GitHubWebhookDeliveryRepositoryProtocol,
 )
-from src.features.github.schemas import GitHubConnectionStart, GitHubIntegrationStatus
+from src.features.github.schemas import (
+    GitHubConnectionStart,
+    GitHubIntegrationStatus,
+    GitHubWebhookDeliveryInput,
+    GitHubWebhookResult,
+)
 from src.features.permissions.repository import PermissionOverrideRepositoryProtocol
 from src.features.workspaces.exceptions import WorkspaceNotFoundError
 from src.features.workspaces.repository import WorkspaceRepositoryProtocol
@@ -29,6 +36,15 @@ logger = get_logger(__name__)
 
 CONNECT_STATE_TTL_SECONDS = 10 * 60
 _SETUP_ACTION_REQUEST = "request"
+_EVENT_INSTALLATION = "installation"
+_EVENT_INSTALLATION_REPOSITORIES = "installation_repositories"
+HANDLED_WEBHOOK_EVENTS = frozenset({_EVENT_INSTALLATION, _EVENT_INSTALLATION_REPOSITORIES})
+# Motivo gravado em `github_webhook_deliveries.reason` quando a entrega é ignorada —
+# a resposta para "o GitHub mandou e o FlowDesk ignorou por quê?".
+_REASON_UNHANDLED_EVENT = "unhandled_event"
+_REASON_UNHANDLED_ACTION = "unhandled_action"
+_REASON_MISSING_INSTALLATION = "missing_installation"
+_REASON_UNKNOWN_INSTALLATION = "unknown_installation"
 # `installation_id` vai para uma coluna `BIGINT`; mais de 18 dígitos poderia
 # estourar o tipo e virar um 500 em vez de um retorno de erro legível.
 _MAX_INSTALLATION_ID_DIGITS = 18
@@ -174,6 +190,96 @@ class GitHubIntegrationService:
             granted_overrides=granted,
             revoked_overrides=revoked,
         )
+
+
+class GitHubWebhookService:
+    """Recebe as entregas do webhook já autenticadas (HMAC no router, ADR-069). Cada
+    entrega é processada uma única vez: `claim` e o efeito acontecem na mesma
+    transação, e um reenvio do mesmo `delivery_id` devolve o resultado da primeira
+    vez sem repetir nada."""
+
+    def __init__(
+        self,
+        installation_repo: GitHubInstallationRepositoryProtocol,
+        delivery_repo: GitHubWebhookDeliveryRepositoryProtocol,
+    ) -> None:
+        self._installation_repo = installation_repo
+        self._delivery_repo = delivery_repo
+
+    async def handle(self, delivery: GitHubWebhookDeliveryInput) -> GitHubWebhookResult:
+        payload = delivery.payload
+        installation_id = payload.installation.id if payload.installation else None
+        claimed = await self._delivery_repo.claim(
+            delivery_id=delivery.delivery_id,
+            event=delivery.event,
+            action=payload.action,
+            installation_id=installation_id,
+        )
+        if not claimed:
+            existing = await self._delivery_repo.get(delivery.delivery_id)
+            # `claim` só devolve `False` porque a linha já existe.
+            assert existing is not None
+            logger.info(
+                "github_webhook_duplicate",
+                delivery_id=delivery.delivery_id,
+                github_event=delivery.event,
+            )
+            return GitHubWebhookResult(outcome=existing.outcome, duplicate=True)
+
+        outcome, reason, workspace_id = await self._dispatch(delivery)
+        await self._delivery_repo.finish(
+            delivery.delivery_id, outcome=outcome, reason=reason, workspace_id=workspace_id
+        )
+        logger.info(
+            "github_webhook_received",
+            delivery_id=delivery.delivery_id,
+            github_event=delivery.event,
+            action=payload.action,
+            installation_id=installation_id,
+            workspace_id=str(workspace_id) if workspace_id else None,
+            outcome=outcome.value,
+            reason=reason,
+        )
+        return GitHubWebhookResult(outcome=outcome, duplicate=False)
+
+    async def _dispatch(
+        self, delivery: GitHubWebhookDeliveryInput
+    ) -> tuple[GitHubWebhookOutcome, str | None, uuid.UUID | None]:
+        if delivery.event not in HANDLED_WEBHOOK_EVENTS:
+            return GitHubWebhookOutcome.IGNORED, _REASON_UNHANDLED_EVENT, None
+        payload = delivery.payload
+        if payload.installation is None:
+            return GitHubWebhookOutcome.IGNORED, _REASON_MISSING_INSTALLATION, None
+        installation = await self._installation_repo.get_active_by_installation_id(
+            payload.installation.id
+        )
+        if installation is None:
+            # Instalado no GitHub mas nunca conectado (ou já desconectado) aqui.
+            return GitHubWebhookOutcome.IGNORED, _REASON_UNKNOWN_INSTALLATION, None
+
+        workspace_id = installation.workspace_id
+        if delivery.event == _EVENT_INSTALLATION_REPOSITORIES:
+            # Só registrado nesta sprint (ADR-069): nenhum dado do FlowDesk depende
+            # ainda de quais repositórios a instalação enxerga.
+            return GitHubWebhookOutcome.PROCESSED, None, workspace_id
+
+        if payload.action == "deleted":
+            await self._installation_repo.soft_delete(workspace_id, installation.id)
+            logger.info(
+                "github_installation_disconnected",
+                workspace_id=str(workspace_id),
+                installation_id=installation.installation_id,
+                source="github",
+            )
+        elif payload.action == "suspend":
+            installation.suspended_at = payload.installation.suspended_at or datetime.now(UTC)
+            await self._installation_repo.update(installation)
+        elif payload.action == "unsuspend":
+            installation.suspended_at = None
+            await self._installation_repo.update(installation)
+        else:
+            return GitHubWebhookOutcome.IGNORED, _REASON_UNHANDLED_ACTION, workspace_id
+        return GitHubWebhookOutcome.PROCESSED, None, workspace_id
 
 
 def _parse_installation_id(raw: str | None) -> int | None:

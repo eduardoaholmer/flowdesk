@@ -1,8 +1,14 @@
-from collections.abc import AsyncGenerator
+import secrets
+from collections.abc import AsyncGenerator, Iterator
 
 import pytest
 from redis.asyncio import from_url
 from src.core.config import get_settings
+from src.features.github.client import GitHubInstallationInfo
+from src.features.github.dependencies import get_github_app_client
+from src.main import app
+
+from tests.unit.features.github.fakes import FakeGitHubAppClient
 
 
 @pytest.fixture(autouse=True)
@@ -31,3 +37,28 @@ async def _clear_metrics() -> AsyncGenerator[None, None]:
         await redis.delete(key)
     yield
     await redis.aclose()
+
+
+@pytest.fixture
+def installation_id() -> int:
+    """Os testes de contrato gravam no banco de verdade, sem rollback entre execuções,
+    e `installation_id` é único entre todos os workspaces — um id fixo faria a
+    segunda execução da suíte esbarrar na conexão gravada pela primeira."""
+    return secrets.randbelow(10**12) + 10**9
+
+
+@pytest.fixture
+def github_client(installation_id: int) -> Iterator[FakeGitHubAppClient]:
+    fake = FakeGitHubAppClient(
+        [
+            GitHubInstallationInfo(
+                installation_id=installation_id,
+                account_login="acme-org",
+                account_type="Organization",
+                suspended_at=None,
+            )
+        ]
+    )
+    app.dependency_overrides[get_github_app_client] = lambda: fake
+    yield fake
+    app.dependency_overrides.pop(get_github_app_client, None)

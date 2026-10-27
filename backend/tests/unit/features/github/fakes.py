@@ -3,7 +3,11 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 
 from src.features.github.client import GitHubInstallationInfo
-from src.features.github.models import GitHubInstallation
+from src.features.github.models import (
+    GitHubInstallation,
+    GitHubWebhookDelivery,
+    GitHubWebhookOutcome,
+)
 from src.features.github.repository import GitHubConnectIntent
 from uuid6 import uuid7
 
@@ -94,3 +98,44 @@ class FakeGitHubAppClient:
             if info.installation_id == installation_id:
                 return info
         return None
+
+
+class FakeGitHubWebhookDeliveryRepository:
+    def __init__(self) -> None:
+        self.deliveries: dict[str, GitHubWebhookDelivery] = {}
+
+    async def claim(
+        self,
+        *,
+        delivery_id: str,
+        event: str,
+        action: str | None,
+        installation_id: int | None,
+    ) -> bool:
+        if delivery_id in self.deliveries:
+            return False
+        self.deliveries[delivery_id] = GitHubWebhookDelivery(
+            delivery_id=delivery_id,
+            event=event,
+            action=action,
+            installation_id=installation_id,
+            outcome=GitHubWebhookOutcome.PROCESSED,
+            received_at=datetime.now(UTC),
+        )
+        return True
+
+    async def get(self, delivery_id: str) -> GitHubWebhookDelivery | None:
+        return self.deliveries.get(delivery_id)
+
+    async def finish(
+        self,
+        delivery_id: str,
+        *,
+        outcome: GitHubWebhookOutcome,
+        reason: str | None,
+        workspace_id: uuid.UUID | None,
+    ) -> None:
+        delivery = self.deliveries[delivery_id]
+        delivery.outcome = outcome
+        delivery.reason = reason
+        delivery.workspace_id = workspace_id

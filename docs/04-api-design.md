@@ -305,6 +305,28 @@ Implementado na Sprint 10.1 (ADR-068/ADR-072). Conecta instalações de um GitHu
 
 `connect` não redireciona: devolve a URL para o SPA navegar até ela, porque uma navegação de página inteira não levaria o access token, que só existe em memória (`CLAUDE.md` §11). `GET /integrations/github/setup` é o "Callback URL" do GitHub App (com "Request user authorization (OAuth) during installation" ligado) e, como os callbacks do login social (§2), nunca responde com o envelope JSON: sucesso e erro terminam em `302` para a SPA, que mostra o resultado (`GitHubCallbackPage`). Fica fora de `/workspaces/{workspace_id}` porque o GitHub não conhece o workspace; ele sai do `state` gravado no servidor, nunca da URL. Reconectar uma instalação que já pertence ao próprio workspace (o GitHub manda `setup_action=update` quando o dono só muda os repositórios) atualiza a linha existente em vez de duplicar.
 
+### Webhook do GitHub (`POST /webhooks/github`)
+
+Implementado na Sprint 10.2 (ADR-069/ADR-073). Recebe as entregas do GitHub App; é o "Webhook URL" do app.
+
+| Ação | Endpoint | Autorização | Request | Response | Códigos |
+|---|---|---|---|---|---|
+| Receber entrega | `POST /webhooks/github` | HMAC-SHA256 do corpo com `GITHUB_WEBHOOK_SECRET`, em `X-Hub-Signature-256` | corpo JSON do GitHub + `X-GitHub-Event`, `X-GitHub-Delivery` | `{ data: { outcome, duplicate } }` | 200, 401 (`invalid_webhook_signature`), 422 (`github_webhook_payload_too_large`, `invalid_webhook_payload`), 429 |
+
+`outcome` é `PROCESSED` (o FlowDesk agiu sobre o evento) ou `IGNORED` (assinatura válida, mas nada a fazer). `duplicate: true` indica que esse `X-GitHub-Delivery` já tinha sido recebido: a resposta repete o `outcome` da primeira vez e nenhum efeito é reaplicado. Evento válido que não interessa responde **200**, nunca 4xx — um 4xx faria o GitHub marcar a entrega como falha sem nenhum benefício. Só assinatura inválida (401), corpo grande demais ou cabeçalhos/corpo fora do formato (422) são erro.
+
+Efeitos nesta sprint, sempre para uma instalação conectada a algum workspace (instalação desconhecida → `IGNORED`):
+
+| Evento (`X-GitHub-Event`) | `action` | Efeito |
+|---|---|---|
+| `installation` | `deleted` | desconecta a instalação do workspace (soft delete) |
+| `installation` | `suspend` / `unsuspend` | preenche / limpa `suspended_at` |
+| `installation` | outras (`created`, `new_permissions_accepted`...) | `IGNORED` — a conexão só nasce pelo fluxo de §5.4 |
+| `installation_repositories` | qualquer | só registrado (`PROCESSED`, sem efeito) |
+| qualquer outro (`ping`, `pull_request`...) | — | `IGNORED` (`pull_request` passa a ser tratado na Sprint 10.3) |
+
+Ordem de checagem: tamanho do corpo (antes de ler tudo, por streaming) → assinatura → cabeçalhos e JSON → idempotência → efeito. Nada do corpo é interpretado antes de a assinatura ser validada. Fica fora de `/workspaces/{workspace_id}` e sem JWT pelo mesmo motivo do retorno de instalação: o GitHub não conhece o workspace; ele sai do `installation.id` do corpo já verificado (`docs/07-security.md` §18).
+
 ## 6. Comentários (`/workspaces/{workspace_id}/issues/{issue_id}/comments`)
 
 Implementado na Sprint 8 (`docs/09-decision-log.md` ADR-013 tem o racional completo dos desvios em relação ao esboço original acima).
@@ -499,7 +521,7 @@ Paginação **offset-based** (`{ page, per_page, total, total_pages }`, mesmo en
 
 ## 11. Erros — catálogo de `code` (não exaustivo, cresce por feature)
 
-`invalid_credentials`, `email_already_registered`, `invalid_refresh_token`, `invalid_password_reset_token`, `invalid_token`, `oauth_authentication_failed`, `oauth_provider_not_configured`, `oauth_email_already_registered`, `workspace_not_found`, `slug_taken`, `already_member`, `invitation_already_pending`, `invitation_not_found`, `invitation_expired`, `invitation_email_mismatch`, `sole_owner_cannot_leave`, `member_not_found`, `cannot_manage_own_membership`, `cannot_manage_owner`, `cannot_transfer_ownership_to_self`, `key_taken`, `name_taken`, `team_not_found`, `issue_not_found`, `version_conflict`, `permission_denied`, `rate_limited`, `validation_error`, `project_not_found`, `project_slug_taken`, `project_name_taken`, `project_already_archived`, `project_not_archived`, `project_has_active_issues`, `comment_not_found`, `label_not_found`, `label_name_taken`, `attachment_not_found`, `attachment_too_large`, `attachment_type_not_allowed`, `notification_not_found`, `workflow_state_not_found`, `workflow_state_name_taken`, `workflow_state_has_issues`, `cannot_delete_last_workflow_state`, `invalid_reassign_target`, `cannot_override_owner_role`, `locked_permission`, `invalid_parent_issue`, `issue_has_subissues`, `issue_assignee_not_in_workspace`, `cannot_grant_role_above_own`, `github_integration_not_configured`, `github_connect_state_invalid`, `github_authorization_failed`, `github_installation_pending_approval`, `github_installation_not_accessible`, `github_installation_already_connected`, `github_installation_not_found`.
+`invalid_credentials`, `email_already_registered`, `invalid_refresh_token`, `invalid_password_reset_token`, `invalid_token`, `oauth_authentication_failed`, `oauth_provider_not_configured`, `oauth_email_already_registered`, `workspace_not_found`, `slug_taken`, `already_member`, `invitation_already_pending`, `invitation_not_found`, `invitation_expired`, `invitation_email_mismatch`, `sole_owner_cannot_leave`, `member_not_found`, `cannot_manage_own_membership`, `cannot_manage_owner`, `cannot_transfer_ownership_to_self`, `key_taken`, `name_taken`, `team_not_found`, `issue_not_found`, `version_conflict`, `permission_denied`, `rate_limited`, `validation_error`, `project_not_found`, `project_slug_taken`, `project_name_taken`, `project_already_archived`, `project_not_archived`, `project_has_active_issues`, `comment_not_found`, `label_not_found`, `label_name_taken`, `attachment_not_found`, `attachment_too_large`, `attachment_type_not_allowed`, `notification_not_found`, `workflow_state_not_found`, `workflow_state_name_taken`, `workflow_state_has_issues`, `cannot_delete_last_workflow_state`, `invalid_reassign_target`, `cannot_override_owner_role`, `locked_permission`, `invalid_parent_issue`, `issue_has_subissues`, `issue_assignee_not_in_workspace`, `cannot_grant_role_above_own`, `github_integration_not_configured`, `github_connect_state_invalid`, `github_authorization_failed`, `github_installation_pending_approval`, `github_installation_not_accessible`, `github_installation_already_connected`, `github_installation_not_found`, `invalid_webhook_signature`, `github_webhook_payload_too_large`, `invalid_webhook_payload`.
 
 `comment_not_found` (404), `label_not_found` (404), `label_name_taken` (409, unicidade por workspace), `attachment_not_found` (404), `attachment_too_large`/`attachment_type_not_allowed` (422, validados antes da persistência) são novos na Sprint 8 (§6–8, ADR-013). O esboço original deste catálogo já reservava `name_taken` genérico para labels; `label_name_taken` o substitui com um `code` específico por feature, mesmo padrão já usado por `project_name_taken` na Sprint 6 (evita que o cliente precise inferir o recurso a partir só do `code` genérico).
 
@@ -512,6 +534,8 @@ Paginação **offset-based** (`{ page, per_page, total, total_pages }`, mesmo en
 `cannot_override_owner_role` (422, tentativa de customizar o papel `OWNER`) e `locked_permission` (422, tentativa de conceder/revogar uma das três permissões exclusivas do OWNER) são novos na Sprint 9.3 (§5.2, ADR-058).
 
 `invalid_parent_issue` (409, auto-referência ou violação de "só um nível de sub-issues") e `issue_has_subissues` (409, exclusão bloqueada até desvincular/excluir as sub-issues) são novos na Sprint 9.4 (§5.3, ADR-059).
+
+`invalid_webhook_signature` (401: assinatura ausente, malformada ou divergente, ou nenhum segredo configurado no ambiente), `github_webhook_payload_too_large` (422, corpo acima de `GITHUB_WEBHOOK_MAX_BODY_BYTES`; 422 e não 413 porque a hierarquia de exceções não tem 413, mesmo caso de `attachment_too_large`) e `invalid_webhook_payload` (422, assinatura válida mas sem `X-GitHub-Event`/`X-GitHub-Delivery` ou com corpo fora do JSON esperado) são novos na Sprint 10.2 (webhook do GitHub, ADR-073).
 
 `github_integration_not_configured` (422) e `github_installation_not_found` (404) são novos na Sprint 10.1 (§5.4, ADR-068) e aparecem no envelope JSON. Os outros cinco só aparecem como `?error=<code>` no redirect de `GET /integrations/github/setup`: `github_connect_state_invalid` (401, `state` ausente, expirado, já usado ou sem o cookie do navegador que iniciou), `github_authorization_failed` (401, `code` ou `installation_id` ausente/malformado, ou falha ao falar com o GitHub), `github_installation_pending_approval` (422, o GitHub devolveu `setup_action=request` e a instalação espera um dono da organização), `github_installation_not_accessible` (403, a conta do GitHub autorizada não enxerga a instalação) e `github_installation_already_connected` (409, a instalação já pertence a outro workspace). `permission_denied`/`workspace_not_found` também podem aparecer nesse redirect, quando quem iniciou perdeu a permissão ou o acesso ao workspace antes de voltar.
 

@@ -1,10 +1,15 @@
+import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, text
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, String, func, text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from src.db.base import Base, SoftDeleteMixin, TimestampMixin, UUIDPrimaryKeyMixin
+from src.db.base import Base, SoftDeleteMixin, TimestampMixin, UUIDPrimaryKeyMixin, domain_enum
+
+# `X-GitHub-Delivery` é um GUID (36 caracteres); a folga cobre variações de formato
+# sem aceitar um valor arbitrariamente grande vindo de um cabeçalho.
+GITHUB_DELIVERY_ID_MAX_LENGTH = 64
 
 
 class GitHubInstallation(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
@@ -41,3 +46,45 @@ Index(
     postgresql_where=text("deleted_at IS NULL"),
 )
 Index("ix_github_installations_workspace_id", GitHubInstallation.workspace_id)
+
+
+class GitHubWebhookOutcome(enum.StrEnum):
+    PROCESSED = "PROCESSED"
+    IGNORED = "IGNORED"
+
+
+class GitHubWebhookDelivery(Base):
+    """Uma entrega recebida em `POST /webhooks/github` (Sprint 10.2, ADR-069).
+
+    `delivery_id` (o `X-GitHub-Delivery`) é a chave primária: o GitHub reenvia uma
+    entrega com o mesmo id, e a linha é gravada na mesma transação do efeito, então
+    um reenvio nunca aplica o efeito duas vezes. Também é a trilha para responder
+    "o GitHub mandou e o FlowDesk ignorou por quê?" (`reason`).
+
+    Append-only, como `ActivityLog`: sem `updated_at` nem soft delete. A retenção
+    (expurgo depois de 30 dias) é operacional, pelo runbook — por isso o índice em
+    `received_at`. `workspace_id` só é preenchido quando a instalação do evento é
+    conhecida; uma entrega de instalação desconhecida não pertence a nenhum tenant.
+    """
+
+    __tablename__ = "github_webhook_deliveries"
+
+    delivery_id: Mapped[str] = mapped_column(
+        String(GITHUB_DELIVERY_ID_MAX_LENGTH), primary_key=True
+    )
+    event: Mapped[str] = mapped_column(nullable=False)
+    action: Mapped[str | None] = mapped_column(default=None)
+    installation_id: Mapped[int | None] = mapped_column(BigInteger, default=None)
+    workspace_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="RESTRICT"), default=None
+    )
+    outcome: Mapped[GitHubWebhookOutcome] = mapped_column(
+        domain_enum(GitHubWebhookOutcome), nullable=False
+    )
+    reason: Mapped[str | None] = mapped_column(default=None)
+    received_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+Index("ix_github_webhook_deliveries_received_at", GitHubWebhookDelivery.received_at)

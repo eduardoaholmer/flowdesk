@@ -18,7 +18,7 @@ from src.core.exceptions import (
 )
 from src.core.health import run_health_checks
 from src.core.logging import configure_logging, get_logger
-from src.core.metrics import get_metrics_snapshot
+from src.core.metrics import get_counters_snapshot, get_metrics_snapshot
 from src.core.middleware import (
     AccessLogMiddleware,
     RateLimitMiddleware,
@@ -30,6 +30,7 @@ from src.features.auth.router import router as auth_router
 from src.features.comments.router import router as comments_router
 from src.features.github.router import router as github_router
 from src.features.github.router import setup_router as github_setup_router
+from src.features.github.router import webhook_router as github_webhook_router
 from src.features.issues.router import router as issues_router
 from src.features.labels.router import router as labels_router
 from src.features.notifications.router import router as notifications_router
@@ -103,6 +104,7 @@ api_router.include_router(attachments_router)
 api_router.include_router(notifications_router)
 api_router.include_router(github_router)
 api_router.include_router(github_setup_router)
+api_router.include_router(github_webhook_router)
 app.include_router(api_router)
 
 
@@ -140,9 +142,15 @@ async def metrics() -> dict[str, object]:
     mantidos no Redis por `AccessLogMiddleware`, não um exportador Prometheus
     (fora de escopo, ver ADR-016). Não autenticado nem sob `/api/v1`, mesmo
     precedente de `/health`/`/health/ready`: quem consome isto é
-    infraestrutura de observabilidade, não um cliente de domínio."""
+    infraestrutura de observabilidade, não um cliente de domínio.
+
+    `counters` (Sprint 10.2) traz contadores de evento de negócio que a métrica por
+    endpoint não distingue, como entregas do webhook do GitHub por evento e
+    resultado."""
     snapshot = await get_metrics_snapshot()
+    counters = await get_counters_snapshot()
     return {
+        "counters": counters,
         "endpoints": [
             {
                 "method": entry.method,
@@ -152,7 +160,7 @@ async def metrics() -> dict[str, object]:
                 "latency_p95_ms": entry.latency_p95_ms,
             }
             for entry in snapshot
-        ]
+        ],
     }
 
 

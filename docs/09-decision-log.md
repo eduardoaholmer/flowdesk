@@ -1652,3 +1652,37 @@ Migration puramente aditiva (`actor_id` passa de `NOT NULL` para `NULL`, coluna 
   - largura de 390px.
 
 **Pendências**: o fluxo contra o GitHub de verdade (troca de `code`, `GET /user/installations`, revogação) só foi exercitado com transporte HTTP simulado. A validação ponta a ponta depende de registrar um GitHub App real (Sprint 10.5).
+
+## ADR-073 — Sprint 10.2: webhook do GitHub, desvios de implementação da ADR-069
+
+**Contexto**: implementação da Sprint 10.2 (`docs/08-roadmap.md`). A ADR-069 continua valendo no essencial: rota fora de `/workspaces/{id}` autenticada por HMAC, idempotência no banco na mesma transação do efeito, processamento síncrono sem worker e resposta 2xx para evento válido que não interessa. Esta ADR registra o que mudou ao escrever o código.
+
+**Decisão 1 — `GITHUB_WEBHOOK_SECRET` entra no conjunto obrigatório do app**: em vez de uma configuração separada, o segredo do webhook passa a ser exigido junto de `GITHUB_APP_SLUG`/`CLIENT_ID`/`CLIENT_SECRET` (`_require_full_github_app_config`). Um app conectado sem webhook não recebe nada do que o M10 promete, e como nenhum ambiente ainda tem o app configurado (Sprint 10.5), a exigência nova não quebra nenhuma instalação existente. Se mesmo assim a rota for chamada sem segredo configurado, toda entrega é recusada com 401: nenhuma pode ser autêntica.
+
+**Decisão 2 — corpo grande demais é 422, não 413**: a ADR-069 previa `413`. A hierarquia de exceções de domínio (`CLAUDE.md` §7) não tem um 413, e o caso equivalente de upload já usa 422 (`attachment_too_large`). `github_webhook_payload_too_large` segue esse precedente em vez de abrir uma classe nova de exceção. O limite é checado pelo `Content-Length` declarado e de novo durante a leitura por streaming, então um corpo enviado sem `Content-Length` (chunked) também é cortado sem ser carregado inteiro.
+
+**Decisão 3 — `claim` com `INSERT ... ON CONFLICT DO NOTHING`**: a idempotência não faz `SELECT` antes do `INSERT`. A linha da entrega é inserida primeiro, com `ON CONFLICT DO NOTHING` na chave primária, e o resultado definitivo (`finish`) é gravado depois do efeito, na mesma transação. Dois reenvios simultâneos da mesma entrega serializam no índice: o segundo espera o commit do primeiro e cai no conflito. Uma exceção inesperada no efeito desfaz a transação inteira, incluindo a linha da entrega, e um reenvio posterior é processado normalmente.
+
+**Decisão 4 — colunas `reason` e `workspace_id` na trilha de entregas**: além das colunas da ADR-069, cada entrega guarda por que foi ignorada (`unhandled_event`, `unhandled_action`, `missing_installation`, `unknown_installation`) e o workspace afetado quando a instalação é conhecida. É a resposta direta para "o GitHub mandou e o FlowDesk ignorou por quê?", sem precisar cruzar log com banco. A tabela continua sem `workspace_id` obrigatório: uma entrega de instalação desconhecida não pertence a nenhum tenant.
+
+**Decisão 5 — formato da resposta**: `{ data: { outcome, duplicate } }`, com `outcome` em maiúsculas (`PROCESSED`/`IGNORED`), como todo enum do contrato. `duplicate` separa "recebida agora" de "reenvio de algo já processado", o que o `outcome` sozinho não mostra.
+
+**Decisão 6 — `installation.created` é ignorado**: a conexão só nasce pelo fluxo de instalação com prova de posse (ADR-068). Um evento `created` pode chegar antes do retorno do usuário ao FlowDesk ou de uma instalação que nunca será conectada aqui; agir sobre ele criaria vínculo sem a checagem de posse.
+
+**Decisão 7 — contadores genéricos em `core/metrics.py`**: "métrica por evento/resultado" virou `increment_counter`/`get_counters_snapshot`, um contador de evento de negócio exposto em `GET /metrics` sob `counters`, reaproveitável por outras features. O router grava o contador depois de o service responder, porque é uma preocupação de observabilidade do lado HTTP, como o log de acesso, e não regra de negócio. O rótulo do evento é limitado aos eventos tratados (o resto vira `other`), porque cada nome distinto é uma chave Redis permanente.
+
+**Decisão 8 — fixtures reais do GitHub**: os testes usam corpos de entrega copiados sem alteração de `octokit/webhooks` (MIT), em `backend/tests/fixtures/github_webhooks/`, com só o `installation.id` trocado pelo de uma instalação conectada no teste e a assinatura calculada com o segredo de teste.
+
+**Também nesta sprint**: os helpers de contrato do fluxo de conexão saíram de `test_github_integration.py` para `tests/contract/github_support.py`, e as fixtures `installation_id`/`github_client` foram para `tests/contract/conftest.py`, porque os testes do webhook precisam conectar uma instalação antes. Um teste de contrato novo confirma que `workspace.manage_integrations` (Sprint 10.1) também pode ser concedida por override.
+
+**Verificação**:
+- Backend: `ruff`/`ruff format`/`mypy` limpos.
+- `pytest`: 42 testes novos.
+  - Unitários: assinatura (exata, ausente, segredo errado, sem prefixo, `sha1=`, corpo reserializado); parsing de cabeçalhos e corpo; service com os payloads reais (`deleted`, `suspend`/`unsuspend`, `suspend` sem data, `installation_repositories`, eventos e ações ignorados, instalação desconhecida ou ausente, reenvio com corpo diferente que não reaplica o efeito); config.
+  - Integração contra Postgres real: `claim` único, `finish`, entrega sem instalação.
+  - Contrato: desconexão por `installation.deleted`, suspensão, reenvio, eventos ignorados, assinatura ausente, errada ou de outro segredo, ambiente sem segredo, corpo acima do limite, entrega assinada sem cabeçalhos, contadores em `/metrics` e override da permissão nova.
+- Suíte completa: 606 passed, com os mesmos 3 erros de infra já conhecidos (MinIO/MailHog).
+- Migration `84416f31625b` com ciclo `upgrade`/`downgrade`/`upgrade` contra Postgres real.
+- Teste manual com `curl` contra o uvicorn real: entrega assinada (200 `IGNORED` para `ping`), assinatura errada (401) e corpo acima do limite com e sem `Content-Length` (422), além dos contadores em `/metrics` e da conferência de que o log não contém corpo nem assinatura.
+
+**Pendências**: entregas reais do GitHub só serão exercitadas com o app registrado (Sprint 10.5), incluindo confirmar que o rewrite da Vercel repassa o corpo sem alteração. O expurgo de `github_webhook_deliveries` com mais de 30 dias e o reenvio de entregas falhas ficam no runbook dessa sprint.

@@ -142,6 +142,13 @@ class Settings(BaseSettings):
     github_app_slug: str | None = None
     github_app_client_id: str | None = None
     github_app_client_secret: str | None = None
+    # Segredo do webhook do mesmo app (Sprint 10.2, ADR-069): toda entrega em
+    # `POST /webhooks/github` é autenticada por HMAC-SHA256 com ele. Faz parte do
+    # mesmo conjunto obrigatório — um app conectado sem webhook não recebe nada.
+    github_webhook_secret: str | None = None
+    # Limite aplicado antes do HMAC: um corpo gigante não deveria custar memória e
+    # CPU antes de a assinatura ser recusada. Eventos de PR têm dezenas de KB.
+    github_webhook_max_body_bytes: int = 1024 * 1024
 
     @field_validator("database_url")
     @classmethod
@@ -230,11 +237,12 @@ class Settings(BaseSettings):
             self.github_app_slug,
             self.github_app_client_id,
             self.github_app_client_secret,
+            self.github_webhook_secret,
         )
         if any(github_app_fields) and not all(github_app_fields):
             raise ValueError(
-                "A integração com GitHub exige GITHUB_APP_SLUG, GITHUB_APP_CLIENT_ID e "
-                "GITHUB_APP_CLIENT_SECRET configurados juntos."
+                "A integração com GitHub exige GITHUB_APP_SLUG, GITHUB_APP_CLIENT_ID, "
+                "GITHUB_APP_CLIENT_SECRET e GITHUB_WEBHOOK_SECRET configurados juntos."
             )
         return self
 

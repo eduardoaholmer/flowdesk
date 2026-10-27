@@ -33,10 +33,12 @@ _OAUTH_CALLBACK_PATHS = {
     f"{_API_PREFIX}/auth/github/callback",
     f"{_API_PREFIX}/integrations/github/setup",
 }
+_GITHUB_WEBHOOK_PATH = f"{_API_PREFIX}/webhooks/github"
 _LOGIN_REGISTER_LIMIT = 5
 _REFRESH_LIMIT = 10
 _PASSWORD_RESET_LIMIT = 5
 _OAUTH_CALLBACK_LIMIT = 10
+_GITHUB_WEBHOOK_LIMIT = 300
 _GENERAL_LIMIT = 300
 _UNAUTHENTICATED_LIMIT = 60
 _WINDOW_SECONDS = 60
@@ -162,6 +164,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
       não deveria conseguir metralhar o endpoint que faz a troca com o provedor.
       `/integrations/github/setup` (retorno da instalação do GitHub App, M10)
       entra no mesmo grupo: também troca um `code` com o GitHub.
+    - `POST /webhooks/github` (Sprint 10.2): 300/min por IP, numa chave própria —
+      sem ela, cairia no limite de 60/min das rotas sem Bearer, que uma rajada de
+      eventos do GitHub estoura. Só um freio grosseiro: a proteção real é o HMAC.
     - Demais rotas de `/api/v1` com Bearer decodificável: 300/min por usuário.
     - Demais rotas de `/api/v1` sem Bearer decodificável (ausente, malformado,
       expirado): 60/min por IP — antes esta chamada simplesmente não era limitada
@@ -214,6 +219,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         if request.method == "GET" and path in _OAUTH_CALLBACK_PATHS:
             return f"ip:{client_ip}:{path}", _OAUTH_CALLBACK_LIMIT
+
+        if request.method == "POST" and path == _GITHUB_WEBHOOK_PATH:
+            return f"ip:{client_ip}:{path}", _GITHUB_WEBHOOK_LIMIT
 
         if path.startswith(_API_PREFIX):
             auth_header = request.headers.get("authorization", "")

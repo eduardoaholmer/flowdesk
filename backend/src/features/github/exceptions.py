@@ -54,3 +54,30 @@ class GitHubInstallationAlreadyConnectedError(ConflictError):
 class GitHubInstallationNotFoundError(NotFoundError):
     code = "github_installation_not_found"
     message = "Instalação do GitHub não encontrada."
+
+
+class GitHubWebhookSignatureInvalidError(AuthenticationError):
+    """`X-Hub-Signature-256` ausente, malformado ou divergente do HMAC do corpo —
+    ou nenhum `GITHUB_WEBHOOK_SECRET` configurado, caso em que nenhuma entrega pode
+    ser autêntica."""
+
+    code = "invalid_webhook_signature"
+    message = "Assinatura do webhook inválida."
+
+
+class GitHubWebhookPayloadTooLargeError(ValidationError):
+    """Corpo acima de `GITHUB_WEBHOOK_MAX_BODY_BYTES`, recusado antes do HMAC. 422 e
+    não 413: a hierarquia de exceções do `CLAUDE.md` §7 não tem um 413, e o mesmo
+    caso de upload já usa 422 (`attachment_too_large`)."""
+
+    code = "github_webhook_payload_too_large"
+    message = "Corpo do webhook acima do limite."
+
+
+class GitHubWebhookPayloadInvalidError(ValidationError):
+    """Assinatura válida, mas cabeçalhos `X-GitHub-*` ausentes ou corpo que não é o
+    JSON esperado. Só o GitHub consegue chegar aqui, então indica mudança de formato
+    do lado dele, não um ataque."""
+
+    code = "invalid_webhook_payload"
+    message = "Corpo ou cabeçalhos do webhook em formato inesperado."

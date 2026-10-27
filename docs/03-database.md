@@ -401,6 +401,10 @@ Desde a Sprint 7 (ADR-012 em `docs/09-decision-log.md`), `Issue` não depende ma
 
 - **`GitHubInstallation`** (`github_installations`, migration `ce37f86e65da`) — instalação do GitHub App ligada a um workspace. Colunas `id`/`workspace_id`/`installation_id` (`BIGINT`, id numérico do GitHub)/`account_login`/`account_type`/`connected_by_id` (FK `users`)/`suspended_at`/`created_at`/`updated_at`/`deleted_at`. `account_type` é `VARCHAR` sem `domain_enum`: guarda o valor cru do GitHub (`User`/`Organization`), só para exibição, e um tipo novo do lado do GitHub não deveria impedir a conexão. Soft delete: desconectar marca `deleted_at`, e conectar de novo depois cria uma linha nova. Nenhum token do GitHub é persistido. O `state` da conexão (`workspace_id`/`user_id` de quem iniciou) não é tabela: vive no Redis por 10 minutos, sob o hash do valor (`docs/07-security.md` §17).
 
+### 6.10 Adições da Sprint 10.2 (Webhook do GitHub, ADR-069/ADR-073)
+
+- **`GitHubWebhookDelivery`** (`github_webhook_deliveries`, migration `84416f31625b`) — uma linha por entrega recebida em `POST /webhooks/github`. Chave primária `delivery_id` (`VARCHAR(64)`, o `X-GitHub-Delivery`), gravada na mesma transação do efeito: é o que impede um reenvio de aplicar o efeito duas vezes. Colunas `event`/`action`/`installation_id` (`BIGINT`, nullable — `ping` não tem instalação)/`workspace_id` (FK `workspaces`, nullable — só preenchido quando a instalação é conhecida)/`outcome` (`PROCESSED`/`IGNORED`, `domain_enum`)/`reason` (por que foi ignorada: `unhandled_event`, `unhandled_action`, `missing_installation`, `unknown_installation`)/`received_at`. Append-only, como `activity_logs`: sem `updated_at` nem soft delete. Retenção de 30 dias por expurgo operacional (runbook, Sprint 10.5).
+
 ## 7. Cardinalidades (explícitas)
 
 | Relacionamento | Cardinalidade | Observação |
@@ -475,6 +479,7 @@ Desde a Sprint 7 (ADR-012 em `docs/09-decision-log.md`), `Issue` não depende ma
 | `project_members` | único `(project_id, user_id)` | membership informativa única + `add_member` idempotente (Sprint 19.1) |
 | `label_activity_logs` | `(label_id, created_at)` | timeline de auditoria por label (Sprint 8) |
 | `github_installations` | `(workspace_id)`; único parcial `(installation_id) WHERE deleted_at IS NULL` | listar conexões do workspace; achar o dono de uma instalação (Sprint 10.1) |
+| `github_webhook_deliveries` | PK `(delivery_id)`; `(received_at)` | idempotência das entregas; expurgo por idade (Sprint 10.2) |
 
 Todo índice composto tem `deleted_at` como parte da chave (não como filtro pós-scan) porque o soft delete filter está presente em praticamente 100% das queries de leitura — colocá-lo no índice evita scan de linhas mortas.
 
@@ -542,3 +547,4 @@ Mais 2 migrations da Sprint 19.1, encadeadas sobre a 22 (`f4c36aa63332`), pequen
 27. `e2c2c5c8594a` — `add_parent_id_to_issues` (Sprint 9.4/ADR-059): puramente aditiva — coluna `parent_id` (`nullable`) + FK `issues_parent_id_fkey` (`RESTRICT`, auto-referência) + índice `ix_issues_parent_id_deleted_at`. Sem backfill (issues existentes nascem com `parent_id NULL`, comportamento correto — nenhuma tinha sub-issue antes desta sprint).
 28. `a5e7fc73c034` — `create_oauth_identities` (ADR-061): nova tabela `oauth_identities` e `users.password_hash` passando a aceitar `NULL`. Não estava nesta lista; registrada junto da seguinte.
 29. `ce37f86e65da` — `create_github_installations` (Sprint 10.1/ADR-068): puramente aditiva — nova tabela `github_installations` (§6.9), índice `ix_github_installations_workspace_id` e índice único parcial `uq_github_installations_installation_id_active`. Sem backfill. Ciclo `upgrade → downgrade → upgrade` testado contra Postgres real.
+30. `84416f31625b` — `create_github_webhook_deliveries` (Sprint 10.2/ADR-069): puramente aditiva — nova tabela `github_webhook_deliveries` (§6.10) e índice `ix_github_webhook_deliveries_received_at`. Sem backfill. Ciclo `upgrade → downgrade → upgrade` testado contra Postgres real.
