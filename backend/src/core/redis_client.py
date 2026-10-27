@@ -29,10 +29,6 @@ def get_redis() -> Redis:
     global _redis, _redis_loop
     loop = asyncio.get_running_loop()
     if _redis is None or _redis_loop is not loop:
-        # `from_url` não tem anotação de retorno em redis-py (biblioteca externa,
-        # não código nosso) — chamada não tipada aceita mesmo sob `mypy --strict`.
-        _redis = from_url(  # type: ignore[no-untyped-call]
-            get_settings().redis_url, decode_responses=True
-        )
+        _redis = from_url(get_settings().redis_url, decode_responses=True)
         _redis_loop = loop
     return _redis

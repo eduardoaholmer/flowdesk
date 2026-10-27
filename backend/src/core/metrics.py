@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import cast
 
 from src.core.redis_client import get_redis
 
@@ -74,7 +75,9 @@ async def get_metrics_snapshot() -> list[EndpointMetrics]:
     número de endpoints deste projeto.
     """
     redis = get_redis()
-    endpoints = await redis.smembers(_ROUTES_KEY)  # type: ignore[misc]
+    # O cliente usa `decode_responses=True` (`core/redis_client.py`): os membros
+    # chegam como `str`, mas a tipagem do redis-py não distingue esse modo.
+    endpoints = cast(set[str], await redis.smembers(_ROUTES_KEY))
 
     results: list[EndpointMetrics] = []
     for endpoint in sorted(endpoints):

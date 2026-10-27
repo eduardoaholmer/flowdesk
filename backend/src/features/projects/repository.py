@@ -146,7 +146,7 @@ class ProjectRepository:
 
     def _filtered(
         self, workspace_id: uuid.UUID, *, search: str | None, status: ProjectStatus | None
-    ) -> Select[tuple[Project]]:
+    ) -> Select[Project]:
         stmt = select(Project).where(
             Project.workspace_id == workspace_id, Project.deleted_at.is_(None)
         )
