@@ -1,7 +1,8 @@
 import { render, screen } from "@testing-library/react";
 import { HttpResponse, http } from "msw";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { afterEach, describe, expect, it } from "vitest";
+import { toast } from "sonner";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { OAuthCallbackPage } from "@/pages/OAuthCallbackPage";
 import { useAuthStore } from "@/shared/stores/authStore";
@@ -11,6 +12,7 @@ import { server } from "./mocks/server";
 
 afterEach(() => {
   useAuthStore.getState().clear();
+  vi.restoreAllMocks();
 });
 
 function renderAt(path: string) {
@@ -44,6 +46,17 @@ describe("OAuthCallbackPage", () => {
 
     expect(await screen.findByText("Login page")).toBeInTheDocument();
     expect(useAuthStore.getState().accessToken).toBeNull();
+  });
+
+  it("tells the user to sign in with password when the email already has a password account", async () => {
+    const toastError = vi.spyOn(toast, "error");
+
+    renderAt("/oauth/callback?error=oauth_email_already_registered");
+
+    expect(await screen.findByText("Login page")).toBeInTheDocument();
+    expect(toastError).toHaveBeenCalledWith(
+      "Já existe uma conta com este e-mail. Entre com e-mail e senha.",
+    );
   });
 
   it("redirects to login when the silent refresh itself fails", async () => {

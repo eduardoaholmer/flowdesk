@@ -86,4 +86,22 @@ describe("useUpdateIssue", () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(receivedBody).toHaveProperty("parent_id", "parent-issue-1");
   });
+
+  it("sends explicit nulls to clear assignee, project and estimate", async () => {
+    let receivedBody: unknown;
+    server.use(
+      http.patch(`${API_BASE_URL}/workspaces/:workspaceId/issues/:issueId`, async ({ request }) => {
+        receivedBody = await request.json();
+        return HttpResponse.json({
+          data: { ...demoIssue, assignee_id: null, project_id: null, estimate: null },
+        });
+      }),
+    );
+    const { result } = renderUpdateIssue();
+
+    result.current.mutate({ assignee_id: null, project_id: null, estimate: null });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(receivedBody).toEqual({ assignee_id: null, project_id: null, estimate: null });
+  });
 });

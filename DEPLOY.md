@@ -24,10 +24,10 @@ para este arquivo nem para o repositório** — só nos painéis do Render/Verce
   (readiness — checa Postgres/Redis). `render.yaml` aponta
   `healthCheckPath: /health/ready`.
 - **CORS**: `backend/src/main.py` aceita a origem exata de `CORS_ORIGINS`
-  (configurada no Render como `https://flowdesk.eduardoaholmer.dev`) mais
-  qualquer preview da Vercel via `allow_origin_regex`
-  (`^https://[a-zA-Z0-9-]+\.vercel\.app$`) — previews geram um subdomínio novo
-  por PR e não cabem numa lista fixa.
+  (configurada no Render como `https://flowdesk.eduardoaholmer.dev`) e,
+  opcionalmente, `CORS_ORIGIN_REGEX`. A regex fixa `*.vercel.app` foi removida
+  (ADR-067): confiava em qualquer site de qualquer conta da Vercel. Com o
+  proxy same-origin abaixo, nem produção nem previews precisam de CORS.
 - **`render.yaml`** (raiz, não em `backend/`): é um Blueprint — já provisiona
   Postgres (`flowdesk-postgres`) e Redis (`flowdesk-redis`) do próprio Render
   junto com o Web Service, então **não é usado neste deploy** (Supabase/Upstash
@@ -150,6 +150,23 @@ proxy as chamadas do SPA são same-origin e nem passam por CORS).
 
 
     consciente de manter controle manual por ora.
+
+## Pendências de CORS e rede (ADR-067)
+
+- **CORS**: a regex fixa `*.vercel.app` saiu do backend (confiava, com
+  credenciais, em qualquer site de qualquer conta da Vercel). Com
+  `VITE_API_URL=/api/v1` também em Preview, cada preview usa o próprio proxy
+  e nenhuma `CORS_ORIGIN_REGEX` é necessária.
+- **Follow-up**: com o proxy validado (ADR-063), os cookies de auth podem
+  voltar a `SameSite=Strict` em produção (hoje `None`, ADR-062), e
+  `CORS_ORIGINS` no Render pode ficar só com o domínio final.
+- **Rate limit por IP (não resolvido)**: o Uvicorn roda sem
+  `--forwarded-allow-ips`, então `request.client.host` é o IP do proxy (Render,
+  e agora também Vercel), não o do usuário — o limite de 5 logins/min por IP
+  vira, na prática, um limite global compartilhado. Corrigir exige confirmar em
+  produção qual cabeçalho/posição de `X-Forwarded-For` carrega o IP real depois
+  dos dois proxies; confiar cegamente em `X-Forwarded-For` deixaria o cliente
+  forjar o próprio IP e furar o limite.
 
 ## Keep-alive do backend (UptimeRobot, configurado em 2026-10-26)
 

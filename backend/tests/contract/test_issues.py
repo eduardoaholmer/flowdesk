@@ -558,3 +558,46 @@ async def test_list_issues_filters_by_parent_id(client: AsyncClient) -> None:
 
     assert response.status_code == 200
     assert [i["id"] for i in response.json()["data"]] == [child["id"]]
+
+
+async def _user_id(client: AsyncClient, token: str) -> str:
+    response = await client.get("/api/v1/users/me", headers=_auth(token))
+    user_id: str = response.json()["data"]["id"]
+    return user_id
+
+
+async def test_create_issue_with_assignee_outside_workspace_returns_422(
+    client: AsyncClient,
+) -> None:
+    _, owner_token = await _register_and_login(client)
+    workspace_id = await _create_workspace(client, owner_token)
+    _, outsider_token = await _register_and_login(client)
+    outsider_id = await _user_id(client, outsider_token)
+
+    response = await client.post(
+        f"/api/v1/workspaces/{workspace_id}/issues",
+        json={"title": "Spam", "assignee_id": outsider_id},
+        headers=_auth(owner_token),
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "issue_assignee_not_in_workspace"
+    notifications = await client.get("/api/v1/notifications", headers=_auth(outsider_token))
+    assert notifications.json()["meta"]["total"] == 0
+
+
+async def test_update_issue_with_null_assignee_unassigns(client: AsyncClient) -> None:
+    _, owner_token = await _register_and_login(client)
+    workspace_id = await _create_workspace(client, owner_token)
+    owner_id = await _user_id(client, owner_token)
+    issue = await _create_issue(client, workspace_id, owner_token, assignee_id=owner_id)
+    assert issue["assignee_id"] == owner_id
+
+    response = await client.patch(
+        f"/api/v1/workspaces/{workspace_id}/issues/{issue['id']}",
+        json={"assignee_id": None},
+        headers=_auth(owner_token),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["data"]["assignee_id"] is None

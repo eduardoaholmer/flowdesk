@@ -7,6 +7,7 @@ import { refreshAccessToken } from "@/shared/lib/httpClient";
 const ERROR_MESSAGES: Record<string, string> = {
   oauth_authentication_failed: "Não foi possível concluir o login social. Tente novamente.",
   oauth_provider_not_configured: "Este provedor de login não está disponível.",
+  oauth_email_already_registered: "Já existe uma conta com este e-mail. Entre com e-mail e senha.",
 };
 const DEFAULT_ERROR_MESSAGE = "Não foi possível concluir o login social. Tente novamente.";
 

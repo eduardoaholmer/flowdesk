@@ -312,15 +312,25 @@ class InvitationService:
         workspace_repo: WorkspaceRepositoryProtocol,
         user_repo: UserRepositoryProtocol,
         settings: Settings,
+        permission_service: PermissionService,
     ) -> None:
         self._invitation_repo = invitation_repo
         self._workspace_repo = workspace_repo
         self._user_repo = user_repo
         self._settings = settings
+        self._permission_service = permission_service
 
     async def create(
-        self, current_user: CurrentUser, workspace_id: uuid.UUID, payload: InvitationCreateRequest
+        self,
+        current_user: CurrentUser,
+        workspace_id: uuid.UUID,
+        payload: InvitationCreateRequest,
+        *,
+        acting_role: WorkspaceRole,
     ) -> InvitationIssued:
+        self._permission_service.require_can_grant_role(
+            actor_role=acting_role, target_role=payload.role
+        )
         email = payload.email.lower()
         invited_user = await self._user_repo.get_by_email(email)
         if invited_user is not None:

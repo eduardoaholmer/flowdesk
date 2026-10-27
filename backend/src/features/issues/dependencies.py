@@ -13,6 +13,8 @@ from src.features.workflow_states.repository import (
     WorkflowStateRepository,
     WorkflowStateRepositoryProtocol,
 )
+from src.features.workspaces.dependencies import get_workspace_repository
+from src.features.workspaces.repository import WorkspaceRepositoryProtocol
 
 
 def get_issue_repository(session: AsyncSession = Depends(get_db_session)) -> IssueRepository:
@@ -46,6 +48,7 @@ def get_issue_service(
     workflow_state_repo: WorkflowStateRepositoryProtocol = Depends(
         get_issue_workflow_state_repository
     ),
+    workspace_repo: WorkspaceRepositoryProtocol = Depends(get_workspace_repository),
 ) -> IssueService:
     return IssueService(
         issue_repo,
@@ -54,4 +57,5 @@ def get_issue_service(
         label_repo,
         notification_service,
         workflow_state_repo,
+        workspace_repo,
     )

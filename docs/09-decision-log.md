@@ -1449,3 +1449,37 @@ Hardening de rate limit por rota (mesma sprint, gap independente encontrado ao r
 **Sem mudança de RBAC**: criar label continua exigindo `label.create` (`MEMBER`+); sem a permissão, o backend responde 403 e o toast de erro aparece, mesmo comportamento da página de Labels, que também não esconde o botão por papel. Aplicar labels na criação fica coberto por `issue.create`, como os demais campos da issue nesse momento.
 
 **Verificação**: backend — 3 testes unitários novos de `IssueService.create` (aplica e registra activity, rejeita label de outro workspace sem criar a issue, limite de 20) e 2 de contrato (`label_ids` aplicados; label de outro workspace → 404 `label_not_found` sem issue criada); `ruff`/`mypy` limpos. Frontend — `tests/LabelCombobox.test.tsx` (criar e aplicar pelo detalhe, não oferecer criação de nome existente, `label_ids` enviados pelo diálogo de criação); `tsc`/`eslint`/`prettier` limpos.
+
+## ADR-065 — Auditoria 2026-10: autorização contextual e tenancy de issues/convites
+
+**Contexto**: auditoria de segurança do backend (outubro/2026) encontrou quatro falhas de autorização/tenancy, todas reproduzidas com testes contra a app real antes da correção.
+
+**Achado 1 — overrides ignorados nas checagens de posse**: `IssueService.delete`, `CommentService.update/delete` e `AttachmentService.delete` chamavam `PermissionService.require(member=...)` sem `granted_overrides`/`revoked_overrides`. Um ADMIN com `issue.delete` revogado pelo OWNER continuava apagando qualquer issue, e um MEMBER com `issue.delete` concedido continuava recebendo 403 ao apagar a issue de outra pessoa. **Decisão**: os services passam a receber o `WorkspaceContext` inteiro (não só a `WorkspaceMember`) e checam via `PermissionService.require_in_context`, que repassa os overrides. O router obtém o contexto com `Depends(get_workspace_context)` — a mesma dependency que `require_permission` já resolve, cacheada pelo FastAPI na requisição, então sem consulta extra. Observação: revogar uma permissão que **não** está no padrão do papel (ex.: `issue.delete` para MEMBER) continua sem gravar override (`PermissionOverrideService.set_override` remove o override redundante), e a posse segue valendo — comportamento pré-existente da matriz, não alterado aqui.
+
+**Achado 2 — responsável fora do workspace**: `assignee_id` aceitava qualquer `user_id` do sistema; o "responsável" de outro workspace recebia notificações com identificador da issue, nome de quem agiu e nomes de status. **Decisão**: `IssueService` recebe `WorkspaceRepositoryProtocol` e valida a membership no `create`/`update` (`422 issue_assignee_not_in_workspace`), mesmo padrão de `ProjectService` para `lead_id`.
+
+**Achado 3 — campos anuláveis não podiam ser limpos**: o `PATCH` ignorava `null` em `description`, `project_id`, `assignee_id` e `estimate` (`is not None`), e o frontend enviava `undefined` (chave omitida) — "Sem responsável"/"Sem projeto" no painel da issue não faziam nada. **Decisão**: mesma semântica já usada por `due_date`/`parent_id` (ADR-055/059): `model_fields_set` distingue "omitido" (preserva) de "`null` explícito" (limpa). `title`, `status_id` e `priority` continuam ignorando `null`. `IssueUpdateInput` no frontend deixa de ser `Partial<IssueCreateInput>` e declara os campos anuláveis como `| null`.
+
+**Achado 4 — convite acima do próprio papel**: com `workspace.invite` concedido a MEMBER via override, o membro podia convidar uma segunda conta sua como ADMIN. **Decisão**: `PermissionService.can_grant_role` (hierarquia `GUEST < MEMBER < ADMIN < OWNER`, usada só para esta regra) e `InvitationService.create` exige `acting_role` (`403 cannot_grant_role_above_own`).
+
+**Também corrigido na auditoria** (sem decisão de design própria): upload lia o arquivo inteiro em memória antes de checar o tamanho (agora lê no máximo `max_upload_size_bytes + 1`); o nome enviado pelo cliente entrava cru na chave de armazenamento (`/` virava subdiretório inexistente → 500) — `core/storage.py::build_storage_key` usa só o basename saneado.
+
+**Não corrigido (registrado)**: repositories sem `workspace_id` em métodos de filho de issue (`list_activity`, `list_labels`, `soft_delete`, `list_by_issue`) — hoje seguros porque o service valida a issue antes; trava otimista não atômica (versão fora do `WHERE`); `/metrics` e `/version` públicos.
+
+## ADR-066 — Login social não vincula automaticamente a conta com senha
+
+**Contexto**: ADR-061 vinculava a identidade do provedor a qualquer conta existente com o mesmo e-mail, assumindo que "o e-mail já foi verificado pelo provedor". A verificação cobre só um lado: `POST /auth/register` não verifica e-mail. Um atacante cadastrava `vitima@...` com senha própria; quando a vítima entrava com Google/GitHub, o vínculo automático colocava os dois na mesma conta (pre-account takeover). Além disso, `GoogleOAuthClient` não checava `email_verified`.
+
+**Decisão**: o vínculo automático por e-mail só acontece com contas **sem senha** (criadas por outro provedor — os dois lados verificados). Conta com senha recusa o login social com `409 oauth_email_already_registered` ("Já existe uma conta com este e-mail. Entre com e-mail e senha."), exibido pela `OAuthCallbackPage`. `GoogleOAuthClient` exige `email_verified is True`.
+
+**Alternativas descartadas**: (a) vincular e apagar a senha existente + revogar sessões — protege contra o ataque, mas derruba silenciosamente o login por senha de quem é dono legítimo da conta; (b) verificação de e-mail no cadastro — resolve na raiz e permitiria reativar o vínculo automático, mas exige fluxo novo (token, e-mail, estado "não verificado") fora do escopo de uma correção.
+
+**Consequência**: quem tem conta por senha não consegue mais entrar com Google/GitHub no mesmo e-mail até existir um fluxo de "vincular provedor" autenticado (a partir das configurações da conta, com a sessão por senha já provando a posse). Teste `test_login_with_oauth_links_existing_account_by_email` (que exigia o comportamento antigo) substituído por `..._links_existing_social_account_by_email` + `..._refuses_to_link_account_with_password`.
+
+## ADR-067 — Fim da regex `*.vercel.app` no CORS (`CORS_ORIGIN_REGEX` opcional)
+
+**Contexto**: `main.py` aceitava `^https://[a-zA-Z0-9-]+\.vercel\.app$` com `allow_credentials=True`, para cobrir os deploys de preview. Qualquer conta da Vercel cria subdomínios em `vercel.app`, então a regex tornava confiável, com credenciais, o site de qualquer pessoa. Com o proxy same-origin do ADR-063, o SPA (produção e previews, ambos com `VITE_API_URL=/api/v1`) nem passa mais por CORS, e a regex deixou de ter uso legítimo.
+
+**Decisão**: a regex fixa sai de `main.py` e vira `CORS_ORIGIN_REGEX` (`Settings.cors_origin_regex`), opcional e sem default. Sem ela, só as origens exatas de `CORS_ORIGINS` são aceitas. Quem precisar liberar previews que chamem a API do Render direto define uma regex restrita ao próprio projeto.
+
+**Pendências**: com o proxy validado em produção (ADR-063), os cookies de auth podem voltar a `SameSite=Strict` e `CORS_ORIGINS` no Render pode ficar só com o domínio final. Rate limit por IP continua usando o IP do proxy (Uvicorn sem `--forwarded-allow-ips`) — exige confirmar em produção qual posição de `X-Forwarded-For` é confiável depois de Vercel + Render.
