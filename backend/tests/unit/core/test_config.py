@@ -57,3 +57,17 @@ def test_invalid_environment_value_raises() -> None:
             environment="produciton",
             jwt_public_key=_DEV_JWT_PUBLIC_KEY_RAW,
         )
+
+
+def test_cors_origin_regex_defaults_to_none() -> None:
+    settings = Settings(**_BASE_KWARGS, jwt_public_key="irrelevant")
+
+    assert settings.cors_origin_regex is None
+
+
+def test_cors_origin_regex_is_read_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CORS_ORIGIN_REGEX", r"^https://flowdesk-[a-z0-9-]+\.vercel\.app$")
+
+    settings = Settings(**_BASE_KWARGS, jwt_public_key="irrelevant")
+
+    assert settings.cors_origin_regex == r"^https://flowdesk-[a-z0-9-]+\.vercel\.app$"

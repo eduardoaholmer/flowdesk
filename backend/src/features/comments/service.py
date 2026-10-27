@@ -2,7 +2,7 @@ import re
 import uuid
 from collections.abc import Sequence
 
-from src.core.authorization import PermissionService
+from src.core.authorization import PermissionService, WorkspaceContext
 from src.core.permissions import Permission
 from src.core.security import CurrentUser
 from src.features.comments.exceptions import CommentNotFoundError
@@ -14,7 +14,6 @@ from src.features.issues.models import ActivityLog, Issue
 from src.features.issues.repository import IssueRepositoryProtocol
 from src.features.notifications.models import NotificationType
 from src.features.notifications.service import NotificationService
-from src.features.workspaces.models import WorkspaceMember
 from src.features.workspaces.repository import WorkspaceRepositoryProtocol
 
 # Sintaxe de menção desta sprint: `@` seguido do local-part do e-mail do
@@ -111,14 +110,14 @@ class CommentService:
 
     async def update(
         self,
-        acting_member: WorkspaceMember,
+        acting: WorkspaceContext,
         workspace_id: uuid.UUID,
         comment_id: uuid.UUID,
         payload: CommentUpdateRequest,
     ) -> Comment:
         comment = await self._get_active_comment(workspace_id, comment_id)
-        self._permission_service.require(
-            member=acting_member,
+        self._permission_service.require_in_context(
+            context=acting,
             permission=Permission.COMMENT_UPDATE,
             resource_owner_id=comment.author_id,
         )
@@ -133,7 +132,7 @@ class CommentService:
         await self._record_activity(
             workspace_id,
             comment.issue_id,
-            acting_member.user_id,
+            acting.member.user_id,
             "comment.updated",
             old_value=old_preview,
             new_value=_preview(comment.body),
@@ -141,11 +140,11 @@ class CommentService:
         return comment
 
     async def delete(
-        self, acting_member: WorkspaceMember, workspace_id: uuid.UUID, comment_id: uuid.UUID
+        self, acting: WorkspaceContext, workspace_id: uuid.UUID, comment_id: uuid.UUID
     ) -> None:
         comment = await self._get_active_comment(workspace_id, comment_id)
-        self._permission_service.require(
-            member=acting_member,
+        self._permission_service.require_in_context(
+            context=acting,
             permission=Permission.COMMENT_DELETE,
             resource_owner_id=comment.author_id,
         )
@@ -153,7 +152,7 @@ class CommentService:
         await self._record_activity(
             workspace_id,
             comment.issue_id,
-            acting_member.user_id,
+            acting.member.user_id,
             "comment.deleted",
             old_value=_preview(comment.body),
         )

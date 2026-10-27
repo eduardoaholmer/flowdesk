@@ -8,11 +8,13 @@ import pytest
 # models isoladamente — ver `src/db/models_registry.py`.
 import src.db.models_registry  # noqa: F401
 from pydantic import ValidationError
-from src.core.authorization import PermissionService
+from src.core.authorization import PermissionService, WorkspaceContext
 from src.core.exceptions import PermissionDeniedError
+from src.core.permissions import Permission
 from src.core.security import CurrentUser
 from src.features.issues.exceptions import (
     InvalidParentIssueError,
+    IssueAssigneeNotInWorkspaceError,
     IssueHasSubIssuesError,
     IssueLabelAlreadyAppliedError,
     IssueNotFoundError,
@@ -29,13 +31,14 @@ from src.features.projects.exceptions import ProjectNotFoundError
 from src.features.projects.models import Project
 from src.features.workflow_states.exceptions import WorkflowStateNotFoundError
 from src.features.workflow_states.models import WorkflowState, WorkflowStateCategory
-from src.features.workspaces.models import WorkspaceMember, WorkspaceRole
+from src.features.workspaces.models import Workspace, WorkspaceMember, WorkspaceRole
 
 from tests.unit.features.issues.fakes import FakeIssueRepository
 from tests.unit.features.labels.fakes import FakeLabelRepository
 from tests.unit.features.notifications.fakes import FakeNotificationRepository
 from tests.unit.features.projects.fakes import FakeProjectRepository
 from tests.unit.features.workflow_states.fakes import FakeWorkflowStateRepository
+from tests.unit.features.workspaces.fakes import FakeWorkspaceRepository
 
 # Autorização por papel para create/read/update é resolvida pelo router via
 # `Depends(require_permission(...))` (mesmo racional de `test_project_service.py`)
@@ -74,12 +77,18 @@ def workflow_state_repo() -> FakeWorkflowStateRepository:
 
 
 @pytest.fixture
+def workspace_repo() -> FakeWorkspaceRepository:
+    return FakeWorkspaceRepository()
+
+
+@pytest.fixture
 def service(
     issue_repo: FakeIssueRepository,
     project_repo: FakeProjectRepository,
     label_repo: FakeLabelRepository,
     notification_service: NotificationService,
     workflow_state_repo: FakeWorkflowStateRepository,
+    workspace_repo: FakeWorkspaceRepository,
 ) -> IssueService:
     return IssueService(
         issue_repo,
@@ -88,6 +97,7 @@ def service(
         label_repo,
         notification_service,
         workflow_state_repo,
+        workspace_repo,
     )
 
 
@@ -99,8 +109,27 @@ def _workspace_id() -> uuid.UUID:
     return uuid.uuid4()
 
 
-def _member(workspace_id: uuid.UUID, user_id: uuid.UUID, role: WorkspaceRole) -> WorkspaceMember:
-    return WorkspaceMember(workspace_id=workspace_id, user_id=user_id, role=role)
+async def _add_workspace_member(
+    workspace_repo: FakeWorkspaceRepository, workspace_id: uuid.UUID, user_id: uuid.UUID
+) -> None:
+    await workspace_repo.add_member(
+        WorkspaceMember(workspace_id=workspace_id, user_id=user_id, role=WorkspaceRole.MEMBER)
+    )
+
+
+def _acting(
+    workspace_id: uuid.UUID,
+    user_id: uuid.UUID,
+    role: WorkspaceRole,
+    *,
+    granted: frozenset[Permission] = frozenset(),
+    revoked: frozenset[Permission] = frozenset(),
+) -> WorkspaceContext:
+    member = WorkspaceMember(workspace_id=workspace_id, user_id=user_id, role=role)
+    workspace = Workspace(id=workspace_id, name="Acme", slug="acme", owner_id=uuid.uuid4())
+    return WorkspaceContext(
+        workspace=workspace, member=member, granted_overrides=granted, revoked_overrides=revoked
+    )
 
 
 async def _seed_status(
@@ -288,6 +317,7 @@ async def test_update_status_change_notifies_assignee(
     service: IssueService,
     notification_repo: FakeNotificationRepository,
     workflow_state_repo: FakeWorkflowStateRepository,
+    workspace_repo: FakeWorkspaceRepository,
 ) -> None:
     workspace_id = _workspace_id()
     await _seed_status(workflow_state_repo, workspace_id)
@@ -301,6 +331,7 @@ async def test_update_status_change_notifies_assignee(
     )
     actor = _user()
     assignee_id = uuid.uuid4()
+    await _add_workspace_member(workspace_repo, workspace_id, assignee_id)
     issue = await service.create(
         actor, workspace_id, IssueCreateRequest(title="Issue", assignee_id=assignee_id)
     )
@@ -346,6 +377,7 @@ async def test_update_status_change_does_not_notify_self_assigned_actor(
     service: IssueService,
     notification_repo: FakeNotificationRepository,
     workflow_state_repo: FakeWorkflowStateRepository,
+    workspace_repo: FakeWorkspaceRepository,
 ) -> None:
     workspace_id = _workspace_id()
     await _seed_status(workflow_state_repo, workspace_id)
@@ -358,6 +390,7 @@ async def test_update_status_change_does_not_notify_self_assigned_actor(
         is_default=False,
     )
     actor = _user()
+    await _add_workspace_member(workspace_repo, workspace_id, actor.id)
     issue = await service.create(
         actor, workspace_id, IssueCreateRequest(title="Issue", assignee_id=actor.id)
     )
@@ -497,9 +530,9 @@ async def test_delete_by_creator_succeeds_via_ownership_override(
     await _seed_status(workflow_state_repo, workspace_id)
     creator = _user()
     issue = await service.create(creator, workspace_id, IssueCreateRequest(title="Issue"))
-    creator_member = _member(workspace_id, creator.id, WorkspaceRole.MEMBER)
+    creator_acting = _acting(workspace_id, creator.id, WorkspaceRole.MEMBER)
 
-    await service.delete(creator_member, workspace_id, issue.id)
+    await service.delete(creator_acting, workspace_id, issue.id)
 
     assert issue_repo.issues[issue.id].deleted_at is not None
     assert any(entry.action == "issue.deleted" for entry in issue_repo.activity_log)
@@ -514,12 +547,53 @@ async def test_delete_by_non_creator_member_raises_permission_denied(
     await _seed_status(workflow_state_repo, workspace_id)
     creator = _user()
     issue = await service.create(creator, workspace_id, IssueCreateRequest(title="Issue"))
-    other_member = _member(workspace_id, uuid.uuid4(), WorkspaceRole.MEMBER)
+    other_acting = _acting(workspace_id, uuid.uuid4(), WorkspaceRole.MEMBER)
 
     with pytest.raises(PermissionDeniedError):
-        await service.delete(other_member, workspace_id, issue.id)
+        await service.delete(other_acting, workspace_id, issue.id)
 
     assert issue_repo.issues[issue.id].deleted_at is None
+
+
+async def test_delete_by_admin_denied_when_workspace_revoked_issue_delete(
+    service: IssueService,
+    issue_repo: FakeIssueRepository,
+    workflow_state_repo: FakeWorkflowStateRepository,
+) -> None:
+    workspace_id = _workspace_id()
+    await _seed_status(workflow_state_repo, workspace_id)
+    issue = await service.create(_user(), workspace_id, IssueCreateRequest(title="Issue"))
+    admin_acting = _acting(
+        workspace_id,
+        uuid.uuid4(),
+        WorkspaceRole.ADMIN,
+        revoked=frozenset({Permission.ISSUE_DELETE}),
+    )
+
+    with pytest.raises(PermissionDeniedError):
+        await service.delete(admin_acting, workspace_id, issue.id)
+
+    assert issue_repo.issues[issue.id].deleted_at is None
+
+
+async def test_delete_others_issue_allowed_when_workspace_granted_issue_delete(
+    service: IssueService,
+    issue_repo: FakeIssueRepository,
+    workflow_state_repo: FakeWorkflowStateRepository,
+) -> None:
+    workspace_id = _workspace_id()
+    await _seed_status(workflow_state_repo, workspace_id)
+    issue = await service.create(_user(), workspace_id, IssueCreateRequest(title="Issue"))
+    other_acting = _acting(
+        workspace_id,
+        uuid.uuid4(),
+        WorkspaceRole.MEMBER,
+        granted=frozenset({Permission.ISSUE_DELETE}),
+    )
+
+    await service.delete(other_acting, workspace_id, issue.id)
+
+    assert issue_repo.issues[issue.id].deleted_at is not None
 
 
 async def test_delete_by_admin_succeeds_without_being_creator(
@@ -531,11 +605,59 @@ async def test_delete_by_admin_succeeds_without_being_creator(
     await _seed_status(workflow_state_repo, workspace_id)
     creator = _user()
     issue = await service.create(creator, workspace_id, IssueCreateRequest(title="Issue"))
-    admin_member = _member(workspace_id, uuid.uuid4(), WorkspaceRole.ADMIN)
+    admin_acting = _acting(workspace_id, uuid.uuid4(), WorkspaceRole.ADMIN)
 
-    await service.delete(admin_member, workspace_id, issue.id)
+    await service.delete(admin_acting, workspace_id, issue.id)
 
     assert issue_repo.issues[issue.id].deleted_at is not None
+
+
+async def test_create_with_label_ids_applies_labels_and_records_activity(
+    service: IssueService,
+    issue_repo: FakeIssueRepository,
+    label_repo: FakeLabelRepository,
+    workflow_state_repo: FakeWorkflowStateRepository,
+) -> None:
+    workspace_id = _workspace_id()
+    await _seed_status(workflow_state_repo, workspace_id)
+    bug = await label_repo.create(Label(workspace_id=workspace_id, name="bug", color="#FF0000"))
+    ui = await label_repo.create(Label(workspace_id=workspace_id, name="ui", color="#00FF00"))
+
+    issue = await service.create(
+        _user(),
+        workspace_id,
+        IssueCreateRequest(title="Issue", label_ids=[bug.id, ui.id, bug.id]),
+    )
+
+    applied = [link.label_id for link in issue_repo.labels if link.issue_id == issue.id]
+    assert applied == [bug.id, ui.id]
+    added_names = [e.new_value for e in issue_repo.activity_log if e.action == "label.added"]
+    assert added_names == ["bug", "ui"]
+
+
+async def test_create_rejects_label_from_another_workspace_without_creating_issue(
+    service: IssueService,
+    issue_repo: FakeIssueRepository,
+    label_repo: FakeLabelRepository,
+    workflow_state_repo: FakeWorkflowStateRepository,
+) -> None:
+    workspace_id = _workspace_id()
+    await _seed_status(workflow_state_repo, workspace_id)
+    foreign_label = await label_repo.create(
+        Label(workspace_id=_workspace_id(), name="bug", color="#FF0000")
+    )
+
+    with pytest.raises(LabelNotFoundError):
+        await service.create(
+            _user(), workspace_id, IssueCreateRequest(title="Issue", label_ids=[foreign_label.id])
+        )
+
+    assert issue_repo.issues == {}
+
+
+def test_create_request_rejects_too_many_label_ids() -> None:
+    with pytest.raises(ValidationError):
+        IssueCreateRequest(title="Issue", label_ids=[uuid.uuid4() for _ in range(21)])
 
 
 async def test_add_label_links_label_and_records_activity(
@@ -742,10 +864,10 @@ async def test_delete_blocks_when_issue_has_sub_issues(
     await service.create(
         creator, workspace_id, IssueCreateRequest(title="Filho", parent_id=parent.id)
     )
-    creator_member = _member(workspace_id, creator.id, WorkspaceRole.MEMBER)
+    creator_acting = _acting(workspace_id, creator.id, WorkspaceRole.MEMBER)
 
     with pytest.raises(IssueHasSubIssuesError):
-        await service.delete(creator_member, workspace_id, parent.id)
+        await service.delete(creator_acting, workspace_id, parent.id)
 
     assert issue_repo.issues[parent.id].deleted_at is None
 
@@ -778,3 +900,95 @@ async def test_list_for_workspace_filters_by_parent_id(
 
     assert total == 1
     assert children[0].id == child.id
+
+
+async def test_create_rejects_assignee_outside_workspace(
+    service: IssueService, workflow_state_repo: FakeWorkflowStateRepository
+) -> None:
+    workspace_id = _workspace_id()
+    await _seed_status(workflow_state_repo, workspace_id)
+
+    with pytest.raises(IssueAssigneeNotInWorkspaceError):
+        await service.create(
+            _user(), workspace_id, IssueCreateRequest(title="Issue", assignee_id=uuid.uuid4())
+        )
+
+
+async def test_update_rejects_assignee_outside_workspace(
+    service: IssueService,
+    notification_repo: FakeNotificationRepository,
+    workflow_state_repo: FakeWorkflowStateRepository,
+) -> None:
+    workspace_id = _workspace_id()
+    await _seed_status(workflow_state_repo, workspace_id)
+    actor = _user()
+    issue = await service.create(actor, workspace_id, IssueCreateRequest(title="Issue"))
+
+    with pytest.raises(IssueAssigneeNotInWorkspaceError):
+        await service.update(
+            actor, workspace_id, issue.id, IssueUpdateRequest(assignee_id=uuid.uuid4())
+        )
+
+    assert issue.assignee_id is None
+    assert notification_repo.notifications == {}
+
+
+async def test_update_with_explicit_nulls_clears_nullable_fields(
+    service: IssueService,
+    project_repo: FakeProjectRepository,
+    workflow_state_repo: FakeWorkflowStateRepository,
+    workspace_repo: FakeWorkspaceRepository,
+) -> None:
+    workspace_id = _workspace_id()
+    await _seed_status(workflow_state_repo, workspace_id)
+    actor = _user()
+    await _add_workspace_member(workspace_repo, workspace_id, actor.id)
+    project = await project_repo.create(
+        Project(workspace_id=workspace_id, name="Roadmap", slug="roadmap", created_by=actor.id)
+    )
+    issue = await service.create(
+        actor,
+        workspace_id,
+        IssueCreateRequest(
+            title="Issue",
+            description="Detalhes",
+            project_id=project.id,
+            assignee_id=actor.id,
+            estimate=3,
+        ),
+    )
+
+    updated = await service.update(
+        actor,
+        workspace_id,
+        issue.id,
+        IssueUpdateRequest(description=None, project_id=None, assignee_id=None, estimate=None),
+    )
+
+    assert updated.description is None
+    assert updated.project_id is None
+    assert updated.assignee_id is None
+    assert updated.estimate is None
+
+
+async def test_update_omitting_nullable_fields_preserves_them(
+    service: IssueService,
+    workflow_state_repo: FakeWorkflowStateRepository,
+    workspace_repo: FakeWorkspaceRepository,
+) -> None:
+    workspace_id = _workspace_id()
+    await _seed_status(workflow_state_repo, workspace_id)
+    actor = _user()
+    await _add_workspace_member(workspace_repo, workspace_id, actor.id)
+    issue = await service.create(
+        actor,
+        workspace_id,
+        IssueCreateRequest(title="Issue", description="Detalhes", assignee_id=actor.id, estimate=3),
+    )
+
+    updated = await service.update(actor, workspace_id, issue.id, IssueUpdateRequest(title="Novo"))
+
+    assert updated.title == "Novo"
+    assert updated.description == "Detalhes"
+    assert updated.assignee_id == actor.id
+    assert updated.estimate == 3

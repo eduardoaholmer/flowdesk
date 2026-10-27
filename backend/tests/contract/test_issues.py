@@ -118,6 +118,58 @@ async def test_create_issue_requires_authentication(client: AsyncClient) -> None
     assert response.status_code == 401
 
 
+async def _create_label(client: AsyncClient, workspace_id: str, token: str, name: str) -> str:
+    response = await client.post(
+        f"/api/v1/workspaces/{workspace_id}/labels",
+        json={"name": name, "color": "#4F46E5"},
+        headers=_auth(token),
+    )
+    label_id: str = response.json()["data"]["id"]
+    return label_id
+
+
+async def test_create_issue_with_label_ids_applies_labels(client: AsyncClient) -> None:
+    _, owner_token = await _register_and_login(client)
+    workspace_id = await _create_workspace(client, owner_token)
+    bug_id = await _create_label(client, workspace_id, owner_token, "bug")
+    ui_id = await _create_label(client, workspace_id, owner_token, "ui")
+
+    response = await client.post(
+        f"/api/v1/workspaces/{workspace_id}/issues",
+        json={"title": "Issue", "label_ids": [bug_id, ui_id]},
+        headers=_auth(owner_token),
+    )
+
+    assert response.status_code == 201
+    issue_id = response.json()["data"]["id"]
+    labels = await client.get(
+        f"/api/v1/workspaces/{workspace_id}/issues/{issue_id}/labels",
+        headers=_auth(owner_token),
+    )
+    assert {label["id"] for label in labels.json()["data"]} == {bug_id, ui_id}
+
+
+async def test_create_issue_rejects_label_from_another_workspace(client: AsyncClient) -> None:
+    _, owner_token = await _register_and_login(client)
+    workspace_id = await _create_workspace(client, owner_token)
+    _, other_owner_token = await _register_and_login(client)
+    other_workspace_id = await _create_workspace(client, other_owner_token)
+    foreign_label_id = await _create_label(client, other_workspace_id, other_owner_token, "bug")
+
+    response = await client.post(
+        f"/api/v1/workspaces/{workspace_id}/issues",
+        json={"title": "Issue", "label_ids": [foreign_label_id]},
+        headers=_auth(owner_token),
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "label_not_found"
+    issues = await client.get(
+        f"/api/v1/workspaces/{workspace_id}/issues", headers=_auth(owner_token)
+    )
+    assert issues.json()["meta"]["total"] == 0
+
+
 async def test_create_issue_rejects_project_from_another_workspace(client: AsyncClient) -> None:
     _, owner_token = await _register_and_login(client)
     workspace_id = await _create_workspace(client, owner_token)
@@ -506,3 +558,46 @@ async def test_list_issues_filters_by_parent_id(client: AsyncClient) -> None:
 
     assert response.status_code == 200
     assert [i["id"] for i in response.json()["data"]] == [child["id"]]
+
+
+async def _user_id(client: AsyncClient, token: str) -> str:
+    response = await client.get("/api/v1/users/me", headers=_auth(token))
+    user_id: str = response.json()["data"]["id"]
+    return user_id
+
+
+async def test_create_issue_with_assignee_outside_workspace_returns_422(
+    client: AsyncClient,
+) -> None:
+    _, owner_token = await _register_and_login(client)
+    workspace_id = await _create_workspace(client, owner_token)
+    _, outsider_token = await _register_and_login(client)
+    outsider_id = await _user_id(client, outsider_token)
+
+    response = await client.post(
+        f"/api/v1/workspaces/{workspace_id}/issues",
+        json={"title": "Spam", "assignee_id": outsider_id},
+        headers=_auth(owner_token),
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "issue_assignee_not_in_workspace"
+    notifications = await client.get("/api/v1/notifications", headers=_auth(outsider_token))
+    assert notifications.json()["meta"]["total"] == 0
+
+
+async def test_update_issue_with_null_assignee_unassigns(client: AsyncClient) -> None:
+    _, owner_token = await _register_and_login(client)
+    workspace_id = await _create_workspace(client, owner_token)
+    owner_id = await _user_id(client, owner_token)
+    issue = await _create_issue(client, workspace_id, owner_token, assignee_id=owner_id)
+    assert issue["assignee_id"] == owner_id
+
+    response = await client.patch(
+        f"/api/v1/workspaces/{workspace_id}/issues/{issue['id']}",
+        json={"assignee_id": None},
+        headers=_auth(owner_token),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["data"]["assignee_id"] is None

@@ -1,8 +1,9 @@
 import uuid
 
 import pytest
-from src.core.authorization import PermissionService
+from src.core.authorization import PermissionService, WorkspaceContext
 from src.core.exceptions import PermissionDeniedError
+from src.core.permissions import Permission
 from src.core.security import CurrentUser
 from src.features.comments.schemas import CommentCreateRequest, CommentUpdateRequest
 from src.features.comments.service import CommentService
@@ -12,7 +13,7 @@ from src.features.issues.service import IssueService
 from src.features.notifications.models import NotificationType
 from src.features.notifications.service import NotificationService
 from src.features.workflow_states.models import WorkflowState, WorkflowStateCategory
-from src.features.workspaces.models import WorkspaceMember, WorkspaceRole
+from src.features.workspaces.models import Workspace, WorkspaceMember, WorkspaceRole
 
 from tests.unit.features.comments.fakes import FakeCommentRepository
 from tests.unit.features.issues.fakes import FakeIssueRepository
@@ -27,8 +28,19 @@ def _user(email: str = "ada@example.com", name: str = "Ada Lovelace") -> Current
     return CurrentUser(id=uuid.uuid4(), email=email, name=name)
 
 
-def _member(workspace_id: uuid.UUID, user_id: uuid.UUID, role: WorkspaceRole) -> WorkspaceMember:
-    return WorkspaceMember(workspace_id=workspace_id, user_id=user_id, role=role)
+def _acting(
+    workspace_id: uuid.UUID,
+    user_id: uuid.UUID,
+    role: WorkspaceRole,
+    *,
+    granted: frozenset[Permission] = frozenset(),
+    revoked: frozenset[Permission] = frozenset(),
+) -> WorkspaceContext:
+    member = WorkspaceMember(workspace_id=workspace_id, user_id=user_id, role=role)
+    workspace = Workspace(id=workspace_id, name="Acme", slug="acme", owner_id=uuid.uuid4())
+    return WorkspaceContext(
+        workspace=workspace, member=member, granted_overrides=granted, revoked_overrides=revoked
+    )
 
 
 class _FakeUser:
@@ -91,6 +103,7 @@ async def _create_issue(issue_repo: FakeIssueRepository, workspace_id: uuid.UUID
         FakeLabelRepository(),
         NotificationService(FakeNotificationRepository()),
         workflow_state_repo,
+        FakeWorkspaceRepository(),
     )
     issue = await issue_service.create(_user(), workspace_id, IssueCreateRequest(title="Issue"))
     return issue.id
@@ -228,10 +241,10 @@ async def test_update_by_author_succeeds_via_ownership_override(
     issue_id = await _create_issue(issue_repo, workspace_id)
     author = _user()
     comment = await service.create(author, workspace_id, issue_id, CommentCreateRequest(body="oi"))
-    author_member = _member(workspace_id, author.id, WorkspaceRole.MEMBER)
+    author_acting = _acting(workspace_id, author.id, WorkspaceRole.MEMBER)
 
     updated = await service.update(
-        author_member, workspace_id, comment.id, CommentUpdateRequest(body="editado")
+        author_acting, workspace_id, comment.id, CommentUpdateRequest(body="editado")
     )
 
     assert updated.body == "editado"
@@ -245,11 +258,11 @@ async def test_update_by_non_author_member_raises_permission_denied(
     issue_id = await _create_issue(issue_repo, workspace_id)
     author = _user()
     comment = await service.create(author, workspace_id, issue_id, CommentCreateRequest(body="oi"))
-    other_member = _member(workspace_id, uuid.uuid4(), WorkspaceRole.MEMBER)
+    other_acting = _acting(workspace_id, uuid.uuid4(), WorkspaceRole.MEMBER)
 
     with pytest.raises(PermissionDeniedError):
         await service.update(
-            other_member, workspace_id, comment.id, CommentUpdateRequest(body="hijack")
+            other_acting, workspace_id, comment.id, CommentUpdateRequest(body="hijack")
         )
 
 
@@ -260,8 +273,45 @@ async def test_delete_by_admin_succeeds_without_being_author(
     issue_id = await _create_issue(issue_repo, workspace_id)
     author = _user()
     comment = await service.create(author, workspace_id, issue_id, CommentCreateRequest(body="oi"))
-    admin_member = _member(workspace_id, uuid.uuid4(), WorkspaceRole.ADMIN)
+    admin_acting = _acting(workspace_id, uuid.uuid4(), WorkspaceRole.ADMIN)
 
-    await service.delete(admin_member, workspace_id, comment.id)
+    await service.delete(admin_acting, workspace_id, comment.id)
 
     assert any(entry.action == "comment.deleted" for entry in issue_repo.activity_log)
+
+
+async def test_delete_by_admin_denied_when_workspace_revoked_comment_delete(
+    service: CommentService, issue_repo: FakeIssueRepository
+) -> None:
+    workspace_id = uuid.uuid4()
+    issue_id = await _create_issue(issue_repo, workspace_id)
+    comment = await service.create(_user(), workspace_id, issue_id, CommentCreateRequest(body="oi"))
+    admin_acting = _acting(
+        workspace_id,
+        uuid.uuid4(),
+        WorkspaceRole.ADMIN,
+        revoked=frozenset({Permission.COMMENT_DELETE}),
+    )
+
+    with pytest.raises(PermissionDeniedError):
+        await service.delete(admin_acting, workspace_id, comment.id)
+
+
+async def test_update_others_comment_allowed_when_workspace_granted_comment_update(
+    service: CommentService, issue_repo: FakeIssueRepository
+) -> None:
+    workspace_id = uuid.uuid4()
+    issue_id = await _create_issue(issue_repo, workspace_id)
+    comment = await service.create(_user(), workspace_id, issue_id, CommentCreateRequest(body="oi"))
+    other_acting = _acting(
+        workspace_id,
+        uuid.uuid4(),
+        WorkspaceRole.MEMBER,
+        granted=frozenset({Permission.COMMENT_UPDATE}),
+    )
+
+    updated = await service.update(
+        other_acting, workspace_id, comment.id, CommentUpdateRequest(body="moderado")
+    )
+
+    assert updated.body == "moderado"
