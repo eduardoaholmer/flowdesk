@@ -1,5 +1,6 @@
 import secrets
 import uuid
+from collections.abc import Sequence
 from datetime import UTC, datetime
 
 from src.core.authorization import PermissionService
@@ -15,19 +16,29 @@ from src.features.github.exceptions import (
     GitHubInstallationPendingApprovalError,
     GitHubIntegrationNotConfiguredError,
 )
-from src.features.github.models import GitHubInstallation, GitHubWebhookOutcome
+from src.features.github.identifiers import extract_issue_numbers
+from src.features.github.models import (
+    GitHubInstallation,
+    GitHubPullRequestLink,
+    GitHubWebhookOutcome,
+)
 from src.features.github.repository import (
     GitHubConnectIntent,
     GitHubConnectStateRepositoryProtocol,
     GitHubInstallationRepositoryProtocol,
+    GitHubPullRequestLinkRepositoryProtocol,
     GitHubWebhookDeliveryRepositoryProtocol,
 )
 from src.features.github.schemas import (
+    PULL_REQUEST_EVENT,
     GitHubConnectionStart,
     GitHubIntegrationStatus,
+    GitHubPullRequestEventPayload,
     GitHubWebhookDeliveryInput,
     GitHubWebhookResult,
 )
+from src.features.issues.exceptions import IssueNotFoundError
+from src.features.issues.repository import IssueRepositoryProtocol
 from src.features.permissions.repository import PermissionOverrideRepositoryProtocol
 from src.features.workspaces.exceptions import WorkspaceNotFoundError
 from src.features.workspaces.repository import WorkspaceRepositoryProtocol
@@ -38,13 +49,23 @@ CONNECT_STATE_TTL_SECONDS = 10 * 60
 _SETUP_ACTION_REQUEST = "request"
 _EVENT_INSTALLATION = "installation"
 _EVENT_INSTALLATION_REPOSITORIES = "installation_repositories"
-HANDLED_WEBHOOK_EVENTS = frozenset({_EVENT_INSTALLATION, _EVENT_INSTALLATION_REPOSITORIES})
+HANDLED_WEBHOOK_EVENTS = frozenset(
+    {_EVENT_INSTALLATION, _EVENT_INSTALLATION_REPOSITORIES, PULL_REQUEST_EVENT}
+)
+# Ações de PR que podem mudar quais issues ele cita (título, corpo) ou o estado
+# mostrado ao lado do vínculo. As demais (`labeled`, `assigned`, `synchronize`...)
+# não mexem em nada que o FlowDesk guarda.
+_PULL_REQUEST_ACTIONS = frozenset(
+    {"opened", "reopened", "edited", "ready_for_review", "converted_to_draft", "closed"}
+)
 # Motivo gravado em `github_webhook_deliveries.reason` quando a entrega é ignorada —
 # a resposta para "o GitHub mandou e o FlowDesk ignorou por quê?".
 _REASON_UNHANDLED_EVENT = "unhandled_event"
 _REASON_UNHANDLED_ACTION = "unhandled_action"
 _REASON_MISSING_INSTALLATION = "missing_installation"
 _REASON_UNKNOWN_INSTALLATION = "unknown_installation"
+_REASON_NO_ISSUE_REFERENCE = "no_issue_reference"
+_REASON_STALE_EVENT = "stale_event"
 # `installation_id` vai para uma coluna `BIGINT`; mais de 18 dígitos poderia
 # estourar o tipo e virar um 500 em vez de um retorno de erro legível.
 _MAX_INSTALLATION_ID_DIGITS = 18
@@ -202,9 +223,13 @@ class GitHubWebhookService:
         self,
         installation_repo: GitHubInstallationRepositoryProtocol,
         delivery_repo: GitHubWebhookDeliveryRepositoryProtocol,
+        link_repo: GitHubPullRequestLinkRepositoryProtocol,
+        issue_repo: IssueRepositoryProtocol,
     ) -> None:
         self._installation_repo = installation_repo
         self._delivery_repo = delivery_repo
+        self._link_repo = link_repo
+        self._issue_repo = issue_repo
 
     async def handle(self, delivery: GitHubWebhookDeliveryInput) -> GitHubWebhookResult:
         payload = delivery.payload
@@ -258,6 +283,10 @@ class GitHubWebhookService:
             return GitHubWebhookOutcome.IGNORED, _REASON_UNKNOWN_INSTALLATION, None
 
         workspace_id = installation.workspace_id
+        if isinstance(payload, GitHubPullRequestEventPayload):
+            if payload.action not in _PULL_REQUEST_ACTIONS:
+                return GitHubWebhookOutcome.IGNORED, _REASON_UNHANDLED_ACTION, workspace_id
+            return await self._sync_pull_request_links(installation, payload)
         if delivery.event == _EVENT_INSTALLATION_REPOSITORIES:
             # Só registrado nesta sprint (ADR-069): nenhum dado do FlowDesk depende
             # ainda de quais repositórios a instalação enxerga.
@@ -280,6 +309,85 @@ class GitHubWebhookService:
         else:
             return GitHubWebhookOutcome.IGNORED, _REASON_UNHANDLED_ACTION, workspace_id
         return GitHubWebhookOutcome.PROCESSED, None, workspace_id
+
+    async def _sync_pull_request_links(
+        self, installation: GitHubInstallation, payload: GitHubPullRequestEventPayload
+    ) -> tuple[GitHubWebhookOutcome, str | None, uuid.UUID | None]:
+        """Deixa os vínculos deste PR iguais às issues que ele cita agora (ADR-070):
+        cria os novos, atualiza o estado dos que continuam e remove os de issues que
+        deixaram de ser citadas (ou foram excluídas). Só no workspace da instalação —
+        o mesmo `FD-12` de outro workspace nunca é considerado."""
+        workspace_id = installation.workspace_id
+        pull_request = payload.pull_request
+        existing = await self._link_repo.list_by_pull_request(workspace_id, pull_request.id)
+        if any(link.pr_updated_at > pull_request.updated_at for link in existing):
+            # Entregas chegam fora de ordem; aplicar esta desfaria um estado mais novo.
+            return GitHubWebhookOutcome.IGNORED, _REASON_STALE_EVENT, workspace_id
+
+        numbers = extract_issue_numbers(
+            [pull_request.head.ref, pull_request.title, pull_request.body]
+        )
+        issues = await self._issue_repo.list_active_by_numbers(workspace_id, numbers)
+        if not issues and not existing:
+            return GitHubWebhookOutcome.IGNORED, _REASON_NO_ISSUE_REFERENCE, workspace_id
+
+        cited_issue_ids = {issue.id for issue in issues}
+        await self._link_repo.delete(
+            workspace_id, [link.id for link in existing if link.issue_id not in cited_issue_ids]
+        )
+        links_by_issue = {link.issue_id: link for link in existing}
+        for issue in issues:
+            link = links_by_issue.get(issue.id)
+            if link is None:
+                await self._link_repo.create(
+                    _apply_pull_request(
+                        GitHubPullRequestLink(
+                            workspace_id=workspace_id,
+                            issue_id=issue.id,
+                            pull_request_id=pull_request.id,
+                        ),
+                        installation,
+                        payload,
+                    )
+                )
+            else:
+                await self._link_repo.update(_apply_pull_request(link, installation, payload))
+        return GitHubWebhookOutcome.PROCESSED, None, workspace_id
+
+
+class GitHubPullRequestLinkService:
+    def __init__(
+        self,
+        link_repo: GitHubPullRequestLinkRepositoryProtocol,
+        issue_repo: IssueRepositoryProtocol,
+    ) -> None:
+        self._link_repo = link_repo
+        self._issue_repo = issue_repo
+
+    async def list_for_issue(
+        self, workspace_id: uuid.UUID, issue_id: uuid.UUID
+    ) -> Sequence[GitHubPullRequestLink]:
+        if await self._issue_repo.get_by_id(workspace_id, issue_id) is None:
+            raise IssueNotFoundError()
+        return await self._link_repo.list_by_issue(workspace_id, issue_id)
+
+
+def _apply_pull_request(
+    link: GitHubPullRequestLink,
+    installation: GitHubInstallation,
+    payload: GitHubPullRequestEventPayload,
+) -> GitHubPullRequestLink:
+    pull_request = payload.pull_request
+    link.installation_id = installation.installation_id
+    link.repository_full_name = payload.repository.full_name
+    link.pr_number = pull_request.number
+    link.pr_url = pull_request.html_url
+    link.pr_title = pull_request.title
+    link.pr_state = pull_request.flowdesk_state
+    link.author_login = pull_request.user.login
+    link.head_branch = pull_request.head.ref
+    link.pr_updated_at = pull_request.updated_at
+    return link
 
 
 def _parse_installation_id(raw: str | None) -> int | None:

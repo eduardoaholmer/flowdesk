@@ -18,3 +18,18 @@ export interface GitHubIntegration {
 export interface GitHubConnectResult {
   install_url: string;
 }
+
+export type GitHubPullRequestState = "OPEN" | "DRAFT" | "MERGED" | "CLOSED";
+
+/** PR do GitHub que cita a issue (`FD-123`) na branch, no título ou no corpo. */
+export interface GitHubPullRequestLink {
+  id: string;
+  repository_full_name: string;
+  pr_number: number;
+  pr_url: string;
+  pr_title: string;
+  pr_state: GitHubPullRequestState;
+  author_login: string;
+  head_branch: string;
+  pr_updated_at: string;
+}

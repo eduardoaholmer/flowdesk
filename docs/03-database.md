@@ -405,6 +405,11 @@ Desde a Sprint 7 (ADR-012 em `docs/09-decision-log.md`), `Issue` não depende ma
 
 - **`GitHubWebhookDelivery`** (`github_webhook_deliveries`, migration `84416f31625b`) — uma linha por entrega recebida em `POST /webhooks/github`. Chave primária `delivery_id` (`VARCHAR(64)`, o `X-GitHub-Delivery`), gravada na mesma transação do efeito: é o que impede um reenvio de aplicar o efeito duas vezes. Colunas `event`/`action`/`installation_id` (`BIGINT`, nullable — `ping` não tem instalação)/`workspace_id` (FK `workspaces`, nullable — só preenchido quando a instalação é conhecida)/`outcome` (`PROCESSED`/`IGNORED`, `domain_enum`)/`reason` (por que foi ignorada: `unhandled_event`, `unhandled_action`, `missing_installation`, `unknown_installation`)/`received_at`. Append-only, como `activity_logs`: sem `updated_at` nem soft delete. Retenção de 30 dias por expurgo operacional (runbook, Sprint 10.5).
 
+### 6.11 Adições da Sprint 10.3 (Vínculo PR ↔ issue, ADR-070/ADR-074)
+
+- **`GitHubPullRequestLink`** (`issue_github_links`, migration `5f80ea552189`) — vínculo entre uma issue e um pull request que cita o identificador dela. Colunas `id`/`workspace_id`/`issue_id`/`installation_id`/`pull_request_id` (`BIGINT`, id global do PR no GitHub)/`repository_full_name`/`pr_number`/`pr_url`/`pr_title`/`pr_state` (`OPEN`/`DRAFT`/`MERGED`/`CLOSED`, `domain_enum`)/`author_login`/`head_branch`/`pr_updated_at`/`created_at`/`updated_at`. A identidade do PR é `pull_request_id`, não nome do repositório + número: renomear ou transferir o repositório não duplica o vínculo. Os demais campos são cópias atualizadas a cada evento. **Sem soft delete**, como `issue_labels`: um PR que deixa de citar a issue tem o vínculo apagado. `pr_updated_at` guarda o `updated_at` do PR no último evento aplicado, para descartar entregas fora de ordem.
+- **`IssueRepository.list_active_by_numbers`** — busca de issues ativas por `number` dentro de um workspace, usada para resolver os `FD-<n>` do texto do PR. O prefixo passou a ser a constante pública `ISSUE_IDENTIFIER_PREFIX` (`features/issues/models.py`).
+
 ## 7. Cardinalidades (explícitas)
 
 | Relacionamento | Cardinalidade | Observação |
@@ -449,6 +454,7 @@ Desde a Sprint 7 (ADR-012 em `docs/09-decision-log.md`), `Issue` não depende ma
 - `project_members`: `UNIQUE (project_id, user_id)` (índice `uq_project_members_project_id_user_id`, Sprint 19.1) **sem** filtro parcial — a tabela não tem soft delete (membership é add/remove); a unicidade torna `add_member` idempotente no banco (`ON CONFLICT DO NOTHING`).
 - `permission_overrides`: `UNIQUE (workspace_id, role, permission)` (índice `uq_permission_overrides_workspace_role_permission`, Sprint 9.3, migration `31c66896669d`) **sem** filtro parcial — sem soft delete, resetar para o padrão é `DELETE` da linha (§6.7).
 - `github_installations.installation_id`: `UNIQUE (installation_id) WHERE deleted_at IS NULL` (índice `uq_github_installations_installation_id_active`, Sprint 10.1) — **sem** `workspace_id` na chave, de propósito: uma instalação pertence a no máximo um workspace, o que torna inequívoco o `FD-123` de um PR (ADR-068).
+- `issue_github_links`: `UNIQUE (issue_id, pull_request_id)` (índice `uq_issue_github_links_issue_id_pull_request_id`, Sprint 10.3) **sem** filtro parcial — a tabela não tem soft delete.
 - `attachments`: `CHECK (num_nonnulls(issue_id, comment_id) = 1)` — exatamente um dos dois nunca os dois, nunca nenhum.
 - `comment_mentions`: `PRIMARY KEY (comment_id, mentioned_user_id)` (Sprint 8) — um usuário mencionado no máximo uma vez por comentário; `ON DELETE CASCADE` em ambas as FKs, por não ter ciclo de vida próprio (mesmo racional de `issue_labels`).
 - Todas as FKs usam `ON DELETE RESTRICT` por padrão (exclusão física nunca deveria acontecer via cascade automático dado o soft delete; a única exceção é `issue_labels`, `ON DELETE CASCADE`, por não ter ciclo de vida próprio — os relacionamentos ORM correspondentes usam `passive_deletes=True` para não competir com a constraint do banco).
@@ -480,6 +486,7 @@ Desde a Sprint 7 (ADR-012 em `docs/09-decision-log.md`), `Issue` não depende ma
 | `label_activity_logs` | `(label_id, created_at)` | timeline de auditoria por label (Sprint 8) |
 | `github_installations` | `(workspace_id)`; único parcial `(installation_id) WHERE deleted_at IS NULL` | listar conexões do workspace; achar o dono de uma instalação (Sprint 10.1) |
 | `github_webhook_deliveries` | PK `(delivery_id)`; `(received_at)` | idempotência das entregas; expurgo por idade (Sprint 10.2) |
+| `issue_github_links` | único `(issue_id, pull_request_id)`; `(workspace_id, pull_request_id)` | um vínculo por issue × PR e listagem por issue; achar os vínculos de um PR a cada evento (Sprint 10.3) |
 
 Todo índice composto tem `deleted_at` como parte da chave (não como filtro pós-scan) porque o soft delete filter está presente em praticamente 100% das queries de leitura — colocá-lo no índice evita scan de linhas mortas.
 
@@ -548,3 +555,4 @@ Mais 2 migrations da Sprint 19.1, encadeadas sobre a 22 (`f4c36aa63332`), pequen
 28. `a5e7fc73c034` — `create_oauth_identities` (ADR-061): nova tabela `oauth_identities` e `users.password_hash` passando a aceitar `NULL`. Não estava nesta lista; registrada junto da seguinte.
 29. `ce37f86e65da` — `create_github_installations` (Sprint 10.1/ADR-068): puramente aditiva — nova tabela `github_installations` (§6.9), índice `ix_github_installations_workspace_id` e índice único parcial `uq_github_installations_installation_id_active`. Sem backfill. Ciclo `upgrade → downgrade → upgrade` testado contra Postgres real.
 30. `84416f31625b` — `create_github_webhook_deliveries` (Sprint 10.2/ADR-069): puramente aditiva — nova tabela `github_webhook_deliveries` (§6.10) e índice `ix_github_webhook_deliveries_received_at`. Sem backfill. Ciclo `upgrade → downgrade → upgrade` testado contra Postgres real.
+31. `5f80ea552189` — `create_issue_github_links` (Sprint 10.3/ADR-070): puramente aditiva — nova tabela `issue_github_links` (§6.11), índice único `(issue_id, pull_request_id)` e índice `(workspace_id, pull_request_id)`. Sem backfill. Ciclo `upgrade → downgrade → upgrade` testado contra Postgres real.

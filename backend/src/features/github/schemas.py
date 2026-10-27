@@ -10,12 +10,14 @@ from src.features.github.exceptions import GitHubWebhookPayloadInvalidError
 from src.features.github.models import (
     GITHUB_DELIVERY_ID_MAX_LENGTH,
     GitHubInstallation,
+    GitHubPullRequestState,
     GitHubWebhookOutcome,
 )
 
 # Nome de evento do GitHub (`pull_request`, `installation_repositories`...) — curto
 # por natureza; o teto só impede um cabeçalho arbitrariamente grande na coluna.
 _EVENT_NAME_MAX_LENGTH = 64
+PULL_REQUEST_EVENT = "pull_request"
 
 
 @dataclass(frozen=True)
@@ -66,13 +68,58 @@ class GitHubWebhookInstallationRef(BaseModel):
     suspended_at: datetime | None = None
 
 
+class GitHubAccountRef(BaseModel):
+    login: str
+
+
+class GitHubBranchRef(BaseModel):
+    ref: str
+
+
+class GitHubRepositoryRef(BaseModel):
+    full_name: str
+
+
+class GitHubPullRequestPayload(BaseModel):
+    id: int
+    number: int
+    title: str
+    body: str | None = None
+    html_url: str
+    state: str
+    draft: bool = False
+    merged: bool | None = None
+    user: GitHubAccountRef
+    head: GitHubBranchRef
+    updated_at: datetime
+
+    @property
+    def flowdesk_state(self) -> GitHubPullRequestState:
+        if self.merged:
+            return GitHubPullRequestState.MERGED
+        if self.state == "closed":
+            return GitHubPullRequestState.CLOSED
+        if self.draft:
+            return GitHubPullRequestState.DRAFT
+        return GitHubPullRequestState.OPEN
+
+
 class GitHubWebhookPayload(BaseModel):
-    """Só o que o FlowDesk lê do corpo, comum a todos os eventos tratados. Campos
-    extras são ignorados (o default do Pydantic): cada evento do GitHub traz dezenas
-    de campos que não interessam, e o formato completo é do GitHub, não nosso."""
+    """Só o que o FlowDesk lê do corpo dos eventos tratados. Campos extras são
+    ignorados (o default do Pydantic): cada evento do GitHub traz dezenas de campos
+    que não interessam, e o formato completo é do GitHub, não nosso."""
 
     action: str | None = None
     installation: GitHubWebhookInstallationRef | None = None
+
+
+class GitHubPullRequestEventPayload(GitHubWebhookPayload):
+    """Formato exigido só quando `X-GitHub-Event` é `pull_request`. Outros eventos que
+    também trazem um `pull_request` (`pull_request_review`, por exemplo) não passam
+    por aqui: o FlowDesk os ignora, e um formato diferente neles não pode virar 422."""
+
+    pull_request: GitHubPullRequestPayload
+    repository: GitHubRepositoryRef
 
 
 @dataclass(frozen=True)
@@ -93,8 +140,11 @@ class GitHubWebhookDeliveryInput:
             or len(event) > _EVENT_NAME_MAX_LENGTH
         ):
             raise GitHubWebhookPayloadInvalidError()
+        payload_model = (
+            GitHubPullRequestEventPayload if event == PULL_REQUEST_EVENT else GitHubWebhookPayload
+        )
         try:
-            payload = GitHubWebhookPayload.model_validate_json(body)
+            payload = payload_model.model_validate_json(body)
         except PydanticValidationError as exc:
             raise GitHubWebhookPayloadInvalidError() from exc
         return cls(delivery_id=delivery_id, event=event, payload=payload)
@@ -109,3 +159,17 @@ class GitHubWebhookResult:
 class GitHubWebhookResponse(BaseModel):
     outcome: GitHubWebhookOutcome
     duplicate: bool
+
+
+class GitHubPullRequestLinkResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    repository_full_name: str
+    pr_number: int
+    pr_url: str
+    pr_title: str
+    pr_state: GitHubPullRequestState
+    author_login: str
+    head_branch: str
+    pr_updated_at: datetime

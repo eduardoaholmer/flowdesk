@@ -1,5 +1,5 @@
 import uuid
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from datetime import UTC, datetime
 
 from src.features.issues.models import ActivityLog, Issue, IssueLabel, IssuePriority
@@ -46,6 +46,17 @@ class FakeIssueRepository:
         if issue is None or issue.workspace_id != workspace_id or issue.deleted_at is not None:
             return None
         return issue
+
+    async def list_active_by_numbers(
+        self, workspace_id: uuid.UUID, numbers: Collection[int]
+    ) -> Sequence[Issue]:
+        return [
+            issue
+            for issue in self.issues.values()
+            if issue.workspace_id == workspace_id
+            and issue.number in numbers
+            and issue.deleted_at is None
+        ]
 
     async def next_number(self, workspace_id: uuid.UUID) -> int:
         current = self._next_number.get(workspace_id, 1)

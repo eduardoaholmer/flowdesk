@@ -88,3 +88,60 @@ class GitHubWebhookDelivery(Base):
 
 
 Index("ix_github_webhook_deliveries_received_at", GitHubWebhookDelivery.received_at)
+
+
+class GitHubPullRequestState(enum.StrEnum):
+    OPEN = "OPEN"
+    DRAFT = "DRAFT"
+    MERGED = "MERGED"
+    CLOSED = "CLOSED"
+
+
+class GitHubPullRequestLink(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """Vínculo entre uma issue e um pull request que cita o identificador dela
+    (`FD-123`) na branch, no título ou no corpo (Sprint 10.3, ADR-070).
+
+    A identidade do PR é `pull_request_id`, o id global do GitHub, e não
+    `repository_full_name` + número: renomear ou transferir o repositório muda o
+    nome, e o vínculo duplicaria. Nome do repositório, título, estado, autor e branch
+    são cópias atualizadas a cada evento, para a UI não precisar chamar o GitHub.
+
+    Sem soft delete, como `issue_labels`: um PR que deixa de citar a issue some da
+    lista, e não há histórico a preservar além do que o próprio GitHub guarda.
+    `pr_updated_at` é o `updated_at` do PR no último evento aplicado — entregas
+    chegam fora de ordem, e um evento mais antigo não pode sobrescrever um mais novo.
+    """
+
+    __tablename__ = "issue_github_links"
+
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="RESTRICT"), nullable=False
+    )
+    issue_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("issues.id", ondelete="RESTRICT"), nullable=False
+    )
+    installation_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    pull_request_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    repository_full_name: Mapped[str] = mapped_column(nullable=False)
+    pr_number: Mapped[int] = mapped_column(nullable=False)
+    pr_url: Mapped[str] = mapped_column(nullable=False)
+    pr_title: Mapped[str] = mapped_column(nullable=False)
+    pr_state: Mapped[GitHubPullRequestState] = mapped_column(
+        domain_enum(GitHubPullRequestState), nullable=False
+    )
+    author_login: Mapped[str] = mapped_column(nullable=False)
+    head_branch: Mapped[str] = mapped_column(nullable=False)
+    pr_updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+Index(
+    "uq_issue_github_links_issue_id_pull_request_id",
+    GitHubPullRequestLink.issue_id,
+    GitHubPullRequestLink.pull_request_id,
+    unique=True,
+)
+Index(
+    "ix_issue_github_links_workspace_id_pull_request_id",
+    GitHubPullRequestLink.workspace_id,
+    GitHubPullRequestLink.pull_request_id,
+)

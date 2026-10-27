@@ -28,6 +28,7 @@ from src.core.middleware import (
 from src.features.attachments.router import router as attachments_router
 from src.features.auth.router import router as auth_router
 from src.features.comments.router import router as comments_router
+from src.features.github.router import issue_links_router as github_issue_links_router
 from src.features.github.router import router as github_router
 from src.features.github.router import setup_router as github_setup_router
 from src.features.github.router import webhook_router as github_webhook_router
@@ -105,6 +106,7 @@ api_router.include_router(notifications_router)
 api_router.include_router(github_router)
 api_router.include_router(github_setup_router)
 api_router.include_router(github_webhook_router)
+api_router.include_router(github_issue_links_router)
 app.include_router(api_router)
 
 

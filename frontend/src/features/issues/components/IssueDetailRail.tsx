@@ -1,6 +1,7 @@
 import { Check, ChevronDown } from "lucide-react";
 import type { ReactNode } from "react";
 
+import { IssuePullRequests } from "@/features/github/components/IssuePullRequests";
 import { useProjects } from "@/features/projects/hooks";
 import { useWorkspaceMembers } from "@/features/workspaces/hooks";
 import { useWorkflowStates } from "@/features/workflow-states/hooks";
@@ -274,6 +275,8 @@ export function IssueDetailRail({
         </div>
         <IssueLabelPicker workspaceId={workspaceId} issueId={issue.id} />
       </div>
+
+      <IssuePullRequests workspaceId={workspaceId} issueId={issue.id} />
 
       <div className="border-t pt-3.5 text-[11.5px] leading-relaxed text-t3">
         Criada em {formatDate(issue.created_at)}

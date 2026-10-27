@@ -16,6 +16,12 @@ export const demoGitHubInstallation: GitHubInstallation = {
 };
 
 export const githubHandlers = [
+  // Sem PR vinculado por padrão: o rail da issue faz esta chamada em todo teste
+  // que renderiza o detalhe, e `onUnhandledRequest: "error"` quebraria todos eles.
+  http.get(`${API_BASE_URL}/workspaces/:workspaceId/issues/:issueId/github-links`, () =>
+    HttpResponse.json({ data: [] }),
+  ),
+
   http.get(`${API_BASE_URL}/workspaces/:workspaceId/integrations/github`, () =>
     HttpResponse.json({ data: { configured: true, installations: [demoGitHubInstallation] } }),
   ),

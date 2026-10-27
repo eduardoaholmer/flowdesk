@@ -10,8 +10,10 @@ from src.features.github.service import GitHubWebhookService
 from tests.github_payloads import load_payload
 from tests.unit.features.github.fakes import (
     FakeGitHubInstallationRepository,
+    FakeGitHubPullRequestLinkRepository,
     FakeGitHubWebhookDeliveryRepository,
 )
+from tests.unit.features.issues.fakes import FakeIssueRepository
 
 _INSTALLATION_ID = 4242
 
@@ -31,7 +33,12 @@ def service(
     installation_repo: FakeGitHubInstallationRepository,
     delivery_repo: FakeGitHubWebhookDeliveryRepository,
 ) -> GitHubWebhookService:
-    return GitHubWebhookService(installation_repo, delivery_repo)
+    return GitHubWebhookService(
+        installation_repo,
+        delivery_repo,
+        FakeGitHubPullRequestLinkRepository(),
+        FakeIssueRepository(),
+    )
 
 
 @pytest.fixture
@@ -120,7 +127,7 @@ async def test_installation_repositories_is_only_recorded(
     ("event", "fixture", "installation_id", "reason"),
     [
         ("ping", "ping", None, "unhandled_event"),
-        ("pull_request", "pull_request_opened", _INSTALLATION_ID, "unhandled_event"),
+        ("issues", "pull_request_opened", _INSTALLATION_ID, "unhandled_event"),
         ("installation", "installation_created", _INSTALLATION_ID, "unhandled_action"),
         ("installation", "installation_deleted", 999, "unknown_installation"),
     ],

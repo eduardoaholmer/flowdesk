@@ -323,9 +323,22 @@ Efeitos nesta sprint, sempre para uma instalação conectada a algum workspace (
 | `installation` | `suspend` / `unsuspend` | preenche / limpa `suspended_at` |
 | `installation` | outras (`created`, `new_permissions_accepted`...) | `IGNORED` — a conexão só nasce pelo fluxo de §5.4 |
 | `installation_repositories` | qualquer | só registrado (`PROCESSED`, sem efeito) |
-| qualquer outro (`ping`, `pull_request`...) | — | `IGNORED` (`pull_request` passa a ser tratado na Sprint 10.3) |
+| `pull_request` | `opened`, `reopened`, `edited`, `ready_for_review`, `converted_to_draft`, `closed` | sincroniza os vínculos PR ↔ issue (§5.5, Sprint 10.3); demais ações → `IGNORED` |
+| qualquer outro (`ping`, `issues`...) | — | `IGNORED` |
 
 Ordem de checagem: tamanho do corpo (antes de ler tudo, por streaming) → assinatura → cabeçalhos e JSON → idempotência → efeito. Nada do corpo é interpretado antes de a assinatura ser validada. Fica fora de `/workspaces/{workspace_id}` e sem JWT pelo mesmo motivo do retorno de instalação: o GitHub não conhece o workspace; ele sai do `installation.id` do corpo já verificado (`docs/07-security.md` §18).
+
+## 5.5 Pull requests vinculados (`/workspaces/{workspace_id}/issues/{issue_id}/github-links`)
+
+Implementado na Sprint 10.3 (ADR-070/ADR-074). Um PR é vinculado a toda issue **ativa do workspace da instalação** cujo identificador (`FD-<n>`, sem diferenciar maiúsculas, com fronteira de palavra, até 9 dígitos) aparece na branch de origem, no título ou no corpo do PR. Os vínculos são mantidos pelo webhook (§5.4): cada evento tratado deixa o conjunto de vínculos do PR igual às issues que ele cita naquele momento — cria os novos, atualiza título/estado dos que continuam, remove os de issues que deixaram de ser citadas ou foram excluídas. Não há escrita pela API.
+
+| Ação | Endpoint | Autorização | Response | Códigos |
+|---|---|---|---|---|
+| Listar PRs da issue | `GET .../issues/{issue_id}/github-links` | `issue.read` | `{ data: [pull_request_link] }`, mais recente primeiro | 200, 401, 403, 404 (`issue_not_found`) |
+
+`pull_request_link` = `{ id, repository_full_name, pr_number, pr_url, pr_title, pr_state, author_login, head_branch, pr_updated_at }`. `pr_state` é `OPEN`, `DRAFT`, `MERGED` ou `CLOSED` (fechado sem merge), derivado do PR e não da ação do evento. Os campos são cópias do último evento aplicado; a UI não chama o GitHub.
+
+Regras do lado do webhook: um evento cujo `pull_request.updated_at` é mais antigo que o já aplicado é ignorado (`reason = stale_event` — o GitHub não garante ordem de entrega); um PR que não cita nenhuma issue ativa e não tinha vínculos é ignorado (`no_issue_reference`); no máximo 50 identificadores distintos por PR são considerados.
 
 ## 6. Comentários (`/workspaces/{workspace_id}/issues/{issue_id}/comments`)
 

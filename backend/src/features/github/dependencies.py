@@ -17,11 +17,18 @@ from src.features.github.repository import (
     GitHubConnectStateRepositoryProtocol,
     GitHubInstallationRepository,
     GitHubInstallationRepositoryProtocol,
+    GitHubPullRequestLinkRepository,
+    GitHubPullRequestLinkRepositoryProtocol,
     GitHubWebhookDeliveryRepository,
     GitHubWebhookDeliveryRepositoryProtocol,
 )
-from src.features.github.service import GitHubIntegrationService, GitHubWebhookService
+from src.features.github.service import (
+    GitHubIntegrationService,
+    GitHubPullRequestLinkService,
+    GitHubWebhookService,
+)
 from src.features.github.signature import is_valid_webhook_signature
+from src.features.issues.repository import IssueRepository, IssueRepositoryProtocol
 from src.features.permissions.dependencies import get_permission_override_repository
 from src.features.permissions.repository import PermissionOverrideRepositoryProtocol
 from src.features.workspaces.dependencies import get_workspace_repository
@@ -90,6 +97,18 @@ def get_github_webhook_delivery_repository(
     return GitHubWebhookDeliveryRepository(session)
 
 
+def get_github_pull_request_link_repository(
+    session: AsyncSession = Depends(get_db_session),
+) -> GitHubPullRequestLinkRepository:
+    return GitHubPullRequestLinkRepository(session)
+
+
+def get_github_issue_repository(
+    session: AsyncSession = Depends(get_db_session),
+) -> IssueRepository:
+    return IssueRepository(session)
+
+
 def get_github_webhook_service(
     installation_repo: GitHubInstallationRepositoryProtocol = Depends(
         get_github_installation_repository
@@ -97,8 +116,21 @@ def get_github_webhook_service(
     delivery_repo: GitHubWebhookDeliveryRepositoryProtocol = Depends(
         get_github_webhook_delivery_repository
     ),
+    link_repo: GitHubPullRequestLinkRepositoryProtocol = Depends(
+        get_github_pull_request_link_repository
+    ),
+    issue_repo: IssueRepositoryProtocol = Depends(get_github_issue_repository),
 ) -> GitHubWebhookService:
-    return GitHubWebhookService(installation_repo, delivery_repo)
+    return GitHubWebhookService(installation_repo, delivery_repo, link_repo, issue_repo)
+
+
+def get_github_pull_request_link_service(
+    link_repo: GitHubPullRequestLinkRepositoryProtocol = Depends(
+        get_github_pull_request_link_repository
+    ),
+    issue_repo: IssueRepositoryProtocol = Depends(get_github_issue_repository),
+) -> GitHubPullRequestLinkService:
+    return GitHubPullRequestLinkService(link_repo, issue_repo)
 
 
 async def verify_github_webhook(

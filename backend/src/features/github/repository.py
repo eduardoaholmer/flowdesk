@@ -7,12 +7,13 @@ from datetime import UTC, datetime
 from typing import Protocol
 
 from redis.asyncio import Redis
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.features.github.models import (
     GitHubInstallation,
+    GitHubPullRequestLink,
     GitHubWebhookDelivery,
     GitHubWebhookOutcome,
 )
@@ -61,6 +62,18 @@ class GitHubWebhookDeliveryRepositoryProtocol(Protocol):
         reason: str | None,
         workspace_id: uuid.UUID | None,
     ) -> None: ...
+
+
+class GitHubPullRequestLinkRepositoryProtocol(Protocol):
+    async def list_by_pull_request(
+        self, workspace_id: uuid.UUID, pull_request_id: int
+    ) -> Sequence[GitHubPullRequestLink]: ...
+    async def list_by_issue(
+        self, workspace_id: uuid.UUID, issue_id: uuid.UUID
+    ) -> Sequence[GitHubPullRequestLink]: ...
+    async def create(self, link: GitHubPullRequestLink) -> GitHubPullRequestLink: ...
+    async def update(self, link: GitHubPullRequestLink) -> GitHubPullRequestLink: ...
+    async def delete(self, workspace_id: uuid.UUID, link_ids: Sequence[uuid.UUID]) -> None: ...
 
 
 class GitHubConnectStateRepositoryProtocol(Protocol):
@@ -180,6 +193,52 @@ class GitHubWebhookDeliveryRepository:
             update(GitHubWebhookDelivery)
             .where(GitHubWebhookDelivery.delivery_id == delivery_id)
             .values(outcome=outcome, reason=reason, workspace_id=workspace_id)
+        )
+
+
+class GitHubPullRequestLinkRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def list_by_pull_request(
+        self, workspace_id: uuid.UUID, pull_request_id: int
+    ) -> Sequence[GitHubPullRequestLink]:
+        stmt = select(GitHubPullRequestLink).where(
+            GitHubPullRequestLink.workspace_id == workspace_id,
+            GitHubPullRequestLink.pull_request_id == pull_request_id,
+        )
+        return (await self._session.scalars(stmt)).all()
+
+    async def list_by_issue(
+        self, workspace_id: uuid.UUID, issue_id: uuid.UUID
+    ) -> Sequence[GitHubPullRequestLink]:
+        stmt = (
+            select(GitHubPullRequestLink)
+            .where(
+                GitHubPullRequestLink.workspace_id == workspace_id,
+                GitHubPullRequestLink.issue_id == issue_id,
+            )
+            .order_by(GitHubPullRequestLink.pr_updated_at.desc())
+        )
+        return (await self._session.scalars(stmt)).all()
+
+    async def create(self, link: GitHubPullRequestLink) -> GitHubPullRequestLink:
+        self._session.add(link)
+        await self._session.flush()
+        return link
+
+    async def update(self, link: GitHubPullRequestLink) -> GitHubPullRequestLink:
+        await self._session.flush()
+        return link
+
+    async def delete(self, workspace_id: uuid.UUID, link_ids: Sequence[uuid.UUID]) -> None:
+        if not link_ids:
+            return
+        await self._session.execute(
+            delete(GitHubPullRequestLink).where(
+                GitHubPullRequestLink.workspace_id == workspace_id,
+                GitHubPullRequestLink.id.in_(link_ids),
+            )
         )
 
 

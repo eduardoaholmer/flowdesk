@@ -14,12 +14,14 @@ from src.features.github.dependencies import (
     DELIVERY_HEADER,
     EVENT_HEADER,
     get_github_integration_service,
+    get_github_pull_request_link_service,
     get_github_webhook_service,
     verify_github_webhook,
 )
 from src.features.github.schemas import (
     GitHubConnectResponse,
     GitHubIntegrationResponse,
+    GitHubPullRequestLinkResponse,
     GitHubWebhookDeliveryInput,
     GitHubWebhookResponse,
 )
@@ -27,6 +29,7 @@ from src.features.github.service import (
     CONNECT_STATE_TTL_SECONDS,
     HANDLED_WEBHOOK_EVENTS,
     GitHubIntegrationService,
+    GitHubPullRequestLinkService,
     GitHubWebhookService,
 )
 from src.features.workspaces.models import WorkspaceMember
@@ -34,6 +37,9 @@ from src.features.workspaces.models import WorkspaceMember
 router = APIRouter(prefix="/workspaces/{workspace_id}/integrations/github", tags=["github"])
 setup_router = APIRouter(prefix="/integrations/github", tags=["github"])
 webhook_router = APIRouter(prefix="/webhooks/github", tags=["github"])
+issue_links_router = APIRouter(
+    prefix="/workspaces/{workspace_id}/issues/{issue_id}/github-links", tags=["github"]
+)
 
 CONNECT_STATE_COOKIE_NAME = "github_connect_state"
 # Cobre só a rota de retorno (`setup_router`): o cookie é gravado pela resposta do
@@ -154,3 +160,16 @@ async def receive_github_webhook(
     return DataEnvelope(
         data=GitHubWebhookResponse(outcome=result.outcome, duplicate=result.duplicate)
     )
+
+
+@issue_links_router.get("", response_model=DataEnvelope[list[GitHubPullRequestLinkResponse]])
+async def list_issue_github_links(
+    workspace_id: uuid.UUID,
+    issue_id: uuid.UUID,
+    _member: WorkspaceMember = Depends(require_permission(Permission.ISSUE_READ)),
+    service: GitHubPullRequestLinkService = Depends(get_github_pull_request_link_service),
+) -> DataEnvelope[list[GitHubPullRequestLinkResponse]]:
+    """Pull requests que citam a issue (Sprint 10.3). Mesma permissão de ler a issue:
+    o vínculo só expõe o que o GitHub já mostra no PR para quem enxerga a issue."""
+    links = await service.list_for_issue(workspace_id, issue_id)
+    return DataEnvelope(data=[GitHubPullRequestLinkResponse.model_validate(link) for link in links])

@@ -1686,3 +1686,38 @@ Migration puramente aditiva (`actor_id` passa de `NOT NULL` para `NULL`, coluna 
 - Teste manual com `curl` contra o uvicorn real: entrega assinada (200 `IGNORED` para `ping`), assinatura errada (401) e corpo acima do limite com e sem `Content-Length` (422), além dos contadores em `/metrics` e da conferência de que o log não contém corpo nem assinatura.
 
 **Pendências**: entregas reais do GitHub só serão exercitadas com o app registrado (Sprint 10.5), incluindo confirmar que o rewrite da Vercel repassa o corpo sem alteração. O expurgo de `github_webhook_deliveries` com mais de 30 dias e o reenvio de entregas falhas ficam no runbook dessa sprint.
+
+## ADR-074 — Sprint 10.3: vínculo PR ↔ issue, desvios de implementação da ADR-070
+
+**Contexto**: implementação da Sprint 10.3 (`docs/08-roadmap.md`). A parte da ADR-070 sobre vínculo continua valendo: identificador `FD-<n>` em branch, título ou corpo; busca só no workspace da instalação; `edited` recalcula os vínculos; leitura por `GET .../issues/{issue_id}/github-links` com `issue.read`; "Copiar nome da branch" no detalhe. A automação de status (resto da ADR-070) fica para a 10.4. Esta ADR registra o que mudou ao escrever o código.
+
+**Decisão 1 — identidade do PR pelo id global do GitHub**: a ADR-070 previa unicidade em (`issue_id`, `repository_full_name`, `pr_number`). Renomear ou transferir o repositório muda o nome, e o próximo evento criaria um segundo vínculo para o mesmo PR. A unicidade passou a ser (`issue_id`, `pull_request_id`), com o id global que o GitHub dá a cada PR, e `repository_full_name`/`pr_number` viraram cópias atualizadas a cada evento.
+
+**Decisão 2 — guarda contra entrega fora de ordem**: o GitHub não garante a ordem das entregas, e um `edited` antigo chegando depois de um `closed` reabriria o PR na tela. O vínculo guarda `pr_updated_at` (o `updated_at` do PR no último evento aplicado), e um evento com `updated_at` mais antigo é ignorado (`reason = stale_event`). Fica uma brecha aceita: se um evento apaga todos os vínculos de um PR, não sobra timestamp para comparar, e um evento atrasado anterior a ele pode recriá-los até o próximo evento do PR.
+
+**Decisão 3 — também `head_branch`**: além das colunas da ADR-070, o vínculo guarda a branch de origem. Ela aparece no contrato de leitura e é o campo que mostra por que o PR foi vinculado quando o identificador está só na branch.
+
+**Decisão 4 — limites do parser**: até 9 dígitos por identificador, porque `issues.number` é `INTEGER` e um número maior quebraria a consulta, e até 50 identificadores distintos por PR, porque um PR que cita mais que isso é uma lista ou changelog e o teto limita o trabalho por entrega. A fronteira de palavra vale dos dois lados com letras e dígitos (`FD-12` não casa em `FD-123`, `XFD-12` nem `FD-12a`). O prefixo deixou de ser privado (`ISSUE_IDENTIFIER_PREFIX`), para o parser e o `Issue.identifier` usarem a mesma constante.
+
+**Decisão 5 — busca de issues no repository de Issues**: `IssueRepository.list_active_by_numbers(workspace_id, numbers)` é o único ponto novo fora da feature `github`. Segue o precedente de Comentários, que já recebe `IssueRepositoryProtocol` para validar a issue, em vez de a feature `github` consultar a tabela `issues` por conta própria.
+
+**Decisão 6 — formato de `pull_request` exigido só para o evento `pull_request`**: outros eventos (`pull_request_review`, por exemplo) também trazem um objeto `pull_request`. Se o formato fosse validado para todos, uma diferença num evento que o FlowDesk ignora viraria 422 e uma entrega marcada como falha no GitHub. `GitHubWebhookDeliveryInput.parse` escolhe o modelo pelo `X-GitHub-Event`.
+
+**Decisão 7 — seção "Pull requests" só quando há vínculo**: no rail da issue, a seção não aparece quando nenhum PR cita a issue. Num workspace sem GitHub conectado, uma seção sempre vazia seria só ruído. Quem ainda não usa a integração descobre a convenção pelo botão "Copiar nome da branch" no cabeçalho da issue, ao lado de "Copiar prompt".
+
+**Verificação**:
+- Backend: `ruff`/`ruff format`/`mypy` limpos.
+- `pytest`: 31 testes novos.
+  - Unitários do parser: branch, pasta na branch, maiúsculas e minúsculas, vários identificadores, zeros à esquerda, fronteira de palavra, repetição, limite de dígitos, texto sem identificador, teto de 50.
+  - Unitários da sincronização: vínculo com os dados do PR, número sem issue ativa ou de issue excluída, mesmo número em outro workspace, `edited` adicionando e removendo, remoção de todas as referências, estados `DRAFT`/`OPEN`/`MERGED`/`CLOSED`, evento fora de ordem, ação ignorada, listagem exigindo issue ativa.
+  - Integração contra Postgres: unicidade issue × PR, escopo por workspace na leitura e na remoção, `list_active_by_numbers`.
+  - Contrato: fluxo completo com webhook assinado (rascunho e depois mergeado), isolamento entre dois workspaces com a mesma `FD-1`, `GUEST` lê e quem é de fora recebe 404, issue inexistente dá 404.
+  - Os testes da 10.2 que usavam `pull_request` como exemplo de evento ignorado passaram a usar outro evento.
+- Suíte completa: 637 passed, com os mesmos 3 erros de infra já conhecidos (MinIO/MailHog).
+- Migration `5f80ea552189` com ciclo `upgrade`/`downgrade`/`upgrade` contra Postgres real.
+- Frontend: `tsc`/`eslint`/`prettier` limpos e `npm run build` ok; `vitest` com 32 arquivos/99 testes, 7 novos (`branchName`, `IssuePullRequests`, `CopyBranchNameButton`). Um handler MSW padrão de `github-links` evita quebrar os testes que já renderizam o rail.
+- QA em navegador real (Chromium via Playwright, backend e Vite locais):
+  - issue criada pela API e dois PRs entregues pelo webhook assinado, um mergeado citando a issue pela branch e um rascunho citando pelo título;
+  - seção "Pull requests" no rail, com o mais recente primeiro;
+  - botão de copiar com o nome `fd-1-corrigir-login-no-safari` lido de volta da área de transferência;
+  - largura de 390px sem rolagem horizontal.

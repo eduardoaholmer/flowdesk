@@ -10,6 +10,15 @@ function githubIntegrationKey(workspaceId: string) {
   return ["workspaces", workspaceId, "integrations", "github"] as const;
 }
 
+export function useIssueGitHubLinks(workspaceId: string, issueId: string) {
+  return useQuery({
+    queryKey: ["workspaces", workspaceId, "issues", issueId, "github-links"] as const,
+    queryFn: () => api.listIssueGitHubLinks(workspaceId, issueId),
+    enabled: Boolean(workspaceId && issueId),
+    staleTime: 30_000,
+  });
+}
+
 export function useGitHubIntegration(workspaceId: string) {
   return useQuery({
     queryKey: githubIntegrationKey(workspaceId),

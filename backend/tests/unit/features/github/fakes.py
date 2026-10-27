@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from src.features.github.client import GitHubInstallationInfo
 from src.features.github.models import (
     GitHubInstallation,
+    GitHubPullRequestLink,
     GitHubWebhookDelivery,
     GitHubWebhookOutcome,
 )
@@ -139,3 +140,46 @@ class FakeGitHubWebhookDeliveryRepository:
         delivery.outcome = outcome
         delivery.reason = reason
         delivery.workspace_id = workspace_id
+
+
+class FakeGitHubPullRequestLinkRepository:
+    def __init__(self) -> None:
+        self.links: dict[uuid.UUID, GitHubPullRequestLink] = {}
+
+    async def list_by_pull_request(
+        self, workspace_id: uuid.UUID, pull_request_id: int
+    ) -> Sequence[GitHubPullRequestLink]:
+        return [
+            link
+            for link in self.links.values()
+            if link.workspace_id == workspace_id and link.pull_request_id == pull_request_id
+        ]
+
+    async def list_by_issue(
+        self, workspace_id: uuid.UUID, issue_id: uuid.UUID
+    ) -> Sequence[GitHubPullRequestLink]:
+        links = [
+            link
+            for link in self.links.values()
+            if link.workspace_id == workspace_id and link.issue_id == issue_id
+        ]
+        return sorted(links, key=lambda link: link.pr_updated_at, reverse=True)
+
+    async def create(self, link: GitHubPullRequestLink) -> GitHubPullRequestLink:
+        if link.id is None:
+            link.id = uuid7()
+        now = datetime.now(UTC)
+        link.created_at = link.created_at or now
+        link.updated_at = link.updated_at or now
+        self.links[link.id] = link
+        return link
+
+    async def update(self, link: GitHubPullRequestLink) -> GitHubPullRequestLink:
+        link.updated_at = datetime.now(UTC)
+        return link
+
+    async def delete(self, workspace_id: uuid.UUID, link_ids: Sequence[uuid.UUID]) -> None:
+        for link_id in link_ids:
+            link = self.links.get(link_id)
+            if link is not None and link.workspace_id == workspace_id:
+                del self.links[link_id]

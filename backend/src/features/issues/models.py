@@ -15,7 +15,9 @@ from src.features.workflow_states.models import WorkflowState
 if TYPE_CHECKING:
     from src.features.comments.models import Comment
 
-_IDENTIFIER_PREFIX = "FD"
+# Público desde a Sprint 10.3: o vínculo de pull requests do GitHub procura este
+# mesmo prefixo (`FD-123`) em branch, título e corpo do PR.
+ISSUE_IDENTIFIER_PREFIX = "FD"
 
 
 class IssuePriority(enum.StrEnum):
@@ -114,7 +116,7 @@ class Issue(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
 
     @property
     def identifier(self) -> str:
-        return f"{_IDENTIFIER_PREFIX}-{self.number}"
+        return f"{ISSUE_IDENTIFIER_PREFIX}-{self.number}"
 
 
 Index(
