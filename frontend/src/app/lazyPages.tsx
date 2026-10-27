@@ -42,6 +42,9 @@ export const ResetPasswordPage = lazy(() =>
 export const OAuthCallbackPage = lazy(() =>
   import("@/pages/OAuthCallbackPage").then((module) => ({ default: module.OAuthCallbackPage })),
 );
+export const GitHubCallbackPage = lazy(() =>
+  import("@/pages/GitHubCallbackPage").then((module) => ({ default: module.GitHubCallbackPage })),
+);
 export const PrivacyPolicyPage = lazy(() =>
   import("@/pages/PrivacyPolicyPage").then((module) => ({ default: module.PrivacyPolicyPage })),
 );

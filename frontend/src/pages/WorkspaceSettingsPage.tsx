@@ -14,5 +14,11 @@ export function WorkspaceSettingsPage() {
     return <Navigate to="/" replace />;
   }
 
-  return <WorkspaceSettingsView workspaceId={workspace.id} role={workspace.role} />;
+  return (
+    <WorkspaceSettingsView
+      workspaceId={workspace.id}
+      workspaceSlug={workspace.slug}
+      role={workspace.role}
+    />
+  );
 }

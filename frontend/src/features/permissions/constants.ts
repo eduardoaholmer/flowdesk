@@ -8,6 +8,7 @@ export const PERMISSION_LABELS: Record<string, string> = {
   "workspace.view": "Ver workspace",
   "workspace.update": "Editar workspace",
   "workspace.invite": "Convidar membros",
+  "workspace.manage_integrations": "Gerenciar integrações",
   "member.remove": "Remover membro",
   "member.update_role": "Alterar papel de membro",
   "project.create": "Criar projeto",

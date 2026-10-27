@@ -42,6 +42,7 @@ Aplica-se apenas a `POST /auth/refresh` (única rota que depende de cookie para 
   - `/auth/login`, `/auth/register`: 5 requisições/minuto por IP (mitiga força bruta e enumeration de e-mail).
   - `/auth/password-reset/request`, `/auth/password-reset/confirm`: 5 requisições/minuto por IP (Sprint 9, ADR-017) — mesmo tier de login/register: `request` sem limite permitiria esgotar a tabela de tokens e sondar existência de e-mail por timing; `confirm` sem limite permitiria tentativas de adivinhar um token (mitigado principalmente pela entropia do token em si — 256 bits —, rate limit é defesa em profundidade).
   - `/auth/refresh`: 10 requisições/minuto pela identidade da sessão (hash do próprio cookie `refresh_token`), com IP como fallback se o cookie não vier. Não é "por usuário" na prática: a identidade do usuário só é conhecida após consultar o banco, o que contradiz checar o limite *antes* de qualquer acesso a dado (ver ADR-008).
+  - `/auth/{google,github}/callback` e `/integrations/github/setup` (retorno da instalação do GitHub App, Sprint 10.1): 10 requisições/minuto por IP — as três rotas trocam um `code` com o provedor.
   - API em geral (autenticado, Bearer válido): 300 requisições/minuto por usuário — generoso o suficiente para uso normal intenso (múltiplas abas, polling), restritivo o suficiente para conter um cliente com bug em loop.
   - API em geral (sem Bearer válido — ausente, malformado ou expirado): 60 requisições/minuto por IP (Sprint 9, ADR-017) — antes desse tier existir, essa classe de requisição não era limitada de jeito nenhum (só a rejeição de `get_current_user` a barrava, sem custo de rate limit), deixando qualquer rota autenticada sondável/floodável sem token nenhum.
 - Resposta `429` inclui header `Retry-After`.
@@ -74,7 +75,7 @@ Permissões são strings estáveis `"<domínio>.<ação>"` (`core/permissions.py
 
 | Domínio | Permissões |
 |---|---|
-| Workspace | `workspace.view`, `workspace.update`, `workspace.delete`, `workspace.invite`, `workspace.transfer_ownership`, `workspace.manage_permissions` |
+| Workspace | `workspace.view`, `workspace.update`, `workspace.delete`, `workspace.invite`, `workspace.transfer_ownership`, `workspace.manage_permissions`, `workspace.manage_integrations` *(Sprint 10.1, ADR-068)* |
 | Membros | `member.remove`, `member.update_role` |
 | Projetos | `project.create`, `project.read`, `project.update`, `project.delete` |
 | Issues *(feature na Sprint 7)* | `issue.create`, `issue.read`, `issue.update`, `issue.delete`, `issue.assign`, `issue.change_status` |
@@ -99,6 +100,7 @@ A fonte de verdade é `ROLE_PERMISSIONS`/`OWNERSHIP_OVERRIDE_PERMISSIONS` em `co
 | `workspace.invite` | ✅ | ✅ | ❌ | ❌ | Cobre criar, listar e cancelar convite — mesma checagem para as três ações (eram idênticas antes da Sprint 5 via `_require_role`, ADR-009). |
 | `workspace.transfer_ownership` | ✅ | ❌ | ❌ | ❌ | Segunda ação irreversível/de posse do domínio, junto de `workspace.delete` — nem ADMIN pode transferir a propriedade de outro OWNER. Única forma de qualquer membro virar OWNER fora da criação do workspace (Sprint 17.1/M6, ADR-036/037). |
 | `workspace.manage_permissions` | ✅ | ❌ | ❌ | ❌ | Terceira permissão `LOCKED_PERMISSIONS` (Sprint 9.3/ADR-058) — gerencia os overrides de §8.7. Nem ADMIN a tem, mesmo já gerenciando membros/status: evita auto-escalonamento via toggle. |
+| `workspace.manage_integrations` | ✅ | ✅ | ❌ | ❌ | Conectar, listar e desconectar contas do GitHub (Sprint 10.1, ADR-068). Não é `LOCKED`: pode ser concedida ou revogada por override. A permissão é conferida de novo no retorno do GitHub (§17). |
 | `member.remove` | ✅ | ✅ (exceto OWNER) | ❌ | ❌ | Exceção "exceto OWNER" é contextual (`require_can_manage_member`, §8.4), não expressável na matriz estática. |
 | `member.update_role` | ✅ | ✅ (exceto OWNER) | ❌ | ❌ | Idem. Promover alguém a OWNER é sempre rejeitado (422 na validação de schema) — a única forma de promoção a OWNER é `workspace.transfer_ownership`, acima. |
 | `project.create` / `update` / `delete` | ✅ | ✅ | ❌ | ❌ | |
@@ -398,3 +400,16 @@ Nenhum destes é configurável por variável de ambiente — são invariantes de
 - **Erros do handshake nunca viram um JSON cru numa aba do navegador**: diferente de toda outra rota do sistema, `GET /auth/{provider}/login`/`callback` capturam a exceção de domínio localmente e traduzem para um `302` de volta à SPA (`{FRONTEND_BASE_URL}/oauth/callback?error=<code>`) — são as únicas rotas do sistema que fogem da regra "exceção de domínio sobe para o exception handler global" (`CLAUDE.md` §7), justificado por serem alvo de navegação de página inteira, não de `fetch`/`axios`.
 - **Rate limit dedicado**: `GET /auth/{provider}/login` no mesmo tier de `login`/`register` (5/min por IP); `GET /auth/{provider}/callback` no mesmo tier de `refresh` (10/min por IP) — evita que alguém metralhe a troca de `code` por token adivinhando/reusando valores.
 - **Cada provedor é opt-in por ambiente**: um provedor sem `client_id`/`client_secret`/`redirect_uri` configurados (`core/config.py`) responde `oauth_provider_not_configured` em vez de tentar chamá-lo sem credenciais — o botão correspondente continua visível no frontend (sem lógica de "descoberta de provedor disponível"), só o clique resulta no redirect de erro.
+
+## 17. Conexão com o GitHub App (Sprint 10.1, ADR-068/ADR-072)
+
+`POST /workspaces/{workspace_id}/integrations/github/connect` → instalação no GitHub → `GET /integrations/github/setup`. O risco central deste fluxo é ligar ao workspace a instalação de uma organização que não é de quem está conectando, o que faria os eventos de PR dessa organização (títulos, branches, autores) chegarem a outro tenant. As defesas, em ordem:
+
+- **`state` no servidor, de uso único**: o `connect` (com `require_permission(workspace.manage_integrations)`) gera 256 bits aleatórios e grava no Redis, sob o hash SHA-256 do valor, o par `workspace_id`/`user_id`, com 10 minutos de vida. O retorno consome o registro com `GETDEL`. O workspace nunca vem da URL de retorno.
+- **`state` preso ao navegador que começou**: o mesmo valor vai num cookie `github_connect_state` (`HttpOnly`, `SameSite=Lax`, `Path=/api/v1/integrations/github`, `Secure` em produção), e o retorno exige que query e cookie batam (`secrets.compare_digest`). Sem isso, alguém poderia gerar um `state` para o próprio workspace e mandar o link de instalação ao dono de outra organização: quem concluísse a instalação ligaria a própria organização ao workspace do atacante.
+- **Prova de posse da instalação**: o app pede "Request user authorization (OAuth) during installation", então o retorno traz um `code`. O backend troca esse `code` por um token de usuário e só aceita o `installation_id` se ele aparecer em `GET /user/installations` desse token. Trocar o número na URL pelo de outra organização dá `github_installation_not_accessible`. O token de usuário vive só nessa requisição e é revogado em seguida (`DELETE /applications/{client_id}/token`, melhor esforço).
+- **Permissão conferida de novo no retorno**: o `state` vale por até 10 minutos depois do `require_permission` do `connect`, então o service volta a checar `workspace.manage_integrations` (com overrides) para o `user_id` do `state` antes de gravar. Quem foi removido ou rebaixado nesse intervalo não conclui a conexão.
+- **Uma instalação, um workspace**: índice único parcial em `installation_id` (`docs/03-database.md` §6.9). Uma instalação já ligada a outro workspace dá `409 github_installation_already_connected`, a menos que esse workspace tenha sido excluído: aí a ligação antiga é desfeita e a nova segue.
+- **Erros viram redirect, não JSON**: mesma exceção dos callbacks do login social (§16): `GET /integrations/github/setup` traduz qualquer `FlowDeskError` em `302` para `{FRONTEND_BASE_URL}/integrations/github/callback?error=<code>`. O `installation_id` da query é validado como inteiro ASCII de até 18 dígitos antes de qualquer uso, para não virar um 500 na coluna `BIGINT`.
+- **Rate limit**: o retorno fica no mesmo grupo dos callbacks de OAuth (10/min por IP, §6), porque também troca um `code` com o GitHub.
+- **Nada do GitHub é guardado além do necessário**: só `installation_id`, login e tipo da conta e `suspended_at`. Nenhum token do GitHub é persistido nesta sprint.

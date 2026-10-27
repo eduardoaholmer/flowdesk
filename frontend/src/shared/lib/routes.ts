@@ -15,6 +15,7 @@ export const routePatterns = {
   settings: "/w/:workspaceSlug/settings",
   invitationAccept: "/invitations/:token/accept",
   resetPassword: "/reset-password/:token",
+  githubCallback: "/integrations/github/callback",
 } as const;
 
 export const workspaceRoutes = {

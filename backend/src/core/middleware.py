@@ -31,6 +31,7 @@ _OAUTH_LOGIN_PATHS = {
 _OAUTH_CALLBACK_PATHS = {
     f"{_API_PREFIX}/auth/google/callback",
     f"{_API_PREFIX}/auth/github/callback",
+    f"{_API_PREFIX}/integrations/github/setup",
 }
 _LOGIN_REGISTER_LIMIT = 5
 _REFRESH_LIMIT = 10
@@ -159,6 +160,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     - `/auth/{google,github}/callback`: 10/min por IP — mesmo limite de
       `/auth/refresh`: alguém tentando adivinhar/reusar um `code` de autorização
       não deveria conseguir metralhar o endpoint que faz a troca com o provedor.
+      `/integrations/github/setup` (retorno da instalação do GitHub App, M10)
+      entra no mesmo grupo: também troca um `code` com o GitHub.
     - Demais rotas de `/api/v1` com Bearer decodificável: 300/min por usuário.
     - Demais rotas de `/api/v1` sem Bearer decodificável (ausente, malformado,
       expirado): 60/min por IP — antes esta chamada simplesmente não era limitada

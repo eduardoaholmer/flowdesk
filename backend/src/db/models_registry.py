@@ -17,6 +17,7 @@ duplicada nos dois lugares (`CLAUDE.md` §1).
 from src.features.attachments import models as attachments_models  # noqa: F401
 from src.features.auth import models as auth_models  # noqa: F401
 from src.features.comments import models as comments_models  # noqa: F401
+from src.features.github import models as github_models  # noqa: F401
 from src.features.issues import models as issues_models  # noqa: F401
 from src.features.labels import models as labels_models  # noqa: F401
 from src.features.notifications import models as notifications_models  # noqa: F401

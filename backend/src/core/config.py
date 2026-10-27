@@ -133,6 +133,16 @@ class Settings(BaseSettings):
     github_client_secret: str | None = None
     github_redirect_uri: str | None = None
 
+    # Integração com GitHub (M10, ADR-068) — um GitHub App, separado do OAuth App do
+    # login acima: são dois consentimentos diferentes (identificar a pessoa vs.
+    # receber eventos dos repositórios de uma organização). Opt-in pelo mesmo
+    # critério dos provedores de login: sem `github_app_slug`, a integração fica
+    # desligada e `POST .../integrations/github/connect` responde
+    # `github_integration_not_configured`.
+    github_app_slug: str | None = None
+    github_app_client_id: str | None = None
+    github_app_client_secret: str | None = None
+
     @field_validator("database_url")
     @classmethod
     def _normalize_database_url_driver(cls, value: str) -> str:
@@ -213,6 +223,24 @@ class Settings(BaseSettings):
                 "GITHUB_CLIENT_ID exige GITHUB_CLIENT_SECRET e GITHUB_REDIRECT_URI configurados."
             )
         return self
+
+    @model_validator(mode="after")
+    def _require_full_github_app_config(self) -> "Settings":
+        github_app_fields = (
+            self.github_app_slug,
+            self.github_app_client_id,
+            self.github_app_client_secret,
+        )
+        if any(github_app_fields) and not all(github_app_fields):
+            raise ValueError(
+                "A integração com GitHub exige GITHUB_APP_SLUG, GITHUB_APP_CLIENT_ID e "
+                "GITHUB_APP_CLIENT_SECRET configurados juntos."
+            )
+        return self
+
+    @property
+    def github_app_configured(self) -> bool:
+        return self.github_app_slug is not None
 
 
 @lru_cache

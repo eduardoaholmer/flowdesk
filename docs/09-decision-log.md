@@ -1605,3 +1605,50 @@ Migration puramente aditiva (`actor_id` passa de `NOT NULL` para `NULL`, coluna 
 - **Estado e logs de job no FlowDesk**: fila com estados (`QUEUED`/`RUNNING`/`SUCCEEDED`/`FAILED`) e streaming de log, que o sistema não tem hoje. Na v1, o estado vem dos eventos do próprio GitHub (`workflow_run`) e o log fica no GitHub.
 
 **Pendência de decisão do usuário**: o critério de aceite da Sprint 1.5 (`docs/08-roadmap.md`) diz "nenhuma referência a IA/Claude em código ou histórico de commits". Uma feature de integração com um agente de IA coloca essa referência no código do produto por definição. O critério precisa ser revisto explicitamente, em uma ADR que o supere, antes de qualquer implementação deste item.
+
+## ADR-072 — Sprint 10.1: conexão do GitHub App, desvios de implementação da ADR-068
+
+**Contexto**: implementação da Sprint 10.1 (`docs/08-roadmap.md`). A ADR-068 continua valendo no essencial: GitHub App, prova de posse via `GET /user/installations`, uma instalação por workspace, opt-in por ambiente e permissão `workspace.manage_integrations`. Esta ADR registra o que mudou ao escrever o código, e por quê.
+
+**Decisão 1 — `state` guardado no servidor em vez de assinado**: a ADR-068 previa um `state` assinado (HMAC) carregando `workspace_id`/`user_id`/expiração. Assinar com a chave RS256 que já existe criaria confusão de tokens: `decode_access_token` aceita qualquer JWT dessa chave que tenha `sub` e `jti`. Uma chave nova seria mais uma variável de ambiente. Em vez disso, o `state` é aleatório (256 bits) e o par `workspace_id`/`user_id` fica no Redis por 10 minutos, sob o hash SHA-256 do valor, e é consumido com `GETDEL`. Isso dá uso único sem esforço extra. `GitHubConnectStateRepository` é o primeiro repository do projeto sobre Redis e segue a mesma regra dos de SQL: só acesso a dado, sem regra de negócio.
+
+**Decisão 2 — `state` preso ao navegador (não estava na ADR-068)**: ao escrever o fluxo apareceu um ataque que o `state` sozinho não cobre. Um ADMIN do workspace A gera um `state` válido e manda o link de instalação para o dono da organização B; quem conclui a instalação é B, com o próprio `code`, e a organização B passaria a ficar ligada ao workspace A. Por isso o `connect` grava o mesmo `state` num cookie `HttpOnly`/`SameSite=Lax`, com path restrito à rota de retorno, e o retorno exige que query e cookie batam. O navegador de B não tem o cookie de A. É o mesmo mecanismo do `oauth_state` do login social (ADR-061).
+
+**Decisão 3 — permissão conferida de novo no retorno**: o `state` sobrevive até 10 minutos ao `require_permission` do `connect`. `GitHubIntegrationService` recebe `WorkspaceRepositoryProtocol`, `PermissionOverrideRepositoryProtocol` e `PermissionService` e checa `workspace.manage_integrations`, com overrides, para o `user_id` do `state` antes de gravar. É o mesmo padrão de checagem contextual em service das ADR-065, sem reimplementar `can()`.
+
+**Decisão 4 — só a configuração usada nesta sprint**: entram `GITHUB_APP_SLUG`, `GITHUB_APP_CLIENT_ID` e `GITHUB_APP_CLIENT_SECRET`, que é tudo o que o fluxo de conexão usa. `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY` (JWT do app) e `GITHUB_WEBHOOK_SECRET` entram na sprint que os usar (10.2 em diante), em vez de variáveis obrigatórias sem consumidor (`CLAUDE.md` §1.6). Pelo mesmo motivo, `client.py` não gera JWT do app.
+
+**Decisão 5 — "Callback URL", não "Setup URL"**: com "Request user authorization (OAuth) during installation" ligado, o GitHub devolve o navegador para o Callback URL do app (com `code`, `installation_id`, `setup_action` e o `state` passado na URL de instalação), não para o Setup URL. `GET /api/v1/integrations/github/setup` é configurado como Callback URL; o nome da rota foi mantido por descrever o que ela faz (concluir a instalação).
+
+**Decisão 6 — token de usuário revogado, não só descartado**: depois da checagem, `GitHubAppClient` chama `DELETE /applications/{client_id}/token`. É melhor esforço: uma falha vai para o log (`github_user_token_revoke_failed`) e não desfaz uma conexão válida, já que o token expira sozinho em 8 horas.
+
+**Decisão 7 — retorno para `/integrations/github/callback` + `sessionStorage`**: a ADR-068 previa redirect direto para as configurações. As rotas do SPA são por slug (`/w/:workspaceSlug/settings`), e em vários erros (`state` inválido) o backend nem sabe de qual workspace a conexão partiu. O backend sempre redireciona para uma página de retorno (`GitHubCallbackPage`, mesmo papel de `OAuthCallbackPage`), que mostra o toast e volta para `?tab=integrations` do workspace guardado em `sessionStorage` antes de ir ao GitHub. Sem `sessionStorage`, cai na tela inicial. `setup_action=request` (instalação esperando aprovação do dono da organização) vira um toast informativo, não de erro.
+
+**Decisão 8 — `setup_action=update` na mesma instalação atualiza a linha**: o GitHub manda o usuário de volta pelo mesmo fluxo quando o dono só muda os repositórios de uma instalação existente. Se ela já pertence ao próprio workspace, login e `suspended_at` são atualizados e nada é duplicado; se pertence a outro, é `409 github_installation_already_connected`.
+
+**Decisão 9 — instalação de workspace excluído fica livre**: excluir um workspace não desconecta as instalações dele (`WorkspaceService.delete` não conhece a feature `github`). Sem tratamento, a instalação ficaria presa a um workspace morto e a organização receberia `409` ao tentar se conectar a qualquer outro. No retorno do GitHub, uma instalação ativa cujo workspace dono não existe mais é desconectada e a conexão nova segue normalmente.
+
+**Decisão 10 — aba visível por papel, como as demais**: a aba "Integrações" aparece para `OWNER`/`ADMIN`, o mesmo critério de "Convites" e "Status". Um `MEMBER` que receba `workspace.manage_integrations` por override passa nas rotas, mas não vê a aba. É uma limitação que já existia nas outras abas (o frontend não conhece a permissão efetiva) e não foi resolvida só para esta.
+
+**Também nesta sprint**: com seis abas, a lista de abas de Configurações cortava a última em telas de 390px. Ela passa a rolar na horizontal (`overflow-x-auto` no uso, sem editar o componente gerado do shadcn), e a página não ganha rolagem horizontal.
+
+**Verificação**:
+- Backend: `ruff`/`ruff format`/`mypy` limpos.
+- `pytest`: 50 testes novos.
+  - 24 do service com fakes: `state` sem cookie, de outro navegador, desconhecido e reutilizado; instalação fora de `/user/installations`; conflito entre workspaces; instalação de um workspace excluído; reconexão; permissão revogada, rebaixada ou concedida por override no retorno; parâmetros malformados, incluindo dígito Unicode e mais de 18 dígitos.
+  - 8 do cliente HTTP com `httpx.MockTransport`: paginação, `code` inválido, revogação.
+  - 3 de config.
+  - 5 de integração contra Postgres/Redis reais: índice único parcial, escopo por workspace, `GETDEL`/TTL.
+  - 10 de contrato: fluxo completo, cookie ausente, instalação inacessível, conflito, desconexão, 403 para `MEMBER`/`GUEST` e 404 entre tenants.
+- Suíte completa: 564 passed, com os mesmos 3 erros de infra já conhecidos (MinIO/MailHog).
+- Migration `ce37f86e65da` com ciclo `upgrade`/`downgrade`/`upgrade` contra Postgres real.
+- Frontend: `tsc`/`eslint`/`prettier` limpos e `npm run build` ok; `vitest` com 29 arquivos/92 testes, 7 novos (`GitHubIntegrationSettings`, `GitHubCallbackPage`).
+- QA em navegador real (Chromium via Playwright, backend e Vite locais com um GitHub App fictício):
+  - login e abertura da aba por `?tab=integrations`;
+  - estado vazio e conta conectada, com a instalação inserida direto no banco;
+  - clique em "Conectar GitHub" interceptado na saída para `github.com/apps/<slug>/installations/new?state=…`, conferindo o cookie `github_connect_state` (`HttpOnly`, `Lax`, path `/api/v1/integrations/github`);
+  - retorno de erro pela página de callback voltando à aba certa com o toast;
+  - desconexão com confirmação;
+  - largura de 390px.
+
+**Pendências**: o fluxo contra o GitHub de verdade (troca de `code`, `GET /user/installations`, revogação) só foi exercitado com transporte HTTP simulado. A validação ponta a ponta depende de registrar um GitHub App real (Sprint 10.5).
