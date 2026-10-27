@@ -139,7 +139,9 @@ proxy as chamadas do SPA são same-origin e nem passam por CORS).
 
 ## Como redeployar (atualizado em 2026-10-26)
 
-- **Vercel (frontend):** auto-deploy já ativo — todo push em `main- **Render (backend): auto-deploy LIGADO (`On Commit`).** Visto no dashboard
+- **Vercel (frontend):** auto-deploy já ativo — todo push em `main` dispara
+  build/deploy sozinho, sem passo manual.
+- **Render (backend): auto-deploy LIGADO (`On Commit`).** Visto no dashboard
   em 2026-10-26 (`flowdesk-backend` → Settings → Deploy → Auto-Deploy). Até
   2026-10-22 os deploys eram todos `Trigger: Manual`; não há registro de quem
   ligou nem quando. Hoje todo push em `main` redeploya o backend, rodando
@@ -147,9 +149,6 @@ proxy as chamadas do SPA são same-origin e nem passam por CORS).
   - Deploy manual continua disponível: `flowdesk-backend` → **Manual Deploy**
     → **Deploy latest commit**.
   - Para voltar ao controle manual: Settings → Deploy → Auto-Deploy → `Off`.
-
-
-    consciente de manter controle manual por ora.
 
 ## Keep-alive do backend (UptimeRobot, configurado em 2026-10-26)
 
