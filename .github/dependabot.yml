@@ -17,6 +17,16 @@ updates:
       frontend-dependencies:
         patterns:
           - "*"
+    ignore:
+      # TypeScript 7 não instala enquanto o `typescript-eslint` exigir
+      # `typescript <6.1` (o `npm ci` falha com ERESOLVE). Remover quando o
+      # `typescript-eslint` suportar a versão 7.
+      - dependency-name: "typescript"
+        versions: [">=7.0.0"]
+      # MSW 3 remove `onUnhandledRequest` de `server.listen` e quebra os
+      # handlers dos testes; a migração vai num PR próprio.
+      - dependency-name: "msw"
+        versions: [">=3.0.0"]
 
   - package-ecosystem: "github-actions"
     directory: "/"
