@@ -17,6 +17,7 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
+  CommandShortcut,
 } from "@/shared/components/ui/command";
 import { Spinner } from "@/shared/components/ui/spinner";
 import { useCurrentUser } from "@/shared/hooks/useCurrentUser";
@@ -26,6 +27,7 @@ import { useAuthStore } from "@/shared/stores/authStore";
 import { useUiStore } from "@/shared/stores/uiStore";
 
 import {
+  buildCreateIssueCommands,
   buildNavigationCommands,
   buildUtilityCommands,
   buildWorkspaceSwitchCommands,
@@ -42,6 +44,7 @@ export function CommandPalette() {
   const clearAuth = useAuthStore((state) => state.clear);
   const isOpen = useUiStore((state) => state.isCommandPaletteOpen);
   const setOpen = useUiStore((state) => state.setCommandPaletteOpen);
+  const setCreateIssueOpen = useUiStore((state) => state.setCreateIssueOpen);
   const { workspace } = useWorkspace();
   const { data: profile } = useCurrentUser();
   const { recent, addRecent } = useRecentCommands();
@@ -103,6 +106,7 @@ export function CommandPalette() {
   });
 
   const staticCommands: PaletteCommand[] = [
+    ...(workspace ? buildCreateIssueCommands(() => setCreateIssueOpen(true)) : []),
     ...(workspace ? buildNavigationCommands(navigate, workspace.slug) : []),
     ...(workspace
       ? buildWorkspaceSwitchCommands(navigate, profile?.workspaces ?? [], workspace.slug)
@@ -204,6 +208,7 @@ export function CommandPalette() {
                 >
                   <command.icon />
                   {command.label}
+                  {command.shortcut && <CommandShortcut>{command.shortcut}</CommandShortcut>}
                 </CommandItem>
               ))}
             </CommandGroup>

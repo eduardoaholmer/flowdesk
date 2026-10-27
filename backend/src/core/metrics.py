@@ -74,7 +74,7 @@ async def get_metrics_snapshot() -> list[EndpointMetrics]:
     número de endpoints deste projeto.
     """
     redis = get_redis()
-    endpoints = await redis.smembers(_ROUTES_KEY)
+    endpoints = await redis.smembers(_ROUTES_KEY)  # type: ignore[misc]
 
     results: list[EndpointMetrics] = []
     for endpoint in sorted(endpoints):

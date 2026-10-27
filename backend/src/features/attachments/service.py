@@ -1,7 +1,7 @@
 import uuid
 from typing import BinaryIO
 
-from src.core.authorization import PermissionService
+from src.core.authorization import PermissionService, WorkspaceContext
 from src.core.permissions import Permission
 from src.core.security import CurrentUser
 from src.core.storage import StorageProvider
@@ -15,7 +15,6 @@ from src.features.attachments.repository import AttachmentRepositoryProtocol
 from src.features.issues.exceptions import IssueNotFoundError
 from src.features.issues.models import ActivityLog
 from src.features.issues.repository import IssueRepositoryProtocol
-from src.features.workspaces.models import WorkspaceMember
 
 
 class AttachmentService:
@@ -90,13 +89,13 @@ class AttachmentService:
 
     async def delete(
         self,
-        acting_member: WorkspaceMember,
+        acting: WorkspaceContext,
         workspace_id: uuid.UUID,
         attachment_id: uuid.UUID,
     ) -> None:
         attachment = await self._get_active_attachment(workspace_id, attachment_id)
-        self._permission_service.require(
-            member=acting_member,
+        self._permission_service.require_in_context(
+            context=acting,
             permission=Permission.ATTACHMENT_DELETE,
             resource_owner_id=attachment.uploader_id,
         )
@@ -113,7 +112,7 @@ class AttachmentService:
             await self._record_activity(
                 workspace_id,
                 issue_id,
-                acting_member.user_id,
+                acting.member.user_id,
                 "attachment.deleted",
                 old_value=attachment.file_name,
             )

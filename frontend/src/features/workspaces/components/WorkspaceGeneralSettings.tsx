@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import { useNavigate } from "react-router-dom";
 import { z } from "zod";
 
-import { ConfirmActionDialog } from "@/shared/components/overlay/ConfirmActionDialog";
+import { TypeToConfirmDialog } from "@/shared/components/overlay/TypeToConfirmDialog";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
@@ -83,8 +83,11 @@ export function WorkspaceGeneralSettings({
   }
 
   return (
-    <div className="flex flex-col gap-8">
-      <form className="flex max-w-lg flex-col gap-4" onSubmit={handleSubmit(onSubmit)}>
+    <div className="flex max-w-lg flex-col gap-6">
+      <form
+        className="flex flex-col gap-4 rounded-xl border border-border bg-panel p-5"
+        onSubmit={handleSubmit(onSubmit)}
+      >
         <fieldset disabled={!canEdit} className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="workspace-name">Nome</Label>
@@ -95,9 +98,7 @@ export function WorkspaceGeneralSettings({
             <Label htmlFor="workspace-slug">Slug</Label>
             <Input id="workspace-slug" {...register("slug")} />
             {errors.slug && <p className="text-xs text-destructive">{errors.slug.message}</p>}
-            <p className="text-xs text-muted-foreground">
-              Usado na URL de todas as páginas deste workspace.
-            </p>
+            <p className="text-xs text-t3">Usado na URL de todas as páginas deste workspace.</p>
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="workspace-description">Descrição</Label>
@@ -105,7 +106,7 @@ export function WorkspaceGeneralSettings({
           </div>
         </fieldset>
         {canEdit && (
-          <div>
+          <div className="flex justify-end">
             <Button type="submit" disabled={!isDirty || updateWorkspace.isPending}>
               {updateWorkspace.isPending ? "Salvando…" : "Salvar alterações"}
             </Button>
@@ -114,25 +115,25 @@ export function WorkspaceGeneralSettings({
       </form>
 
       {canDelete && (
-        <div className="flex max-w-lg flex-col gap-3 rounded-lg border border-destructive/30 p-4">
+        <div className="flex flex-col gap-3 rounded-xl border border-destructive p-5">
           <div>
-            <h3 className="text-sm font-medium">Excluir workspace</h3>
-            <p className="text-sm text-muted-foreground">
+            <h3 className="text-sm font-medium text-destructive">Excluir workspace</h3>
+            <p className="text-sm text-t2">
               Remove permanentemente o workspace e todo o seu conteúdo. Esta ação não pode ser
               desfeita.
             </p>
           </div>
           <div>
-            <ConfirmActionDialog
+            <TypeToConfirmDialog
               trigger={
                 <Button variant="destructive" size="sm">
-                  Excluir workspace
+                  Excluir workspace…
                 </Button>
               }
               title="Excluir este workspace?"
-              description={`"${workspace.name}" e todo o seu conteúdo (projetos, issues, comentários) serão excluídos permanentemente.`}
-              confirmLabel="Excluir workspace"
-              destructive
+              description={`"${workspace.name}" e todo o seu conteúdo (projetos, issues, comentários) serão excluídos permanentemente. Esta ação não pode ser desfeita.`}
+              confirmText={workspace.slug}
+              confirmLabel="Excluir definitivamente"
               isPending={deleteWorkspace.isPending}
               onConfirm={handleDelete}
             />

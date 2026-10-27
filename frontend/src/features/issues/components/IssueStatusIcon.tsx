@@ -1,13 +1,11 @@
 import type { CSSProperties } from "react";
 
-import type { IssueStatus } from "../types";
+import type { WorkflowStateCategory } from "@/features/workflow-states/types";
 
-/** Glifo de círculo por status, conforme o handoff de redesign do Milestone 7
- * (`docs/design-handoff/2026-07-20-redesign-gestor/data.js`, objeto `STATUS`).
- * `IN_REVIEW` não existe no handoff (que modela só 5 status) — extensão própria
- * desta sprint: mesmo anel/preenchimento de `IN_PROGRESS` (âmbar), fatia maior
- * (270°) para comunicar "mais perto de concluído" sem inventar uma cor nova
- * (ver design-system/badges.md). */
+/** Glifo de círculo por categoria de status, conforme o handoff de redesign do
+ * Milestone 7 (`docs/design-handoff/2026-07-20-redesign-gestor/data.js`, objeto
+ * `STATUS`). Categoria (não o nome customizável do status — Sprint 9.2/ADR-056)
+ * é a chave, já que é o único valor fixo que sobra por status. */
 
 const OUTER_BASE: CSSProperties = {
   width: 14,
@@ -27,10 +25,10 @@ const GLYPH_BASE: CSSProperties = {
 
 type StatusGlyph = { outer: CSSProperties; inner: CSSProperties | null; glyph: string };
 
-const GLYPHS: Record<IssueStatus, StatusGlyph> = {
+const GLYPHS: Record<WorkflowStateCategory, StatusGlyph> = {
   BACKLOG: { outer: { ...OUTER_BASE, border: "1.5px dashed var(--t3)" }, inner: null, glyph: "" },
-  TODO: { outer: { ...OUTER_BASE, border: "1.5px solid var(--t2)" }, inner: null, glyph: "" },
-  IN_PROGRESS: {
+  UNSTARTED: { outer: { ...OUTER_BASE, border: "1.5px solid var(--t2)" }, inner: null, glyph: "" },
+  STARTED: {
     outer: { ...OUTER_BASE, border: "1.5px solid var(--amber)" },
     inner: {
       width: 7,
@@ -41,18 +39,7 @@ const GLYPHS: Record<IssueStatus, StatusGlyph> = {
     },
     glyph: "",
   },
-  IN_REVIEW: {
-    outer: { ...OUTER_BASE, border: "1.5px solid var(--amber)" },
-    inner: {
-      width: 7,
-      height: 7,
-      borderRadius: "50%",
-      background: "conic-gradient(var(--amber) 0 270deg, transparent 270deg 360deg)",
-      display: "block",
-    },
-    glyph: "",
-  },
-  DONE: {
+  COMPLETED: {
     outer: { ...OUTER_BASE, background: "var(--green)" },
     inner: { ...GLYPH_BASE, color: "var(--background)", fontSize: 9 },
     glyph: "✓",
@@ -64,8 +51,8 @@ const GLYPHS: Record<IssueStatus, StatusGlyph> = {
   },
 };
 
-export function IssueStatusIcon({ status }: { status: IssueStatus }) {
-  const { outer, inner, glyph } = GLYPHS[status];
+export function IssueStatusIcon({ category }: { category: WorkflowStateCategory }) {
+  const { outer, inner, glyph } = GLYPHS[category];
   return (
     <span style={outer} aria-hidden="true">
       {inner && <span style={inner}>{glyph}</span>}

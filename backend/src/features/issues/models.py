@@ -10,6 +10,7 @@ from src.db.base import Base, SoftDeleteMixin, TimestampMixin, UUIDPrimaryKeyMix
 from src.features.auth.models import User
 from src.features.labels.models import Label
 from src.features.projects.models import Project
+from src.features.workflow_states.models import WorkflowState
 
 if TYPE_CHECKING:
     from src.features.comments.models import Comment
@@ -23,22 +24,6 @@ class IssuePriority(enum.StrEnum):
     MEDIUM = "MEDIUM"
     HIGH = "HIGH"
     URGENT = "URGENT"
-
-
-class IssueStatus(enum.StrEnum):
-    """Enum fixo nesta sprint (sem `Team`/`WorkflowState` — ver ADR-012 em
-    docs/09-decision-log.md). `domain_enum()` implementa isso como `VARCHAR`
-    sem `CHECK` nativo (docs/03-database.md §5), então adicionar um status
-    customizado no futuro é uma migration aditiva simples, não uma quebra de
-    schema — é isso que "preparar para status customizados" significa aqui.
-    """
-
-    BACKLOG = "BACKLOG"
-    TODO = "TODO"
-    IN_PROGRESS = "IN_PROGRESS"
-    IN_REVIEW = "IN_REVIEW"
-    DONE = "DONE"
-    CANCELED = "CANCELED"
 
 
 class Issue(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
@@ -55,11 +40,23 @@ class Issue(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
     cliente envia a versão que possuía ao editar; um UPDATE que não bate a
     versão afeta zero linhas e o service traduz isso em `IssueVersionConflictError`,
     nunca "last write wins".
+
+    `parent_id` (Sprint 9.4, ADR-059) modela sub-issues — auto-referência
+    nullable, sem `relationship()` ORM (nenhum consumidor precisa de
+    eager-load de pai/filhos, só filtrar por `parent_id` via repository).
+    Limitado a um único nível: `IssueService` recusa vincular uma issue que já
+    é pai (tem filhos) ou que já é filha (tem `parent_id`) — ver
+    `IssueService._validate_parent_link`.
     """
 
     __tablename__ = "issues"
     __table_args__ = (
-        Index("ix_issues_workspace_id_status_deleted_at", "workspace_id", "status", "deleted_at"),
+        Index(
+            "ix_issues_workspace_id_status_id_deleted_at",
+            "workspace_id",
+            "status_id",
+            "deleted_at",
+        ),
         Index(
             "ix_issues_workspace_id_deleted_at_updated_at",
             "workspace_id",
@@ -69,6 +66,7 @@ class Issue(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
         Index("ix_issues_assignee_id_deleted_at", "assignee_id", "deleted_at"),
         Index("ix_issues_creator_id_deleted_at", "creator_id", "deleted_at"),
         Index("ix_issues_project_id_deleted_at", "project_id", "deleted_at"),
+        Index("ix_issues_parent_id_deleted_at", "parent_id", "deleted_at"),
         Index(
             "ix_issues_title_description_fts",
             text("to_tsvector('simple', title || ' ' || coalesce(description, ''))"),
@@ -82,11 +80,14 @@ class Issue(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
     project_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("projects.id", ondelete="RESTRICT"), default=None
     )
+    parent_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("issues.id", ondelete="RESTRICT"), default=None
+    )
     number: Mapped[int] = mapped_column(nullable=False)
     title: Mapped[str] = mapped_column(nullable=False)
     description: Mapped[str | None] = mapped_column(default=None)
-    status: Mapped[IssueStatus] = mapped_column(
-        domain_enum(IssueStatus), nullable=False, default=IssueStatus.BACKLOG
+    status_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("workflow_states.id", ondelete="RESTRICT"), nullable=False
     )
     priority: Mapped[IssuePriority] = mapped_column(
         domain_enum(IssuePriority), nullable=False, default=IssuePriority.NO_PRIORITY
@@ -102,6 +103,7 @@ class Issue(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
     version: Mapped[int] = mapped_column(nullable=False, default=1)
 
     project: Mapped[Project | None] = relationship(back_populates="issues")
+    workflow_state: Mapped[WorkflowState] = relationship()
     assignee: Mapped[User | None] = relationship(foreign_keys=[assignee_id])
     creator: Mapped[User] = relationship(foreign_keys=[creator_id])
     label_links: Mapped[list["IssueLabel"]] = relationship(

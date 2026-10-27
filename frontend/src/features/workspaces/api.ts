@@ -7,6 +7,7 @@ import type {
   InvitationCreatedResult,
   InvitationCreateInput,
   InvitationListParams,
+  InvitationPreview,
   Workspace,
   WorkspaceMember,
   WorkspaceMemberListParams,
@@ -114,6 +115,21 @@ export async function createInvitation(
 
 export async function cancelInvitation(workspaceId: string, invitationId: string): Promise<void> {
   await httpClient.delete(`/workspaces/${workspaceId}/invitations/${invitationId}`);
+}
+
+export async function resendInvitation(
+  workspaceId: string,
+  invitationId: string,
+): Promise<InvitationCreatedResult> {
+  const { data } = await httpClient.post<DataEnvelope<InvitationCreatedResult>>(
+    `/workspaces/${workspaceId}/invitations/${invitationId}/resend`,
+  );
+  return data.data;
+}
+
+export async function getInvitationPreview(token: string): Promise<InvitationPreview> {
+  const { data } = await httpClient.get<DataEnvelope<InvitationPreview>>(`/invitations/${token}`);
+  return data.data;
 }
 
 export async function acceptInvitation(token: string): Promise<WorkspaceMember> {

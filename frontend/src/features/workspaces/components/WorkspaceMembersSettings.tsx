@@ -179,8 +179,8 @@ export function WorkspaceMembersSettings({
     <div className="flex flex-col gap-4">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-sm font-medium">Membros</h2>
-          <p className="text-sm text-muted-foreground">
+          <h2 className="font-heading text-lg font-semibold tracking-tight">Membros</h2>
+          <p className="text-sm text-t2">
             Gerencie quem tem acesso a este workspace e seus papéis.
           </p>
         </div>
@@ -210,7 +210,7 @@ export function WorkspaceMembersSettings({
         <ErrorState message="Não foi possível carregar os membros." onRetry={() => refetch()} />
       ) : members && members.data.length > 0 ? (
         <div className={cn("flex flex-col gap-4", isPlaceholderData && "opacity-60")}>
-          <div className="rounded-lg border px-4">
+          <div className="rounded-xl border border-border bg-panel px-4">
             {members.data.map((member) => (
               <MemberRow
                 key={member.id}

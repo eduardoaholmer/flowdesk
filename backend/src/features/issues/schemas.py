@@ -1,12 +1,15 @@
 import uuid
 from datetime import date, datetime
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from src.features.issues.models import IssuePriority, IssueStatus
+from src.features.issues.models import IssuePriority
 
 _TITLE_MIN_LENGTH = 1
 _TITLE_MAX_LENGTH = 255
+_MIN_DUE_DATE = date(1900, 1, 1)
+_MAX_DUE_DATE = date(2200, 12, 31)
+_MAX_LABELS_ON_CREATE = 20
 
 
 def _validate_title(value: str) -> str:
@@ -24,25 +27,56 @@ def _validate_estimate(value: int | None) -> int | None:
     return value
 
 
+def _validate_due_date(value: date | None) -> date | None:
+    if value is not None and not (_MIN_DUE_DATE <= value <= _MAX_DUE_DATE):
+        raise ValueError(
+            f"A data de vencimento deve estar entre {_MIN_DUE_DATE.isoformat()} "
+            f"e {_MAX_DUE_DATE.isoformat()}."
+        )
+    return value
+
+
 class IssueCreateRequest(BaseModel):
+    """`status_id` opcional: quando omitido, o service atribui o status
+    marcado `is_default` no workspace (ver `WorkflowStateService.seed_defaults`,
+    Sprint 9.2/ADR-056) — sem valor fixo aqui, já que o status default agora é
+    dado de workspace, não uma constante do código.
+
+    `label_ids` aplica labels já na criação, na mesma transação (ADR-064) — sem
+    isso o frontend teria de criar a issue e depois chamar
+    `POST /issues/{id}/labels` uma vez por label, deixando a issue sem parte das
+    labels se uma dessas chamadas falhasse."""
+
     title: str
     description: str | None = None
     project_id: uuid.UUID | None = None
-    status: IssueStatus = IssueStatus.BACKLOG
+    parent_id: uuid.UUID | None = None
+    status_id: uuid.UUID | None = None
     priority: IssuePriority = IssuePriority.NO_PRIORITY
     assignee_id: uuid.UUID | None = None
     estimate: int | None = None
     due_date: date | None = None
+    label_ids: list[uuid.UUID] = Field(default_factory=list, max_length=_MAX_LABELS_ON_CREATE)
 
     @field_validator("title")
     @classmethod
     def _check_title(cls, value: str) -> str:
         return _validate_title(value)
 
+    @field_validator("label_ids")
+    @classmethod
+    def _dedupe_label_ids(cls, value: list[uuid.UUID]) -> list[uuid.UUID]:
+        return list(dict.fromkeys(value))
+
     @field_validator("estimate")
     @classmethod
     def _check_estimate(cls, value: int | None) -> int | None:
         return _validate_estimate(value)
+
+    @field_validator("due_date")
+    @classmethod
+    def _check_due_date(cls, value: date | None) -> date | None:
+        return _validate_due_date(value)
 
 
 class IssueUpdateRequest(BaseModel):
@@ -50,12 +84,20 @@ class IssueUpdateRequest(BaseModel):
     *é* aceito aqui: mudança de status de issue é uma ação frequente e
     dirigida por board/board-like UI, não uma transição administrativa rara
     como arquivar/restaurar projeto (ver ADR-012, Decisão 1).
+
+    `parent_id`, como `due_date` (ADR-055/Sprint 23.1), precisa distinguir
+    "campo omitido" (preserva o vínculo atual) de "`null` explícito"
+    (desvincula) — o service checa `model_fields_set`, não `is not None`.
+    O mesmo vale para os demais campos anuláveis da issue (`description`,
+    `project_id`, `assignee_id`, `estimate`); `title`, `status_id` e
+    `priority` não aceitam ficar vazios, então `null` neles é ignorado.
     """
 
     title: str | None = None
     description: str | None = None
     project_id: uuid.UUID | None = None
-    status: IssueStatus | None = None
+    parent_id: uuid.UUID | None = None
+    status_id: uuid.UUID | None = None
     priority: IssuePriority | None = None
     assignee_id: uuid.UUID | None = None
     estimate: int | None = None
@@ -71,6 +113,11 @@ class IssueUpdateRequest(BaseModel):
     def _check_estimate(cls, value: int | None) -> int | None:
         return _validate_estimate(value)
 
+    @field_validator("due_date")
+    @classmethod
+    def _check_due_date(cls, value: date | None) -> date | None:
+        return _validate_due_date(value)
+
 
 class IssueResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -78,11 +125,12 @@ class IssueResponse(BaseModel):
     id: uuid.UUID
     workspace_id: uuid.UUID
     project_id: uuid.UUID | None
+    parent_id: uuid.UUID | None
     identifier: str
     number: int
     title: str
     description: str | None
-    status: IssueStatus
+    status_id: uuid.UUID
     priority: IssuePriority
     assignee_id: uuid.UUID | None
     creator_id: uuid.UUID

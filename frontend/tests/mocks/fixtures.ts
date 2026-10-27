@@ -4,6 +4,7 @@ import type { Issue } from "@/features/issues/types";
 import type { Notification } from "@/features/notifications/types";
 import type { Project } from "@/features/projects/types";
 import type { WorkspaceMember } from "@/features/workspaces/types";
+import type { WorkflowState } from "@/features/workflow-states/types";
 import type { PaginationMeta } from "@/shared/lib/apiTypes";
 
 export const demoUser: AuthUser = {
@@ -19,6 +20,7 @@ export const demoProject: Project = {
   workspace_id: "workspace-1",
   name: "Núcleo de Issues",
   slug: "nucleo-de-issues",
+  key: "NDI",
   description: null,
   icon: null,
   color: null,
@@ -26,6 +28,21 @@ export const demoProject: Project = {
   target_date: null,
   lead_id: null,
   created_by: "user-1",
+  member_ids: [],
+  issue_count: 0,
+  done_issue_count: 0,
+  created_at: "2026-01-01T00:00:00Z",
+  updated_at: "2026-01-01T00:00:00Z",
+};
+
+export const demoWorkflowState: WorkflowState = {
+  id: "workflow-state-todo",
+  workspace_id: "workspace-1",
+  name: "Todo",
+  category: "UNSTARTED",
+  position: 1,
+  is_default: false,
+  issue_count: 1,
   created_at: "2026-01-01T00:00:00Z",
   updated_at: "2026-01-01T00:00:00Z",
 };
@@ -34,11 +51,12 @@ export const demoIssue: Issue = {
   id: "issue-1",
   workspace_id: "workspace-1",
   project_id: "project-1",
+  parent_id: null,
   identifier: "FLW-1",
   number: 1,
   title: "Configurar infraestrutura de mock de rede",
   description: null,
-  status: "TODO",
+  status_id: demoWorkflowState.id,
   priority: "MEDIUM",
   assignee_id: "user-1",
   creator_id: "user-1",

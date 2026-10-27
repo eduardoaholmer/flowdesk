@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { getApiErrorMessage } from "@/shared/lib/errors";
 
 import * as api from "./api";
-import type { LabelCreateInput, LabelUpdateInput } from "./types";
+import type { Label, LabelCreateInput, LabelUpdateInput } from "./types";
 
 function labelsListKey(workspaceId: string) {
   return ["workspaces", workspaceId, "labels"] as const;
@@ -39,10 +39,16 @@ function useInvalidateLabels(workspaceId: string) {
 }
 
 export function useCreateLabel(workspaceId: string) {
+  const queryClient = useQueryClient();
   const invalidate = useInvalidateLabels(workspaceId);
   return useMutation({
     mutationFn: (input: LabelCreateInput) => api.createLabel(workspaceId, input),
-    onSuccess: () => {
+    onSuccess: (created) => {
+      // Já entra na lista antes do refetch: quem criou a label pelo seletor da
+      // issue (`LabelCombobox`) a vê marcada na hora, sem piscar ausente.
+      queryClient.setQueryData<Label[]>(labelsListKey(workspaceId), (current) =>
+        current ? [...current, created] : current,
+      );
       invalidate();
       toast.success("Label criada.");
     },

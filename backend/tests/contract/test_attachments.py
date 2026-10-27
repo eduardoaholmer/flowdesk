@@ -1,6 +1,8 @@
 import uuid
 
 from httpx import AsyncClient
+from src.core.config import get_settings
+from src.main import app
 
 
 def _unique_email() -> str:
@@ -250,3 +252,37 @@ async def test_multi_tenant_isolation_for_attachments(client: AsyncClient) -> No
     )
 
     assert cross_delete.status_code == 404
+
+
+async def test_upload_attachment_with_path_separators_in_file_name(client: AsyncClient) -> None:
+    _, owner_token = await _register_and_login(client)
+    workspace_id = await _create_workspace(client, owner_token)
+    issue = await _create_issue(client, workspace_id, owner_token)
+
+    response = await _upload(
+        client, workspace_id, issue["id"], owner_token, file_name="../../etc/print.png"
+    )
+
+    assert response.status_code == 201
+    uploaded = response.json()["data"]
+    assert uploaded["file_name"] == "../../etc/print.png"
+    download = await client.get(
+        f"/api/v1/workspaces/{workspace_id}/attachments/{uploaded['id']}",
+        headers=_auth(owner_token),
+    )
+    assert download.content == b"fake-png-bytes"
+
+
+async def test_upload_attachment_over_size_limit_returns_422(client: AsyncClient) -> None:
+    small_limit = get_settings().model_copy(update={"max_upload_size_bytes": 8})
+    app.dependency_overrides[get_settings] = lambda: small_limit
+    try:
+        _, owner_token = await _register_and_login(client)
+        workspace_id = await _create_workspace(client, owner_token)
+        issue = await _create_issue(client, workspace_id, owner_token)
+        response = await _upload(client, workspace_id, issue["id"], owner_token, content=b"x" * 64)
+    finally:
+        app.dependency_overrides.pop(get_settings, None)
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "attachment_too_large"

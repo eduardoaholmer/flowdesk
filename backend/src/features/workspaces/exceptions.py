@@ -46,6 +46,16 @@ class InvitationEmailMismatchError(PermissionDeniedError):
     message = "Este convite foi emitido para outro e-mail."
 
 
+class InvitationAlreadyAcceptedError(ConflictError):
+    """Guarda só o reenvio (`InvitationService.resend`) — expirado é justamente o
+    caso que o reenvio existe para resolver, diferente de `InvitationExpiredError`
+    (usada no aceite, onde expirado e aceito são tratados igual).
+    """
+
+    code = "invitation_already_accepted"
+    message = "Este convite já foi aceito."
+
+
 class CannotLeaveAsSoleOwnerError(ConflictError):
     code = "sole_owner_cannot_leave"
     message = "Transfira a propriedade do workspace antes de sair — você é o único OWNER."
@@ -65,6 +75,15 @@ class CannotManageOwnMembershipError(ConflictError):
 
     code = "cannot_manage_own_membership"
     message = "Use o endpoint de sair do workspace para alterar sua própria associação."
+
+
+class CannotGrantRoleAboveOwnError(PermissionDeniedError):
+    """Convidar alguém com papel acima do próprio: sem isso, um MEMBER que o
+    OWNER habilitou a convidar (override de `workspace.invite`) podia convidar
+    uma segunda conta sua como ADMIN."""
+
+    code = "cannot_grant_role_above_own"
+    message = "Você não pode conceder um papel acima do seu."
 
 
 class CannotManageOwnerError(PermissionDeniedError):

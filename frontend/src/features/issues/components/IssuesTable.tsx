@@ -1,6 +1,8 @@
 import { Link } from "react-router-dom";
 
+import { useProjects } from "@/features/projects/hooks";
 import { useWorkspaceMembers } from "@/features/workspaces/hooks";
+import { useWorkflowStates } from "@/features/workflow-states/hooks";
 import { Avatar, AvatarFallback } from "@/shared/components/ui/avatar";
 import {
   Table,
@@ -10,11 +12,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/shared/components/ui/table";
+import { MAX_PICKER_PAGE_SIZE } from "@/shared/lib/constants";
 import { formatDate, formatRelativeTime } from "@/shared/lib/date";
 import { workspaceRoutes } from "@/shared/lib/routes";
 import { getInitials } from "@/shared/lib/string";
+import { cn } from "@/shared/lib/utils";
 
-import { ISSUE_PRIORITY_LABELS, ISSUE_STATUS_LABELS } from "../constants";
+import { ISSUE_PRIORITY_LABELS } from "../constants";
 import { IssuePriorityIcon } from "./IssuePriorityIcon";
 import { IssueRowActions } from "./IssueRowActions";
 import { IssueStatusIcon } from "./IssueStatusIcon";
@@ -24,16 +28,37 @@ export function IssuesTable({
   workspaceId,
   workspaceSlug,
   issues,
+  showProject = true,
+  getRowHref,
+  selectedIssueId,
 }: {
   workspaceId: string;
   workspaceSlug: string;
   issues: Issue[];
+  /** Omitido nas listagens já filtradas por um único projeto (ex.: `ProjectDetailView`), onde a coluna seria redundante. */
+  showProject?: boolean;
+  /** Sprint 9.5: sobrepõe o destino do título da linha — usado pelo painel
+   * lateral de `IssuesListPage`, que aponta para `?panel=<id>` (mesma URL,
+   * preserva os filtros atuais) em vez da página cheia de detalhe. */
+  getRowHref?: (issue: Issue) => string;
+  /** Destaca a linha cujo painel lateral está aberto (Sprint 9.5). */
+  selectedIssueId?: string;
 }) {
   const { data: members } = useWorkspaceMembers(workspaceId);
   const memberById = new Map((members ?? []).map((member) => [member.user.id, member.user]));
 
+  const { data: workflowStates } = useWorkflowStates(workspaceId);
+  const workflowStateById = new Map((workflowStates ?? []).map((state) => [state.id, state]));
+
+  const { data: projects } = useProjects(workspaceId, {
+    page: 1,
+    per_page: MAX_PICKER_PAGE_SIZE,
+    sort: "-created_at",
+  });
+  const projectById = new Map((projects?.data ?? []).map((project) => [project.id, project]));
+
   return (
-    <div className="rounded-xl border">
+    <div className="overflow-x-auto rounded-xl border">
       <Table>
         <TableHeader>
           <TableRow>
@@ -41,6 +66,7 @@ export function IssuesTable({
             <TableHead>Título</TableHead>
             <TableHead className="w-10">Status</TableHead>
             <TableHead className="w-10">Prioridade</TableHead>
+            {showProject && <TableHead>Projeto</TableHead>}
             <TableHead>Responsável</TableHead>
             <TableHead>Vencimento</TableHead>
             <TableHead>Atualizado</TableHead>
@@ -50,28 +76,36 @@ export function IssuesTable({
         <TableBody>
           {issues.map((issue) => {
             const assignee = issue.assignee_id ? memberById.get(issue.assignee_id) : undefined;
+            const project = issue.project_id ? projectById.get(issue.project_id) : undefined;
+            const workflowState = workflowStateById.get(issue.status_id);
             return (
-              <TableRow key={issue.id}>
+              <TableRow key={issue.id} className={cn(selectedIssueId === issue.id && "bg-sunken")}>
                 <TableCell className="font-mono text-xs text-muted-foreground">
                   {issue.identifier}
                 </TableCell>
                 <TableCell>
                   <Link
-                    to={workspaceRoutes.issueDetail(workspaceSlug, issue.id)}
+                    to={
+                      getRowHref
+                        ? getRowHref(issue)
+                        : workspaceRoutes.issueDetail(workspaceSlug, issue.id)
+                    }
                     className="font-medium hover:underline"
                   >
                     {issue.title}
                   </Link>
                 </TableCell>
                 <TableCell>
-                  <span
-                    role="img"
-                    aria-label={ISSUE_STATUS_LABELS[issue.status]}
-                    title={ISSUE_STATUS_LABELS[issue.status]}
-                    className="inline-flex"
-                  >
-                    <IssueStatusIcon status={issue.status} />
-                  </span>
+                  {workflowState && (
+                    <span
+                      role="img"
+                      aria-label={workflowState.name}
+                      title={workflowState.name}
+                      className="inline-flex"
+                    >
+                      <IssueStatusIcon category={workflowState.category} />
+                    </span>
+                  )}
                 </TableCell>
                 <TableCell>
                   <span
@@ -83,6 +117,20 @@ export function IssuesTable({
                     <IssuePriorityIcon priority={issue.priority} />
                   </span>
                 </TableCell>
+                {showProject && (
+                  <TableCell className="text-sm">
+                    {project ? (
+                      <Link
+                        to={workspaceRoutes.projectDetail(workspaceSlug, project.id)}
+                        className="text-muted-foreground hover:text-foreground hover:underline"
+                      >
+                        {project.name}
+                      </Link>
+                    ) : (
+                      <span className="text-sm text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
+                )}
                 <TableCell>
                   {assignee ? (
                     <div className="flex items-center gap-2">

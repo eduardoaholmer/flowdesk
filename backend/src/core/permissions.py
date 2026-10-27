@@ -22,6 +22,7 @@ class Permission(enum.StrEnum):
     WORKSPACE_DELETE = "workspace.delete"
     WORKSPACE_INVITE = "workspace.invite"
     WORKSPACE_TRANSFER_OWNERSHIP = "workspace.transfer_ownership"
+    WORKSPACE_MANAGE_PERMISSIONS = "workspace.manage_permissions"
 
     MEMBER_REMOVE = "member.remove"
     MEMBER_UPDATE_ROLE = "member.update_role"
@@ -46,6 +47,9 @@ class Permission(enum.StrEnum):
     LABEL_READ = "label.read"
     LABEL_UPDATE = "label.update"
     LABEL_DELETE = "label.delete"
+
+    WORKFLOW_STATE_READ = "workflow_state.read"
+    WORKFLOW_STATE_MANAGE = "workflow_state.manage"
 
     ATTACHMENT_CREATE = "attachment.create"
     ATTACHMENT_DELETE = "attachment.delete"

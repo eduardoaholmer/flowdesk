@@ -12,10 +12,15 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
 
     name: Mapped[str] = mapped_column(nullable=False)
     email: Mapped[str] = mapped_column(nullable=False)
-    password_hash: Mapped[str] = mapped_column(nullable=False)
+    # Nullable desde o login social (`docs/09-decision-log.md` ADR-061): uma conta
+    # criada via Google/GitHub não tem senha nenhuma — gerar um hash placeholder
+    # aqui seria mais gambiarra do que a coluna aceitar a ausência real de senha.
+    # `AuthService.login` trata `None` como "esta conta não pode logar por senha".
+    password_hash: Mapped[str | None] = mapped_column(nullable=True)
     avatar_url: Mapped[str | None] = mapped_column(default=None)
 
     sessions: Mapped[list["Session"]] = relationship(back_populates="user")
+    oauth_identities: Mapped[list["OAuthIdentity"]] = relationship(back_populates="user")
 
 
 # Único case-insensitive por função — o schema HTTP (Sprint 3+) ainda não existe
@@ -68,6 +73,36 @@ class RefreshToken(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
 
     session: Mapped[Session] = relationship(back_populates="refresh_tokens")
+
+
+class OAuthIdentity(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """Uma conta vinculada em um provedor social — agregado próprio, não colunas em
+    `User` (mesmo racional de `Session`/`RefreshToken`, `CLAUDE.md` §6), porque um
+    usuário pode ter Google e GitHub vinculados ao mesmo tempo. `(provider,
+    provider_user_id)` é o identificador estável do provedor (nunca o e-mail, que
+    pode mudar do lado do provedor); é isso que `get_by_provider_identity` casa em
+    todo login social subsequente, o mesmo papel que `password_hash` cumpre para
+    login tradicional.
+    """
+
+    __tablename__ = "oauth_identities"
+    __table_args__ = (
+        Index(
+            "ix_oauth_identities_provider_provider_user_id",
+            "provider",
+            "provider_user_id",
+            unique=True,
+        ),
+        Index("ix_oauth_identities_user_id", "user_id"),
+    )
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    provider: Mapped[str] = mapped_column(nullable=False)
+    provider_user_id: Mapped[str] = mapped_column(nullable=False)
+
+    user: Mapped[User] = relationship(back_populates="oauth_identities")
 
 
 class PasswordResetToken(UUIDPrimaryKeyMixin, TimestampMixin, Base):

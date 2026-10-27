@@ -5,6 +5,7 @@ import {
   ListTodo,
   LogOut,
   Moon,
+  Plus,
   Settings,
   Sun,
   SunMoon,
@@ -34,6 +35,9 @@ export interface PaletteCommand {
   perform: () => void;
   /** Presente só em comandos de navegação — usado para registrar em "Recentes". */
   to?: string;
+  /** Atalho global equivalente (ex.: "C" para Nova issue) — só exibição, o
+   * atalho em si é registrado onde a ação vive, não aqui. */
+  shortcut?: string;
 }
 
 export function buildNavigationCommands(
@@ -76,6 +80,18 @@ export function buildNavigationCommands(
       keywords: ["membros", "convites", "workspace"],
       to: workspaceRoutes.settings(workspaceSlug),
       perform: () => navigate(workspaceRoutes.settings(workspaceSlug)),
+    },
+  ];
+}
+
+export function buildCreateIssueCommands(onCreateIssue: () => void): PaletteCommand[] {
+  return [
+    {
+      id: "action:create-issue",
+      label: "Nova issue",
+      icon: Plus,
+      shortcut: "C",
+      perform: onCreateIssue,
     },
   ];
 }

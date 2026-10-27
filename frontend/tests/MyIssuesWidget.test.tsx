@@ -7,6 +7,8 @@ import { MyIssuesWidget } from "@/features/dashboard/components/MyIssuesWidget";
 import type { CollectionEnvelope } from "@/shared/lib/apiTypes";
 import type { Issue } from "@/features/issues/types";
 
+import { demoWorkflowState } from "./mocks/fixtures";
+
 const { listIssuesMock } = vi.hoisted(() => ({ listIssuesMock: vi.fn() }));
 
 vi.mock("@/features/issues/api", () => ({
@@ -31,11 +33,12 @@ const baseIssue: Issue = {
   id: "issue-1",
   workspace_id: "ws-1",
   project_id: null,
+  parent_id: null,
   identifier: "FD-1",
   number: 1,
   title: "Corrigir tela de login",
   description: null,
-  status: "TODO",
+  status_id: demoWorkflowState.id,
   priority: "HIGH",
   assignee_id: "user-1",
   creator_id: "user-1",

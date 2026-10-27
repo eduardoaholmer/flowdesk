@@ -15,6 +15,7 @@ import { server } from "./mocks/server";
 const workspaceId = "workspace-1";
 const listParams = { page: 1, per_page: 100 } as const;
 const listKey = ["workspaces", workspaceId, "issues", listParams] as const;
+const targetStatusId = "workflow-state-in-progress";
 
 function renderMoveIssueStatus(initialIssues: Issue[]) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -36,16 +37,20 @@ describe("useMoveIssueStatus", () => {
     server.use(
       http.patch(`${API_BASE_URL}/workspaces/:workspaceId/issues/:issueId`, async () => {
         await new Promise((resolve) => setTimeout(resolve, 20));
-        return HttpResponse.json({ data: { ...demoIssue, status: "IN_PROGRESS" } });
+        return HttpResponse.json({ data: { ...demoIssue, status_id: targetStatusId } });
       }),
     );
     const { result, queryClient } = renderMoveIssueStatus([demoIssue]);
 
-    result.current.mutate({ issueId: demoIssue.id, status: "IN_PROGRESS" });
+    result.current.mutate({
+      issueId: demoIssue.id,
+      statusId: targetStatusId,
+      statusName: "In Progress",
+    });
 
     await waitFor(() => {
       const cached = queryClient.getQueryData<CollectionEnvelope<Issue>>(listKey);
-      expect(cached?.data[0]?.status).toBe("IN_PROGRESS");
+      expect(cached?.data[0]?.status_id).toBe(targetStatusId);
     });
   });
 
@@ -60,11 +65,15 @@ describe("useMoveIssueStatus", () => {
     );
     const { result, queryClient } = renderMoveIssueStatus([demoIssue]);
 
-    result.current.mutate({ issueId: demoIssue.id, status: "IN_PROGRESS" });
+    result.current.mutate({
+      issueId: demoIssue.id,
+      statusId: targetStatusId,
+      statusName: "In Progress",
+    });
 
     await waitFor(() => expect(result.current.isError).toBe(true));
 
     const cached = queryClient.getQueryData<CollectionEnvelope<Issue>>(listKey);
-    expect(cached?.data[0]?.status).toBe(demoIssue.status);
+    expect(cached?.data[0]?.status_id).toBe(demoIssue.status_id);
   });
 });
