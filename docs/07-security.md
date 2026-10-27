@@ -12,7 +12,8 @@
 - Token opaco (não JWT), alta entropia, gerado com `secrets.token_urlsafe(32)`. O que é armazenado no banco é o **hash** do token (SHA-256), nunca o valor em texto plano — se o banco vazar, os tokens não são diretamente utilizáveis.
 - Vida útil 30 dias, renovado (rotacionado) a cada uso: todo `POST /auth/refresh` bem-sucedido invalida o token usado e emite um novo, mantendo uma cadeia (`replaced_by_id`) para detecção de reuso.
 - **Detecção de reuso**: se um refresh token já rotacionado (que não deveria mais existir como "ativo") for apresentado novamente, isso indica que o token pode ter sido roubado e já usado por um atacante — o sistema revoga **toda a cadeia** de tokens daquele usuário/dispositivo e força novo login. Este é o motivo central de rotacionar em vez de reusar o mesmo refresh token por 30 dias inteiros.
-- Armazenado em cookie `HttpOnly; Secure; SameSite=Strict; Path=/api/v1/auth`. `HttpOnly` impede leitura via JavaScript (mitiga XSS); `Path` restrito reduz superfície de envio do cookie a apenas as rotas que precisam dele.
+- **Janela de graça contra falso positivo de corrida** (`refresh_token_reuse_grace_seconds`, padrão 5s, ADR-062): duas requisições quase simultâneas com o mesmo cookie (ex.: duas abas do navegador renovando ao mesmo tempo logo após o access token em memória expirar) apresentam o mesmo token já rotacionado por uma das duas — sem essa janela, isso era indistinguível de reuso malicioso e derrubava a sessão inteira mesmo sendo uso legítimo. Só uma reapresentação **fora** dessa janela (`replaced_by_id` setado há mais de alguns segundos, ou token revogado por logout explícito — sem `replaced_by_id`) ainda dispara a revogação total.
+- Armazenado em cookie `HttpOnly; Secure (produção); SameSite=None (produção) / Strict (dev); Path=/api/v1/auth`. `HttpOnly` impede leitura via JavaScript (mitiga XSS); `Path` restrito reduz superfície de envio do cookie a apenas as rotas que precisam dele. Ver ADR-062 sobre por que `SameSite` difere entre ambientes.
 
 ## 3. Cookies HttpOnly e por que o Access Token NÃO fica em cookie
 
@@ -24,11 +25,14 @@ Trade-off aceito: em caso de XSS bem-sucedido, o atacante pode ler o access toke
 
 Aplica-se apenas a `POST /auth/refresh` (única rota que depende de cookie para autenticar). Estratégia: **double-submit cookie** — um cookie adicional, não-`HttpOnly` (`csrf_token`), é emitido no login; o frontend lê esse valor e o envia em um header customizado (`X-CSRF-Token`) em toda chamada a `/auth/refresh`. O backend compara header e cookie; JavaScript malicioso em outra origem não consegue ler o cookie `csrf_token` do FlowDesk para replicar o header (same-origin policy), então uma requisição forjada por um site de terceiro falha essa checagem mesmo que o cookie de refresh seja enviado automaticamente pelo navegador.
 
+**Pré-requisito de deploy (ADR-063):** o double-submit só funciona se o SPA conseguir ler `csrf_token` via `document.cookie` — ou seja, se o cookie for gravado no **mesmo domínio do SPA**. Com o SPA em `flowdesk.eduardoaholmer.dev` chamando a API direto em `onrender.com`, o cookie fica no domínio da API e é invisível ao JavaScript do SPA: `hasSessionCookie()` sempre falha e a sessão não sobrevive a um reload. Por isso o frontend de produção fala com a API pelo proxy da Vercel (`/api/*` → Render, `frontend/vercel.json`), com `VITE_API_URL=/api/v1`.
+
 ## 5. CORS
 
 - Produção: origem permitida = domínio exato do frontend (lista explícita via `Settings`, nunca wildcard `*` combinado com `allow_credentials=True` — combinação proibida pela própria spec CORS por bom motivo).
 - Desenvolvimento: origem `http://localhost:5173` (Vite) explicitamente configurada, não `*`, para que o comportamento de desenvolvimento espelhe produção e bugs de CORS sejam pegos cedo.
-- `allow_credentials=True` (necessário para o cookie de refresh trafegar cross-origin entre o domínio do frontend e da API, caso sejam subdomínios distintos).
+- Origens que não cabem numa lista fixa (previews da Vercel do próprio projeto) entram por `CORS_ORIGIN_REGEX`, opcional e sem default (ADR-067). Nunca um `*.vercel.app` genérico: qualquer conta da Vercel cria subdomínios ali, e com `allow_credentials=True` isso tornaria confiável o site de qualquer pessoa.
+- `allow_credentials=True` (necessário para o cookie de refresh trafegar cross-origin entre o domínio do frontend e da API). **Importante** (ADR-062): o deploy real (`DEPLOY.md`) coloca frontend e API em **sites diferentes** (domínio próprio na Vercel vs. subdomínio `onrender.com`), não apenas origens/subdomínios distintos do mesmo site — isso é o que exige `SameSite=None` nos cookies de auth em produção (ver §2); `SameSite=Strict`/`Lax` simplesmente nunca envia o cookie numa chamada cross-site, independente de CORS/`allow_credentials` estarem corretos. **Atualização (ADR-063)**: `SameSite=None` sozinho não bastava — o cookie `csrf_token` ficava no domínio da API e, por isso, invisível ao `document.cookie` do SPA (o double-submit do §4 falhava sempre), e navegadores que bloqueiam/particionam cookies de terceiros (Safari, Firefox, aba anônima do Chrome) nem enviavam o `refresh_token`. Em produção o SPA agora fala com a API **same-origin**, via rewrite da Vercel (`/api/*` → Render, `frontend/vercel.json`); CORS continua configurado para quem chamar a URL do Render diretamente.
 - `allow_methods`/`allow_headers` (Sprint 8.7) também são listas explícitas, não `*` — `["GET", "POST", "PATCH", "DELETE", "OPTIONS"]` e `["Authorization", "Content-Type", "X-CSRF-Token"]`, os únicos método/headers que a API de fato usa (auditado contra todo `router.py` e `frontend/src/shared/lib/httpClient.ts`). `expose_headers=["X-Request-ID"]` permite que o frontend/devtools leia o header de correlação da resposta.
 
 ## 6. Rate Limiting
@@ -70,19 +74,22 @@ Permissões são strings estáveis `"<domínio>.<ação>"` (`core/permissions.py
 
 | Domínio | Permissões |
 |---|---|
-| Workspace | `workspace.view`, `workspace.update`, `workspace.delete`, `workspace.invite`, `workspace.transfer_ownership` |
+| Workspace | `workspace.view`, `workspace.update`, `workspace.delete`, `workspace.invite`, `workspace.transfer_ownership`, `workspace.manage_permissions` |
 | Membros | `member.remove`, `member.update_role` |
 | Projetos | `project.create`, `project.read`, `project.update`, `project.delete` |
 | Issues *(feature na Sprint 7)* | `issue.create`, `issue.read`, `issue.update`, `issue.delete`, `issue.assign`, `issue.change_status` |
 | Comentários *(feature na Sprint 8)* | `comment.create`, `comment.update`, `comment.delete` |
 | Labels *(feature na Sprint 8)* | `label.create`, `label.read`, `label.update`, `label.delete` |
 | Anexos *(feature na Sprint 8)* | `attachment.create`, `attachment.delete` |
+| Status de Issue *(feature na Sprint 9.2, ADR-056)* | `workflow_state.read`, `workflow_state.manage` |
+
+Todas as permissões acima, exceto as três marcadas `LOCKED_PERMISSIONS` (`workspace.delete`, `workspace.transfer_ownership`, `workspace.manage_permissions`), podem ser individualmente concedidas/revogadas por workspace para `ADMIN`/`MEMBER`/`GUEST` via `PermissionOverride` (Sprint 9.3, ADR-058) — ver §8.7.
 
 A feature de Projetos (Sprint 6), a de Issues (Sprint 7) e as de Comentários/Labels/Anexos (Sprint 8, `docs/08-roadmap.md`) foram implementadas sem nenhuma mudança de desenho de RBAC: `core/permissions.py` e `core/authorization.py::ROLE_PERMISSIONS` já traziam todas as permissões acima, corretamente posicionadas na matriz, desde que foram modeladas preventivamente na Sprint 5 (ADR-010). Cada feature só passou a exercitá-las via `Depends(require_permission(...))` — Issues foi a primeira a exercitar de fato o `OWNERSHIP_OVERRIDE_PERMISSIONS` (§8.5) em produção, para `issue.delete`; Comentários e Anexos (Sprint 8) seguem o mesmo padrão para `comment.update`/`comment.delete`/`attachment.delete`.
 
 ### 8.3 Matriz de permissões por papel
 
-A fonte de verdade é `ROLE_PERMISSIONS`/`OWNERSHIP_OVERRIDE_PERMISSIONS` em `core/authorization.py` — esta tabela é a descrição legível para humanos; divergência entre as duas é bug.
+A fonte de verdade é `ROLE_PERMISSIONS`/`OWNERSHIP_OVERRIDE_PERMISSIONS` em `core/authorization.py` — esta tabela é a descrição legível para humanos; divergência entre as duas é bug. Esta é a matriz **padrão**: um workspace pode desviar dela por `PermissionOverride` (Sprint 9.3, §8.7) — a tabela abaixo continua sendo o comportamento de todo workspace sem override configurado.
 
 | Permissão | OWNER | ADMIN | MEMBER | GUEST | Observação |
 |---|---|---|---|---|---|
@@ -91,6 +98,7 @@ A fonte de verdade é `ROLE_PERMISSIONS`/`OWNERSHIP_OVERRIDE_PERMISSIONS` em `co
 | `workspace.delete` | ✅ | ❌ | ❌ | ❌ | Única ação irreversível do domínio — reservada ao dono, nunca delegável a ADMIN. |
 | `workspace.invite` | ✅ | ✅ | ❌ | ❌ | Cobre criar, listar e cancelar convite — mesma checagem para as três ações (eram idênticas antes da Sprint 5 via `_require_role`, ADR-009). |
 | `workspace.transfer_ownership` | ✅ | ❌ | ❌ | ❌ | Segunda ação irreversível/de posse do domínio, junto de `workspace.delete` — nem ADMIN pode transferir a propriedade de outro OWNER. Única forma de qualquer membro virar OWNER fora da criação do workspace (Sprint 17.1/M6, ADR-036/037). |
+| `workspace.manage_permissions` | ✅ | ❌ | ❌ | ❌ | Terceira permissão `LOCKED_PERMISSIONS` (Sprint 9.3/ADR-058) — gerencia os overrides de §8.7. Nem ADMIN a tem, mesmo já gerenciando membros/status: evita auto-escalonamento via toggle. |
 | `member.remove` | ✅ | ✅ (exceto OWNER) | ❌ | ❌ | Exceção "exceto OWNER" é contextual (`require_can_manage_member`, §8.4), não expressável na matriz estática. |
 | `member.update_role` | ✅ | ✅ (exceto OWNER) | ❌ | ❌ | Idem. Promover alguém a OWNER é sempre rejeitado (422 na validação de schema) — a única forma de promoção a OWNER é `workspace.transfer_ownership`, acima. |
 | `project.create` / `update` / `delete` | ✅ | ✅ | ❌ | ❌ | |
@@ -107,6 +115,8 @@ A fonte de verdade é `ROLE_PERMISSIONS`/`OWNERSHIP_OVERRIDE_PERMISSIONS` em `co
 | `label.update` / `label.delete` | ✅ | ✅ | ❌ | ❌ | Sem ownership override — quem cria uma label não ganha direito extra de editá-la/excluí-la (ADR-013). |
 | `attachment.create` | ✅ | ✅ | ✅ | ✅ | Mesmo papel de `comment.create` — qualquer membro (incl. GUEST) pode anexar arquivo a uma issue que já pode ler. |
 | `attachment.delete` | ✅ | ✅ | ✅ (só o próprio) | ✅ (só o próprio) | MEMBER/GUEST só via **ownership override** (§8.5) — quem enviou o anexo pode removê-lo. |
+| `workflow_state.read` | ✅ | ✅ | ✅ | ✅ | Qualquer membro precisa ver os status para renderizar o board/badges de issue. |
+| `workflow_state.manage` | ✅ | ✅ | ❌ | ❌ | Cobre criar, editar, reordenar e excluir status — configuração de workspace, mesmo nível de `label.update`/`delete`. Sem ownership override. |
 
 ### 8.4 Regra contextual: gerenciamento de membro
 
@@ -121,6 +131,16 @@ Além da matriz por papel, `OWNERSHIP_OVERRIDE_PERMISSIONS` (`comment.update`, `
 Toda chamada a `PermissionService.require`/`.require_can_manage_member` que resulta em negação emite um log estruturado (`structlog`, `CLAUDE.md` §9) no nível `WARNING` com `event="permission_denied"`, `user_id`, `workspace_id`, `role` e `permission` — nunca persistido em `workspace_activity_logs` (reservada a eventos de negócio bem-sucedidos, ADR-009 Decisão 1), mas suficiente para detecção de abuso via agregação de logs.
 
 `GUEST` é um papel somente leitura + comentário, pensado para stakeholders externos observando o progresso sem poder alterar o trabalho — fora do MVP (ver `docs/00-product-vision.md` §5), mas já modelado na matriz para não exigir migração de schema quando for implementado.
+
+### 8.7 Overrides de permissão por workspace (Sprint 9.3, ADR-058)
+
+Meio-termo entre o RBAC fixo original e cargos totalmente arbitrários (decisão registrada na ADR-056): permissões são individualmente ligáveis/desligáveis **dentro** dos 4 papéis fixos, não uma tabela de cargos nova. `PermissionOverride` (`workspace_id`, `role`, `permission`, `granted`) guarda só os desvios — ausência de linha é sempre "segue `ROLE_PERMISSIONS`". `OWNER` nunca é customizável (sempre `frozenset(Permission)` inteiro) e as três `LOCKED_PERMISSIONS` (`workspace.delete`, `workspace.transfer_ownership`, `workspace.manage_permissions`) nunca podem ser concedidas a outro papel, mesmo via override — validado em `PermissionOverrideService.set_override`, não só na UI.
+
+`PermissionService.can()` resolve a decisão final em ordem: **(1)** se a permissão foi explicitamente revogada para o papel do chamador naquele workspace → nega, mesmo que a matriz base ou o ownership override (§8.5) concederiam; **(2)** senão, se foi explicitamente concedida (override) ou já está na matriz base → concede; **(3)** senão, cai no ownership override de §8.5 como já fazia antes desta sprint. O ponto (1) é deliberado: revogar `comment.delete` para `MEMBER` remove a ação por completo, inclusive sobre o próprio comentário — um workspace que desliga uma permissão espera que ela suma de verdade, não que sobreviva por uma exceção lateral.
+
+Os overrides do papel do chamador são resolvidos uma vez por requisição em `get_workspace_context` (junto com `Workspace`/`WorkspaceMember`) e passados a `require_permission`/`PermissionService` como dois `frozenset[Permission]` (`granted_overrides`/`revoked_overrides`) — nenhum dos 44+ call sites de `Depends(require_permission(...))` espalhados pelas rotas precisou mudar; o mecanismo inteiro vive em `core/authorization.py` + `features/permissions/`.
+
+Gerenciar os overrides (`GET`/`PUT .../permission-overrides`, `docs/04-api-design.md` §5.2) exige `workspace.manage_permissions`, que só `OWNER` tem — nem `ADMIN` gerencia a própria régua de permissões, mesmo já gerenciando membros e status do board, para não abrir caminho de auto-escalonamento.
 
 ## 9. Isolamento entre Workspaces (multi-tenancy)
 
@@ -363,3 +383,18 @@ Nenhum destes é configurável por variável de ambiente — são invariantes de
 - **Uso único, vida curta**: `used_at` marcado na confirmação (não uma cadeia de rotação — não há "próximo" token aqui); expira em `PASSWORD_RESET_TOKEN_EXPIRE_MINUTES` (default 30 min, bem menor que o refresh token de 30 dias ou o convite de 7 dias — a janela de exposição de um token que dá controle total da conta deve ser a menor praticável). Solicitar um novo token invalida qualquer token ativo anterior do mesmo usuário.
 - **Confirmar reset revoga todas as sessões ativas** — mesmo efeito de `POST /auth/logout-all`: uma senha comprometida o bastante para justificar reset também compromete qualquer sessão já aberta com a senha antiga. Isso invalida refresh tokens; um access token JWT já emitido continua válido até sua expiração natural (15 min) — não há blocklist de `jti` ainda (ADR-005/008, melhoria futura não bloqueante).
 - **Rate limit dedicado**: ambos os endpoints no mesmo tier de `login`/`register` (5/min por IP, §6).
+
+## 16. Login social — Google/GitHub (ADR-061)
+
+`GET /auth/{provider}/login` → `GET /auth/{provider}/callback` (Authorization Code flow, `docs/09-decision-log.md` ADR-061 para o racional completo).
+
+- **Client secret nunca sai do backend**: o navegador é redirecionado direto para o provedor; o `code` de volta é trocado por um token e pelo perfil do usuário via chamada servidor-a-servidor (`GoogleOAuthClient`/`GitHubOAuthClient`, `httpx`). O frontend nunca recebe nem `client_id` nem `client_secret` — os botões de login social apenas navegam (`window.location.href`) para `GET /auth/{provider}/login`.
+- **Proteção contra CSRF do handshake OAuth em si (`state`)**: um valor aleatório de 256 bits é gerado em `GET /auth/{provider}/login` e guardado em cookie próprio `oauth_state` (`HttpOnly`, 10 min de vida) — distinto do cookie `csrf_token` do resto do sistema, semânticas diferentes. `GET /auth/{provider}/callback` exige que o `state` da query bata (`secrets.compare_digest`) com o valor do cookie antes de prosseguir; qualquer divergência (ausência, cookie expirado, valor diferente) é tratada como possível ataque e recusada com o mesmo `code` genérico (`oauth_authentication_failed`).
+- **`SameSite=Lax`, sempre, independente de ambiente, só para este cookie**: `oauth_state` precisa sobreviver à navegação de nível superior de volta ao domínio do FlowDesk vinda de `accounts.google.com`/`github.com` — um cookie `Strict` seria descartado pelo navegador nesse retorno cross-site, quebrando a checagem acima. O resto dos cookies deste sistema (`refresh_token`, `csrf_token`, `remember_me`) é `Strict` em dev e `None` em produção (ADR-062, §2) — nunca `Lax`.
+- **Nenhuma credencial de provedor chega a log ou resposta HTTP**: `GoogleOAuthClient`/`GitHubOAuthClient` fazem a troca de `code`/token inteiramente em memória, dentro da mesma requisição; falha em qualquer etapa (rede, resposta malformada, campo obrigatório ausente no perfil) vira `OAuthProviderError` (`oauth_authentication_failed`) sem incluir o corpo da resposta do provedor no log.
+- **Vínculo automático por e-mail só a contas sem senha (ADR-066)**: o cadastro por senha (`POST /auth/register`) não verifica o e-mail, então uma conta com senha pode ter sido criada por alguém que não é dono daquele e-mail (pre-account takeover: o atacante cadastra `vitima@...` com senha própria e espera a vítima entrar com Google). Login social com o e-mail de uma conta que tem senha é recusado com `oauth_email_already_registered` — a pessoa entra com e-mail e senha. Contas sem senha (criadas por outro provedor) continuam sendo vinculadas automaticamente.
+- **E-mail precisa ser verificado pelo provedor para autorizar vínculo automático a uma conta existente**: Google precisa devolver `email_verified: true` no userinfo (checado em `GoogleOAuthClient`, nunca presumido); GitHub, quando `/user` omite o e-mail (marcado privado), exige buscar o primário **verificado** em `/user/emails` (nunca um e-mail não verificado) antes de vincular a uma conta já existente por esse e-mail — evita que alguém reivindique a conta de outra pessoa cadastrando um e-mail alheio não confirmado num provedor social.
+- **Conta 100% social não tem senha**: `users.password_hash` é `NULL`able desde esta feature; `POST /auth/login` recusa uma conta assim com o mesmo `code` (`invalid_credentials`) de e-mail inexistente/senha errada — não revela que a conta existe mas não pode logar por senha (mesmo racional anti-enumeration do §10).
+- **Erros do handshake nunca viram um JSON cru numa aba do navegador**: diferente de toda outra rota do sistema, `GET /auth/{provider}/login`/`callback` capturam a exceção de domínio localmente e traduzem para um `302` de volta à SPA (`{FRONTEND_BASE_URL}/oauth/callback?error=<code>`) — são as únicas rotas do sistema que fogem da regra "exceção de domínio sobe para o exception handler global" (`CLAUDE.md` §7), justificado por serem alvo de navegação de página inteira, não de `fetch`/`axios`.
+- **Rate limit dedicado**: `GET /auth/{provider}/login` no mesmo tier de `login`/`register` (5/min por IP); `GET /auth/{provider}/callback` no mesmo tier de `refresh` (10/min por IP) — evita que alguém metralhe a troca de `code` por token adivinhando/reusando valores.
+- **Cada provedor é opt-in por ambiente**: um provedor sem `client_id`/`client_secret`/`redirect_uri` configurados (`core/config.py`) responde `oauth_provider_not_configured` em vez de tentar chamá-lo sem credenciais — o botão correspondente continua visível no frontend (sem lógica de "descoberta de provedor disponível"), só o clique resulta no redirect de erro.

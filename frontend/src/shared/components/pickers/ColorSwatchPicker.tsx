@@ -2,28 +2,8 @@ import { HexColorInput, HexColorPicker } from "react-colorful";
 import { useState } from "react";
 
 import { Popover, PopoverContent, PopoverTrigger } from "@/shared/components/ui/popover";
+import { PRESET_COLORS } from "@/shared/lib/constants";
 import { cn } from "@/shared/lib/utils";
-
-const PRESET_COLORS = [
-  "#EF4444",
-  "#F97316",
-  "#F59E0B",
-  "#EAB308",
-  "#84CC16",
-  "#22C55E",
-  "#10B981",
-  "#14B8A6",
-  "#06B6D4",
-  "#0EA5E9",
-  "#3B82F6",
-  "#4F46E5",
-  "#8B5CF6",
-  "#A855F7",
-  "#D946EF",
-  "#EC4899",
-  "#F43F5E",
-  "#64748B",
-];
 
 const DEFAULT_COLOR = "#4F46E5";
 

@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Chave pública de DEV do par gerado só para desenvolvimento local (`.env.example`,
@@ -42,6 +42,10 @@ class Settings(BaseSettings):
     # decodificar JSON para tipos complexos vindos de variável de ambiente/.env —
     # incompatível com o formato "a, b, c" que .env files usam na prática.
     cors_origins_raw: str = Field(default="http://localhost:5173", alias="CORS_ORIGINS")
+    # Regex opcional para origens que não cabem numa lista fixa (ex.: previews da
+    # Vercel do próprio projeto). Sem default: um `*.vercel.app` genérico confiava
+    # em qualquer site de qualquer conta da Vercel, com credenciais (ADR-067).
+    cors_origin_regex: str | None = Field(default=None, alias="CORS_ORIGIN_REGEX")
 
     # PEM com quebras de linha escapadas (`\n` literal) em vez de multilinha real —
     # o mesmo valor funciona sem sintaxe especial tanto em ".env" quanto no bloco
@@ -50,6 +54,12 @@ class Settings(BaseSettings):
     jwt_public_key: str
     access_token_expire_minutes: int = 15
     refresh_token_expire_days: int = 30
+    # Janela em que um refresh token recém-rotacionado ainda pode ser reapresentado
+    # sem disparar a detecção de reuso (`AuthService.refresh`) — cobre a corrida
+    # legítima de duas requisições quase simultâneas com o mesmo cookie (ex.: duas
+    # abas renovando ao mesmo tempo), que de outra forma seria indistinguível de um
+    # roubo de token e derrubaria a sessão inteira (docs/09-decision-log.md ADR-062).
+    refresh_token_reuse_grace_seconds: int = 5
     invitation_expire_days: int = 7
     # Curta de propósito (RF-AUTH-06): bem menor que refresh (30 dias) ou convite
     # (7 dias) — a janela de exposição de um token que dá controle total da conta
@@ -110,6 +120,31 @@ class Settings(BaseSettings):
     # `cors_origins_raw` para o ambiente local.
     frontend_base_url: str = "http://localhost:5173"
 
+    # Login social (Google/GitHub) — Authorization Code flow (`docs/09-decision-log.md`
+    # ADR-061). Cada provedor é opt-in: um `client_id` ausente desliga o provedor
+    # (`AuthService` simplesmente não constrói um client para ele, e a rota
+    # correspondente responde `oauth_provider_not_configured`) sem exigir os três
+    # campos de nenhum provedor que o ambiente não use. Client secret nunca chega
+    # ao frontend — só o backend troca o `code` pelo profile do provedor.
+    google_client_id: str | None = None
+    google_client_secret: str | None = None
+    google_redirect_uri: str | None = None
+    github_client_id: str | None = None
+    github_client_secret: str | None = None
+    github_redirect_uri: str | None = None
+
+    @field_validator("database_url")
+    @classmethod
+    def _normalize_database_url_driver(cls, value: str) -> str:
+        """Provedores de Postgres gerenciado (Render, Heroku, Railway) emitem a
+        connection string sem driver explícito (`postgresql://`), mas a aplicação
+        é async e exige `asyncpg` — normaliza aqui em vez de exigir que cada
+        ambiente hospedado saiba disso.
+        """
+        if value.startswith("postgresql://"):
+            return value.replace("postgresql://", "postgresql+asyncpg://", 1)
+        return value
+
     @property
     def allowed_upload_content_types(self) -> frozenset[str]:
         return frozenset(
@@ -159,6 +194,24 @@ class Settings(BaseSettings):
     def _require_smtp_config_when_smtp_provider(self) -> "Settings":
         if self.mail_provider == "smtp" and not (self.smtp_host and self.smtp_from_email):
             raise ValueError("MAIL_PROVIDER=smtp exige SMTP_HOST e SMTP_FROM_EMAIL configurados.")
+        return self
+
+    @model_validator(mode="after")
+    def _require_full_oauth_config_per_provider(self) -> "Settings":
+        """Ao contrário de `storage_provider`/`mail_provider` (single-select), os dois
+        provedores sociais podem estar ligados ao mesmo tempo — por isso a validação é
+        por provedor: se `google_client_id` está presente, `google_client_secret` e
+        `google_redirect_uri` também precisam estar (idem para GitHub). Um provedor
+        totalmente ausente (`client_id=None`) é uma escolha válida: só significa que ele
+        está desligado."""
+        if self.google_client_id and not (self.google_client_secret and self.google_redirect_uri):
+            raise ValueError(
+                "GOOGLE_CLIENT_ID exige GOOGLE_CLIENT_SECRET e GOOGLE_REDIRECT_URI configurados."
+            )
+        if self.github_client_id and not (self.github_client_secret and self.github_redirect_uri):
+            raise ValueError(
+                "GITHUB_CLIENT_ID exige GITHUB_CLIENT_SECRET e GITHUB_REDIRECT_URI configurados."
+            )
         return self
 
 

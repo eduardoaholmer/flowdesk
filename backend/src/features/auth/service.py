@@ -20,9 +20,13 @@ from src.features.auth.exceptions import (
     InvalidCredentialsError,
     InvalidPasswordResetTokenError,
     InvalidRefreshTokenError,
+    OAuthEmailAlreadyRegisteredError,
+    OAuthProviderNotConfiguredError,
 )
-from src.features.auth.models import PasswordResetToken, RefreshToken, Session, User
+from src.features.auth.models import OAuthIdentity, PasswordResetToken, RefreshToken, Session, User
+from src.features.auth.oauth_providers import OAuthClientProtocol, OAuthProfile, OAuthProvider
 from src.features.auth.repository import (
+    OAuthIdentityRepositoryProtocol,
     PasswordResetRepositoryProtocol,
     SessionRepositoryProtocol,
     UserRepositoryProtocol,
@@ -53,12 +57,19 @@ class AuthService:
         settings: Settings,
         password_reset_repo: PasswordResetRepositoryProtocol,
         mail_sender: MailSender,
+        oauth_identity_repo: OAuthIdentityRepositoryProtocol,
+        oauth_clients: dict[OAuthProvider, OAuthClientProtocol],
     ) -> None:
         self._user_repo = user_repo
         self._session_repo = session_repo
         self._settings = settings
         self._password_reset_repo = password_reset_repo
         self._mail_sender = mail_sender
+        self._oauth_identity_repo = oauth_identity_repo
+        # Só contém entrada para provedor com `client_id` configurado
+        # (`AuthDependencies.get_auth_service`) — um provedor ausente aqui é
+        # exatamente "desligado neste ambiente" (`OAuthProviderNotConfiguredError`).
+        self._oauth_clients = oauth_clients
 
     async def register(self, payload: RegisterRequest) -> User:
         existing = await self._user_repo.get_by_email(payload.email)
@@ -81,7 +92,11 @@ class AuthService:
         ip_address: str | None,
     ) -> LoginResult:
         user = await self._user_repo.get_by_email(email)
-        if user is None:
+        if user is None or user.password_hash is None:
+            # `password_hash is None` é uma conta criada só via login social
+            # (`register()`/`login_with_oauth` nunca preenchem senha para ela) —
+            # mesmo `code` genérico de "e-mail inexistente" (anti-enumeration,
+            # docs/07-security.md §10): não revelamos que o e-mail existe, só sem senha.
             perform_dummy_verification(password)
             raise InvalidCredentialsError()
 
@@ -97,6 +112,82 @@ class AuthService:
 
         return LoginResult(user=user, access_token=access_token, refresh_token=refresh_token_plain)
 
+    def build_oauth_authorize_url(self, provider: OAuthProvider, state: str) -> str:
+        client = self._oauth_clients.get(provider)
+        if client is None:
+            raise OAuthProviderNotConfiguredError()
+        return client.authorize_url(state)
+
+    async def login_with_oauth(
+        self,
+        provider: OAuthProvider,
+        code: str,
+        *,
+        user_agent: str | None,
+        ip_address: str | None,
+    ) -> LoginResult:
+        """Troca o `code` pelo profile do provedor e resolve o `User` correspondente
+        (RF social-auth, `docs/09-decision-log.md` ADR-061):
+
+        1. Identidade já vinculada (`oauth_identities`) -> é o mesmo usuário de sempre.
+        2. Nenhuma identidade, mas já existe conta *sem senha* com este e-mail (criada
+           por outro provedor) -> vincula a identidade a essa conta em vez de duplicar
+           (RF "evitar contas duplicadas") — as duas pontas tiveram o e-mail
+           verificado por um provedor.
+        3. Já existe conta *com senha* com este e-mail -> recusa
+           (`OAuthEmailAlreadyRegisteredError`, ADR-066): o cadastro por senha não
+           verifica e-mail, então vincular entregaria a conta a quem criou a senha
+           (pre-account takeover).
+        4. Nenhuma conta -> cria conta nova, sem senha (`password_hash=None`).
+        """
+        client = self._oauth_clients.get(provider)
+        if client is None:
+            raise OAuthProviderNotConfiguredError()
+
+        profile = await client.fetch_profile(code)
+        user = await self._resolve_oauth_user(profile)
+
+        session = await self._session_repo.create_session(
+            Session(user_id=user.id, user_agent=user_agent, ip_address=ip_address)
+        )
+        refresh_token_plain, _ = await self._issue_refresh_token(session.id)
+        access_token = create_access_token(user.id, self._settings)
+
+        return LoginResult(user=user, access_token=access_token, refresh_token=refresh_token_plain)
+
+    async def _resolve_oauth_user(self, profile: OAuthProfile) -> User:
+        identity = await self._oauth_identity_repo.get_by_provider_identity(
+            profile.provider.value, profile.provider_user_id
+        )
+        if identity is not None:
+            user = await self._user_repo.get_by_id(identity.user_id)
+            if user is not None:
+                return user
+            # Conta desativada/soft-deleted entre o vínculo original e este login —
+            # trata como identidade nova de novo (mesmo e-mail pode ter sido
+            # liberado), não como erro.
+
+        user = await self._user_repo.get_by_email(profile.email)
+        if user is None:
+            user = await self._user_repo.create(
+                User(name=profile.name, email=profile.email, avatar_url=profile.avatar_url)
+            )
+        elif user.password_hash is not None:
+            raise OAuthEmailAlreadyRegisteredError()
+        elif user.avatar_url is None and profile.avatar_url is not None:
+            # "Não sobrescrever informações existentes sem necessidade" — só completa
+            # o que faltava, nunca substitui um avatar que a pessoa já tinha.
+            user.avatar_url = profile.avatar_url
+
+        await self._oauth_identity_repo.create(
+            OAuthIdentity(
+                user_id=user.id,
+                provider=profile.provider.value,
+                provider_user_id=profile.provider_user_id,
+            )
+        )
+        return user
+
     async def refresh(self, refresh_token_plain: str) -> RefreshResult:
         token_hash = hash_refresh_token(refresh_token_plain)
         token = await self._session_repo.get_refresh_token_by_hash(token_hash)
@@ -105,6 +196,17 @@ class AuthService:
             raise InvalidRefreshTokenError()
 
         if token.revoked_at is not None:
+            grace = timedelta(seconds=self._settings.refresh_token_reuse_grace_seconds)
+            within_grace = (
+                token.replaced_by_id is not None and datetime.now(UTC) - token.revoked_at < grace
+            )
+            if within_grace:
+                # Corrida entre duas requisições quase simultâneas com o mesmo cookie
+                # (ex.: duas abas renovando ao mesmo tempo) — este token já foi
+                # rotacionado há poucos segundos por uma requisição legítima, não é
+                # reuso malicioso. Falha só esta requisição; a sessão e o token
+                # vencedor da corrida continuam válidos (docs/09-decision-log.md ADR-062).
+                raise InvalidRefreshTokenError()
             # Token já revogado (rotacionado ou sessão deslogada) sendo reapresentado
             # — possível roubo. Revoga toda a sessão como precaução (docs/07-security.md §2).
             logger.warning("refresh_token_reuse_detected", session_id=str(token.session_id))

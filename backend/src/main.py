@@ -31,8 +31,10 @@ from src.features.comments.router import router as comments_router
 from src.features.issues.router import router as issues_router
 from src.features.labels.router import router as labels_router
 from src.features.notifications.router import router as notifications_router
+from src.features.permissions.router import router as permission_overrides_router
 from src.features.projects.router import router as projects_router
 from src.features.users.router import router as users_router
+from src.features.workflow_states.router import router as workflow_states_router
 from src.features.workspaces.router import invitations_router
 from src.features.workspaces.router import router as workspaces_router
 
@@ -70,6 +72,7 @@ app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
+    allow_origin_regex=settings.cors_origin_regex,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "X-CSRF-Token"],
@@ -90,6 +93,8 @@ api_router.include_router(workspaces_router)
 api_router.include_router(invitations_router)
 api_router.include_router(projects_router)
 api_router.include_router(issues_router)
+api_router.include_router(workflow_states_router)
+api_router.include_router(permission_overrides_router)
 api_router.include_router(labels_router)
 api_router.include_router(comments_router)
 api_router.include_router(attachments_router)

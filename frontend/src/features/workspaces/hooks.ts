@@ -69,6 +69,18 @@ export function useInvitations(workspaceId: string, params: InvitationListParams
   });
 }
 
+export function useCreateWorkspace() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (name: string) => api.createWorkspace(name),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["users", "me"] });
+      toast.success("Workspace criado.");
+    },
+    onError: (error) => toast.error(getApiErrorMessage(error)),
+  });
+}
+
 export function useUpdateWorkspace(workspaceId: string) {
   const queryClient = useQueryClient();
   return useMutation({
@@ -170,6 +182,28 @@ export function useCancelInvitation(workspaceId: string) {
       toast.success("Convite cancelado.");
     },
     onError: (error) => toast.error(getApiErrorMessage(error)),
+  });
+}
+
+export function useResendInvitation(workspaceId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (invitationId: string) => api.resendInvitation(workspaceId, invitationId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["workspaces", workspaceId, "invitations"] });
+    },
+    onError: (error) => toast.error(getApiErrorMessage(error)),
+  });
+}
+
+/** Endpoint público — funciona sem sessão, então sem `enabled: accessToken`
+ * como o resto dos hooks deste arquivo (esta é a exceção deliberada). */
+export function useInvitationPreview(token: string | undefined) {
+  return useQuery({
+    queryKey: ["invitations", "preview", token],
+    queryFn: () => api.getInvitationPreview(token as string),
+    enabled: Boolean(token),
+    retry: false,
   });
 }
 

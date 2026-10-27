@@ -2,7 +2,9 @@ import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime
 
-from src.features.auth.models import PasswordResetToken, RefreshToken, Session, User
+from src.features.auth.exceptions import OAuthProviderError
+from src.features.auth.models import OAuthIdentity, PasswordResetToken, RefreshToken, Session, User
+from src.features.auth.oauth_providers import OAuthProfile, OAuthProvider
 from uuid6 import uuid7
 
 
@@ -112,6 +114,50 @@ class FakePasswordResetRepository:
         for token in self.tokens.values():
             if token.user_id == user_id and token.used_at is None:
                 token.used_at = now
+
+
+class FakeOAuthIdentityRepository:
+    def __init__(self) -> None:
+        self.identities: dict[uuid.UUID, OAuthIdentity] = {}
+
+    async def create(self, identity: OAuthIdentity) -> OAuthIdentity:
+        if identity.id is None:
+            identity.id = uuid7()
+        self.identities[identity.id] = identity
+        return identity
+
+    async def get_by_provider_identity(
+        self, provider: str, provider_user_id: str
+    ) -> OAuthIdentity | None:
+        for identity in self.identities.values():
+            if identity.provider == provider and identity.provider_user_id == provider_user_id:
+                return identity
+        return None
+
+
+class FakeOAuthClient:
+    """Substitui `GoogleOAuthClient`/`GitHubOAuthClient` (que fariam chamadas HTTP
+    reais) — devolve um `OAuthProfile` fixo por `code`, ou levanta se o `code` não
+    foi registrado (simula `fetch_profile` recusando um `code` inválido/expirado).
+    """
+
+    def __init__(self, provider: OAuthProvider) -> None:
+        self._provider = provider
+        self.profiles_by_code: dict[str, OAuthProfile] = {}
+        self.authorize_url_calls: list[str] = []
+
+    def register_profile(self, code: str, profile: OAuthProfile) -> None:
+        self.profiles_by_code[code] = profile
+
+    def authorize_url(self, state: str) -> str:
+        self.authorize_url_calls.append(state)
+        return f"https://provider.example/{self._provider.value}/authorize?state={state}"
+
+    async def fetch_profile(self, code: str) -> OAuthProfile:
+        profile = self.profiles_by_code.get(code)
+        if profile is None:
+            raise OAuthProviderError()
+        return profile
 
 
 class FakeMailSender:

@@ -24,6 +24,13 @@ export const authHandlers = [
 
   http.post(`${API_BASE_URL}/auth/logout`, () => new HttpResponse(null, { status: 204 })),
 
+  // Sem handler default para `/auth/refresh` de propósito: `AuthBootstrap`
+  // chama isso incondicionalmente no mount de `App` (`onUnhandledRequest:
+  // "error"`, `tests/setup.ts`) — um default aqui autenticaria silenciosamente
+  // todo teste que renderiza `<App />`/`RequireAuth` sem passar por login.
+  // Testes que precisam de um refresh bem-sucedido (`OAuthCallbackPage.test.tsx`)
+  // sobrescrevem localmente via `server.use(...)`.
+
   http.post(
     `${API_BASE_URL}/auth/password-reset/request`,
     () => new HttpResponse(null, { status: 204 }),

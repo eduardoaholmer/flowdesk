@@ -53,6 +53,17 @@ export interface InvitationCreatedResult extends Invitation {
   token: string;
 }
 
+/** `GET /invitations/{token}` — endpoint público (sem autenticação), só o
+ * necessário para a tela de aceite mostrar quem convidou/para qual workspace/
+ * papel antes do usuário logar ou criar conta. */
+export interface InvitationPreview {
+  email: string;
+  role: WorkspaceRole;
+  status: InvitationStatus;
+  workspace_name: string;
+  invited_by_name: string;
+}
+
 export interface InvitationCreateInput {
   email: string;
   role: Exclude<WorkspaceRole, "OWNER">;

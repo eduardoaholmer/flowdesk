@@ -58,6 +58,22 @@ async def _create_issue(
     return data
 
 
+async def _workflow_state_id(
+    client: AsyncClient, workspace_id: str, token: str, *, name: str | None = None
+) -> str:
+    """Sem `name`: devolve o status default do workspace (seedado na criação,
+    Sprint 9.2/ADR-056). Com `name`: devolve o status daquele nome."""
+    response = await client.get(
+        f"/api/v1/workspaces/{workspace_id}/workflow-states", headers=_auth(token)
+    )
+    states: list[dict[str, object]] = response.json()["data"]
+    if name is not None:
+        match = next(s for s in states if s["name"] == name)
+    else:
+        match = next(s for s in states if s["is_default"])
+    return str(match["id"])
+
+
 async def test_create_issue_generates_identifier_and_records_creator(client: AsyncClient) -> None:
     _, owner_token = await _register_and_login(client)
     workspace_id = await _create_workspace(client, owner_token)
@@ -70,10 +86,11 @@ async def test_create_issue_generates_identifier_and_records_creator(client: Asy
 
     assert response.status_code == 201
     body = response.json()["data"]
+    default_status_id = await _workflow_state_id(client, workspace_id, owner_token)
     assert body["title"] == "Corrigir bug de login"
     assert body["identifier"] == "FD-1"
     assert body["number"] == 1
-    assert body["status"] == "BACKLOG"
+    assert body["status_id"] == default_status_id
     assert body["priority"] == "HIGH"
     assert body["version"] == 1
     assert body["workspace_id"] == workspace_id
@@ -99,6 +116,58 @@ async def test_create_issue_requires_authentication(client: AsyncClient) -> None
     )
 
     assert response.status_code == 401
+
+
+async def _create_label(client: AsyncClient, workspace_id: str, token: str, name: str) -> str:
+    response = await client.post(
+        f"/api/v1/workspaces/{workspace_id}/labels",
+        json={"name": name, "color": "#4F46E5"},
+        headers=_auth(token),
+    )
+    label_id: str = response.json()["data"]["id"]
+    return label_id
+
+
+async def test_create_issue_with_label_ids_applies_labels(client: AsyncClient) -> None:
+    _, owner_token = await _register_and_login(client)
+    workspace_id = await _create_workspace(client, owner_token)
+    bug_id = await _create_label(client, workspace_id, owner_token, "bug")
+    ui_id = await _create_label(client, workspace_id, owner_token, "ui")
+
+    response = await client.post(
+        f"/api/v1/workspaces/{workspace_id}/issues",
+        json={"title": "Issue", "label_ids": [bug_id, ui_id]},
+        headers=_auth(owner_token),
+    )
+
+    assert response.status_code == 201
+    issue_id = response.json()["data"]["id"]
+    labels = await client.get(
+        f"/api/v1/workspaces/{workspace_id}/issues/{issue_id}/labels",
+        headers=_auth(owner_token),
+    )
+    assert {label["id"] for label in labels.json()["data"]} == {bug_id, ui_id}
+
+
+async def test_create_issue_rejects_label_from_another_workspace(client: AsyncClient) -> None:
+    _, owner_token = await _register_and_login(client)
+    workspace_id = await _create_workspace(client, owner_token)
+    _, other_owner_token = await _register_and_login(client)
+    other_workspace_id = await _create_workspace(client, other_owner_token)
+    foreign_label_id = await _create_label(client, other_workspace_id, other_owner_token, "bug")
+
+    response = await client.post(
+        f"/api/v1/workspaces/{workspace_id}/issues",
+        json={"title": "Issue", "label_ids": [foreign_label_id]},
+        headers=_auth(owner_token),
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "label_not_found"
+    issues = await client.get(
+        f"/api/v1/workspaces/{workspace_id}/issues", headers=_auth(owner_token)
+    )
+    assert issues.json()["meta"]["total"] == 0
 
 
 async def test_create_issue_rejects_project_from_another_workspace(client: AsyncClient) -> None:
@@ -149,12 +218,15 @@ async def test_list_issues_paginates_and_returns_only_workspace_scoped(client: A
 async def test_list_issues_filters_by_status_priority_and_creator(client: AsyncClient) -> None:
     _, owner_token = await _register_and_login(client)
     workspace_id = await _create_workspace(client, owner_token)
-    todo = await _create_issue(client, workspace_id, owner_token, title="A fazer", status="TODO")
+    todo_status_id = await _workflow_state_id(client, workspace_id, owner_token, name="Todo")
+    todo = await _create_issue(
+        client, workspace_id, owner_token, title="A fazer", status_id=todo_status_id
+    )
     await _create_issue(client, workspace_id, owner_token, title="Urgente", priority="URGENT")
 
     status_response = await client.get(
         f"/api/v1/workspaces/{workspace_id}/issues",
-        params={"status": "TODO"},
+        params={"status_id": todo_status_id},
         headers=_auth(owner_token),
     )
     priority_response = await client.get(
@@ -218,15 +290,16 @@ async def test_update_issue_changes_status_and_records_activity(client: AsyncCli
     _, owner_token = await _register_and_login(client)
     workspace_id = await _create_workspace(client, owner_token)
     issue = await _create_issue(client, workspace_id, owner_token)
+    in_progress_id = await _workflow_state_id(client, workspace_id, owner_token, name="In Progress")
 
     response = await client.patch(
         f"/api/v1/workspaces/{workspace_id}/issues/{issue['id']}",
-        json={"status": "IN_PROGRESS"},
+        json={"status_id": in_progress_id},
         headers=_auth(owner_token),
     )
 
     assert response.status_code == 200
-    assert response.json()["data"]["status"] == "IN_PROGRESS"
+    assert response.json()["data"]["status_id"] == in_progress_id
     assert response.json()["data"]["version"] == 2
 
     activity = await client.get(
@@ -236,6 +309,48 @@ async def test_update_issue_changes_status_and_records_activity(client: AsyncCli
     actions = [entry["action"] for entry in activity.json()["data"]]
     assert "issue.status_changed" in actions
     assert "issue.created" in actions
+
+
+async def test_update_issue_clears_due_date_when_sent_as_null(client: AsyncClient) -> None:
+    _, owner_token = await _register_and_login(client)
+    workspace_id = await _create_workspace(client, owner_token)
+    issue = await _create_issue(client, workspace_id, owner_token, due_date="2026-01-01")
+
+    response = await client.patch(
+        f"/api/v1/workspaces/{workspace_id}/issues/{issue['id']}",
+        json={"due_date": None},
+        headers=_auth(owner_token),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["data"]["due_date"] is None
+
+
+async def test_update_issue_rejects_due_date_outside_business_range(client: AsyncClient) -> None:
+    _, owner_token = await _register_and_login(client)
+    workspace_id = await _create_workspace(client, owner_token)
+    issue = await _create_issue(client, workspace_id, owner_token)
+
+    response = await client.patch(
+        f"/api/v1/workspaces/{workspace_id}/issues/{issue['id']}",
+        json={"due_date": "0002-01-01"},
+        headers=_auth(owner_token),
+    )
+
+    assert response.status_code == 422
+
+
+async def test_create_issue_rejects_due_date_outside_business_range(client: AsyncClient) -> None:
+    _, owner_token = await _register_and_login(client)
+    workspace_id = await _create_workspace(client, owner_token)
+
+    response = await client.post(
+        f"/api/v1/workspaces/{workspace_id}/issues",
+        json={"title": "Issue", "due_date": "0002-01-01"},
+        headers=_auth(owner_token),
+    )
+
+    assert response.status_code == 422
 
 
 async def test_update_issue_rejects_stale_if_match(client: AsyncClient) -> None:
@@ -338,3 +453,151 @@ async def test_multi_tenant_isolation_across_two_workspaces(client: AsyncClient)
     own_list = await client.get(f"/api/v1/workspaces/{workspace_b}/issues", headers=_auth(token_b))
     assert own_list.status_code == 200
     assert own_list.json()["meta"]["total"] == 0
+
+
+async def test_create_sub_issue_with_parent_id(client: AsyncClient) -> None:
+    _, owner_token = await _register_and_login(client)
+    workspace_id = await _create_workspace(client, owner_token)
+    parent = await _create_issue(client, workspace_id, owner_token, title="Épico")
+
+    response = await client.post(
+        f"/api/v1/workspaces/{workspace_id}/issues",
+        json={"title": "Sub-tarefa", "parent_id": parent["id"]},
+        headers=_auth(owner_token),
+    )
+
+    assert response.status_code == 201
+    assert response.json()["data"]["parent_id"] == parent["id"]
+
+
+async def test_create_rejects_parent_from_another_workspace(client: AsyncClient) -> None:
+    _, owner_token = await _register_and_login(client)
+    workspace_a = await _create_workspace(client, owner_token)
+    parent = await _create_issue(client, workspace_a, owner_token, title="Épico")
+    workspace_b = await _create_workspace(client, owner_token)
+
+    response = await client.post(
+        f"/api/v1/workspaces/{workspace_b}/issues",
+        json={"title": "Sub-tarefa", "parent_id": parent["id"]},
+        headers=_auth(owner_token),
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "issue_not_found"
+
+
+async def test_create_rejects_nesting_beyond_one_level(client: AsyncClient) -> None:
+    _, owner_token = await _register_and_login(client)
+    workspace_id = await _create_workspace(client, owner_token)
+    grandparent = await _create_issue(client, workspace_id, owner_token, title="Épico")
+    parent = await _create_issue(
+        client, workspace_id, owner_token, title="Filho", parent_id=grandparent["id"]
+    )
+
+    response = await client.post(
+        f"/api/v1/workspaces/{workspace_id}/issues",
+        json={"title": "Neto", "parent_id": parent["id"]},
+        headers=_auth(owner_token),
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "invalid_parent_issue"
+
+
+async def test_update_links_and_unlinks_parent(client: AsyncClient) -> None:
+    _, owner_token = await _register_and_login(client)
+    workspace_id = await _create_workspace(client, owner_token)
+    parent = await _create_issue(client, workspace_id, owner_token, title="Épico")
+    child = await _create_issue(client, workspace_id, owner_token, title="Solta")
+
+    link_response = await client.patch(
+        f"/api/v1/workspaces/{workspace_id}/issues/{child['id']}",
+        json={"parent_id": parent["id"]},
+        headers=_auth(owner_token),
+    )
+    assert link_response.status_code == 200
+    assert link_response.json()["data"]["parent_id"] == parent["id"]
+
+    unlink_response = await client.patch(
+        f"/api/v1/workspaces/{workspace_id}/issues/{child['id']}",
+        json={"parent_id": None},
+        headers=_auth(owner_token),
+    )
+    assert unlink_response.status_code == 200
+    assert unlink_response.json()["data"]["parent_id"] is None
+
+
+async def test_delete_blocks_when_issue_has_sub_issues(client: AsyncClient) -> None:
+    _, owner_token = await _register_and_login(client)
+    workspace_id = await _create_workspace(client, owner_token)
+    parent = await _create_issue(client, workspace_id, owner_token, title="Épico")
+    await _create_issue(client, workspace_id, owner_token, title="Filho", parent_id=parent["id"])
+
+    response = await client.delete(
+        f"/api/v1/workspaces/{workspace_id}/issues/{parent['id']}", headers=_auth(owner_token)
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "issue_has_subissues"
+
+
+async def test_list_issues_filters_by_parent_id(client: AsyncClient) -> None:
+    _, owner_token = await _register_and_login(client)
+    workspace_id = await _create_workspace(client, owner_token)
+    parent = await _create_issue(client, workspace_id, owner_token, title="Épico")
+    child = await _create_issue(
+        client, workspace_id, owner_token, title="Filho", parent_id=parent["id"]
+    )
+    await _create_issue(client, workspace_id, owner_token, title="Solta")
+
+    response = await client.get(
+        f"/api/v1/workspaces/{workspace_id}/issues",
+        params={"parent_id": parent["id"]},
+        headers=_auth(owner_token),
+    )
+
+    assert response.status_code == 200
+    assert [i["id"] for i in response.json()["data"]] == [child["id"]]
+
+
+async def _user_id(client: AsyncClient, token: str) -> str:
+    response = await client.get("/api/v1/users/me", headers=_auth(token))
+    user_id: str = response.json()["data"]["id"]
+    return user_id
+
+
+async def test_create_issue_with_assignee_outside_workspace_returns_422(
+    client: AsyncClient,
+) -> None:
+    _, owner_token = await _register_and_login(client)
+    workspace_id = await _create_workspace(client, owner_token)
+    _, outsider_token = await _register_and_login(client)
+    outsider_id = await _user_id(client, outsider_token)
+
+    response = await client.post(
+        f"/api/v1/workspaces/{workspace_id}/issues",
+        json={"title": "Spam", "assignee_id": outsider_id},
+        headers=_auth(owner_token),
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "issue_assignee_not_in_workspace"
+    notifications = await client.get("/api/v1/notifications", headers=_auth(outsider_token))
+    assert notifications.json()["meta"]["total"] == 0
+
+
+async def test_update_issue_with_null_assignee_unassigns(client: AsyncClient) -> None:
+    _, owner_token = await _register_and_login(client)
+    workspace_id = await _create_workspace(client, owner_token)
+    owner_id = await _user_id(client, owner_token)
+    issue = await _create_issue(client, workspace_id, owner_token, assignee_id=owner_id)
+    assert issue["assignee_id"] == owner_id
+
+    response = await client.patch(
+        f"/api/v1/workspaces/{workspace_id}/issues/{issue['id']}",
+        json={"assignee_id": None},
+        headers=_auth(owner_token),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["data"]["assignee_id"] is None

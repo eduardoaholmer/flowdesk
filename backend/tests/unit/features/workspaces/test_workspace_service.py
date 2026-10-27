@@ -4,6 +4,7 @@ import pytest
 from src.core.authorization import PermissionService
 from src.core.exceptions import PermissionDeniedError
 from src.core.security import CurrentUser
+from src.features.workflow_states.service import WorkflowStateService
 from src.features.workspaces.exceptions import (
     CannotLeaveAsSoleOwnerError,
     CannotManageOwnMembershipError,
@@ -16,6 +17,7 @@ from src.features.workspaces.models import WorkspaceMember, WorkspaceRole
 from src.features.workspaces.schemas import WorkspaceCreateRequest, WorkspaceUpdateRequest
 from src.features.workspaces.service import WorkspaceService
 
+from tests.unit.features.workflow_states.fakes import FakeWorkflowStateRepository
 from tests.unit.features.workspaces.fakes import FakeWorkspaceRepository
 
 # Autorização por papel (quem pode `PATCH`/`DELETE` um workspace) não é mais
@@ -36,7 +38,8 @@ def workspace_repo() -> FakeWorkspaceRepository:
 
 @pytest.fixture
 def service(workspace_repo: FakeWorkspaceRepository) -> WorkspaceService:
-    return WorkspaceService(workspace_repo, PermissionService())
+    workflow_state_service = WorkflowStateService(FakeWorkflowStateRepository())
+    return WorkspaceService(workspace_repo, PermissionService(), workflow_state_service)
 
 
 def _user(email: str = "ada@example.com") -> CurrentUser:

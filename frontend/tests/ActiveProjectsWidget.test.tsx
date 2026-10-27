@@ -30,6 +30,7 @@ const baseProject: Project = {
   workspace_id: "ws-1",
   name: "Ring Gate",
   slug: "ring-gate",
+  key: "RG",
   description: null,
   icon: null,
   color: null,
@@ -37,6 +38,9 @@ const baseProject: Project = {
   target_date: null,
   lead_id: null,
   created_by: "user-1",
+  member_ids: [],
+  issue_count: 0,
+  done_issue_count: 0,
   created_at: "2026-01-01T00:00:00Z",
   updated_at: "2026-01-01T00:00:00Z",
 };
