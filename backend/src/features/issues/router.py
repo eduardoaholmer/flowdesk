@@ -2,13 +2,13 @@ import uuid
 
 from fastapi import APIRouter, Depends, Header, Query, status
 
-from src.core.authorization import require_permission
+from src.core.authorization import WorkspaceContext, get_workspace_context, require_permission
 from src.core.dependencies import get_current_user
 from src.core.permissions import Permission
 from src.core.schemas import CollectionEnvelope, DataEnvelope, PaginationMeta
 from src.core.security import CurrentUser
 from src.features.issues.dependencies import get_issue_service
-from src.features.issues.models import IssuePriority, IssueStatus
+from src.features.issues.models import IssuePriority
 from src.features.issues.repository import IssueSort
 from src.features.issues.schemas import (
     IssueActivityLogResponse,
@@ -42,7 +42,8 @@ async def list_issues(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     project_id: uuid.UUID | None = Query(None),
-    status_filter: IssueStatus | None = Query(None, alias="status"),
+    parent_id: uuid.UUID | None = Query(None),
+    status_id: uuid.UUID | None = Query(None),
     priority: IssuePriority | None = Query(None),
     assignee_id: uuid.UUID | None = Query(None),
     creator_id: uuid.UUID | None = Query(None),
@@ -56,7 +57,8 @@ async def list_issues(
         page=page,
         per_page=per_page,
         project_id=project_id,
-        status=status_filter,
+        parent_id=parent_id,
+        status_id=status_id,
         priority=priority,
         assignee_id=assignee_id,
         creator_id=creator_id,
@@ -111,10 +113,11 @@ async def update_issue(
 async def delete_issue(
     workspace_id: uuid.UUID,
     issue_id: uuid.UUID,
-    acting_member: WorkspaceMember = Depends(require_permission(Permission.ISSUE_READ)),
+    _member: WorkspaceMember = Depends(require_permission(Permission.ISSUE_READ)),
+    acting: WorkspaceContext = Depends(get_workspace_context),
     service: IssueService = Depends(get_issue_service),
 ) -> None:
-    await service.delete(acting_member, workspace_id, issue_id)
+    await service.delete(acting, workspace_id, issue_id)
 
 
 @router.get("/{issue_id}/labels", response_model=DataEnvelope[list[LabelResponse]])

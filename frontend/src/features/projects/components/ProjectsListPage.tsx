@@ -3,14 +3,14 @@ import { useSearchParams } from "react-router-dom";
 
 import { ErrorState } from "@/shared/components/feedback/ErrorState";
 import { Pagination } from "@/shared/components/navigation/Pagination";
-import { ListSkeleton } from "@/shared/components/skeletons/ListSkeleton";
+import { CardSkeleton } from "@/shared/components/skeletons/CardSkeleton";
 import { useDebouncedValue } from "@/shared/hooks/useDebouncedValue";
 import { cn } from "@/shared/lib/utils";
 
 import { useProjects } from "../hooks";
 import type { ProjectStatus } from "../types";
 import { ProjectsEmptyState } from "./ProjectsEmptyState";
-import { ProjectsTable } from "./ProjectsTable";
+import { ProjectsGrid } from "./ProjectsGrid";
 import { ProjectsToolbar } from "./ProjectsToolbar";
 
 const PER_PAGE = 20;
@@ -77,12 +77,16 @@ export function ProjectsListPage({
       />
 
       {isLoading ? (
-        <ListSkeleton rows={5} />
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-3.5">
+          {Array.from({ length: PER_PAGE / 4 }).map((_, index) => (
+            <CardSkeleton key={index} />
+          ))}
+        </div>
       ) : isError ? (
         <ErrorState message="Não foi possível carregar os projetos." onRetry={() => refetch()} />
       ) : data && data.data.length > 0 ? (
         <div className={cn("flex flex-col gap-4", isPlaceholderData && "opacity-60")}>
-          <ProjectsTable
+          <ProjectsGrid
             workspaceId={workspaceId}
             workspaceSlug={workspaceSlug}
             projects={data.data}

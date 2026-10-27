@@ -1,16 +1,15 @@
-export type IssueStatus = "BACKLOG" | "TODO" | "IN_PROGRESS" | "IN_REVIEW" | "DONE" | "CANCELED";
-
 export type IssuePriority = "NO_PRIORITY" | "LOW" | "MEDIUM" | "HIGH" | "URGENT";
 
 export interface Issue {
   id: string;
   workspace_id: string;
   project_id: string | null;
+  parent_id: string | null;
   identifier: string;
   number: number;
   title: string;
   description: string | null;
-  status: IssueStatus;
+  status_id: string;
   priority: IssuePriority;
   assignee_id: string | null;
   creator_id: string;
@@ -37,9 +36,10 @@ export interface IssueListParams {
   page: number;
   per_page: number;
   q?: string;
-  status?: IssueStatus;
+  status_id?: string;
   priority?: IssuePriority;
   project_id?: string;
+  parent_id?: string;
   assignee_id?: string;
   creator_id?: string;
   sort?: IssueSort;
@@ -49,14 +49,30 @@ export interface IssueCreateInput {
   title: string;
   description?: string;
   project_id?: string;
-  status?: IssueStatus;
+  parent_id?: string | null;
+  status_id?: string;
   priority?: IssuePriority;
   assignee_id?: string;
   estimate?: number;
-  due_date?: string;
+  due_date?: string | null;
+  label_ids?: string[];
 }
 
-export type IssueUpdateInput = Partial<IssueCreateInput>;
+/**
+ * `null` limpa o campo; omitir (ou `undefined`, que some no JSON) preserva o
+ * valor atual — o backend distingue os dois casos via `model_fields_set`.
+ */
+export interface IssueUpdateInput {
+  title?: string;
+  description?: string | null;
+  project_id?: string | null;
+  parent_id?: string | null;
+  status_id?: string;
+  priority?: IssuePriority;
+  assignee_id?: string | null;
+  estimate?: number | null;
+  due_date?: string | null;
+}
 
 export interface IssueActivityLogEntry {
   id: string;

@@ -1,18 +1,9 @@
-import enum
 import uuid
 
 from sqlalchemy import ForeignKey, Index, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from src.db.base import Base, SoftDeleteMixin, TimestampMixin, UUIDPrimaryKeyMixin, domain_enum
-
-
-class WorkflowStateCategory(enum.StrEnum):
-    BACKLOG = "BACKLOG"
-    UNSTARTED = "UNSTARTED"
-    STARTED = "STARTED"
-    COMPLETED = "COMPLETED"
-    CANCELED = "CANCELED"
+from src.db.base import Base, SoftDeleteMixin, TimestampMixin, UUIDPrimaryKeyMixin
 
 
 class Team(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
@@ -25,7 +16,6 @@ class Team(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
     key: Mapped[str] = mapped_column(nullable=False)
 
     members: Mapped[list["TeamMember"]] = relationship(back_populates="team")
-    workflow_states: Mapped[list["WorkflowState"]] = relationship(back_populates="team")
     issue_counter: Mapped["TeamIssueCounter"] = relationship(back_populates="team")
 
 
@@ -61,47 +51,6 @@ Index(
     TeamMember.user_id,
     unique=True,
     postgresql_where=text("deleted_at IS NULL"),
-)
-
-
-class WorkflowState(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
-    __tablename__ = "workflow_states"
-
-    team_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("teams.id", ondelete="RESTRICT"), nullable=False
-    )
-    workspace_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("workspaces.id", ondelete="RESTRICT"), nullable=False
-    )
-    name: Mapped[str] = mapped_column(nullable=False)
-    category: Mapped[WorkflowStateCategory] = mapped_column(
-        domain_enum(WorkflowStateCategory), nullable=False
-    )
-    position: Mapped[int] = mapped_column(nullable=False)
-    is_default: Mapped[bool] = mapped_column(nullable=False, default=False)
-
-    team: Mapped[Team] = relationship(back_populates="workflow_states")
-
-
-Index(
-    "uq_workflow_states_team_id_name_active",
-    WorkflowState.team_id,
-    WorkflowState.name,
-    unique=True,
-    postgresql_where=text("deleted_at IS NULL"),
-)
-Index(
-    "uq_workflow_states_team_id_position_active",
-    WorkflowState.team_id,
-    WorkflowState.position,
-    unique=True,
-    postgresql_where=text("deleted_at IS NULL"),
-)
-Index(
-    "uq_workflow_states_team_id_default_active",
-    WorkflowState.team_id,
-    unique=True,
-    postgresql_where=text("is_default AND deleted_at IS NULL"),
 )
 
 

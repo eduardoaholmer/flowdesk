@@ -53,6 +53,30 @@ describe("WorkspaceInvitationsSettings", () => {
     expect(await screen.findByText("new@example.com")).toBeInTheDocument();
   });
 
+  it("resends an invitation and shows the fresh link", async () => {
+    server.use(
+      http.get(`${API_BASE_URL}/workspaces/:workspaceId/invitations`, () =>
+        HttpResponse.json({
+          data: [buildInvitation({ id: "inv-1" })],
+          meta: buildPaginationMeta(1, 20, 1),
+        }),
+      ),
+      http.post(`${API_BASE_URL}/workspaces/:workspaceId/invitations/:invitationId/resend`, () =>
+        HttpResponse.json({
+          data: { ...buildInvitation({ id: "inv-1" }), token: "fresh-token" },
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+
+    renderSettings();
+    await screen.findByText("new@example.com");
+    await user.click(screen.getByRole("button", { name: "Reenviar" }));
+
+    expect(await screen.findByText("Convite pronto")).toBeInTheDocument();
+    expect(screen.getByDisplayValue(/fresh-token/)).toBeInTheDocument();
+  });
+
   it("shows pagination and moves to the next page on click", async () => {
     server.use(
       http.get(`${API_BASE_URL}/workspaces/:workspaceId/invitations`, ({ request }) => {

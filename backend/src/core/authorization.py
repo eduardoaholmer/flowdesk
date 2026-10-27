@@ -20,12 +20,14 @@ exatamente o tipo de reimplementação que esta sprint elimina. Ver ADR-010 em
 `docs/09-decision-log.md`. Para evitar import circular com
 `features/workspaces/dependencies.py` (que importa deste módulo para montar
 `WorkspaceService`), este arquivo constrói `WorkspaceRepository` diretamente a
-partir da sessão em vez de depender da factory `get_workspace_repository`.
+partir da sessão em vez de depender da factory `get_workspace_repository` —
+mesmo padrão aplicado a `features/permissions/repository.py` (Sprint 9.3,
+ADR-058) para resolver os overrides de permissão do chamador.
 """
 
 import uuid
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -36,25 +38,41 @@ from src.core.exceptions import PermissionDeniedError
 from src.core.logging import get_logger
 from src.core.permissions import Permission
 from src.core.security import CurrentUser
-from src.features.workspaces.exceptions import CannotManageOwnerError, WorkspaceNotFoundError
+from src.features.permissions.repository import PermissionOverrideRepository
+from src.features.workspaces.exceptions import (
+    CannotGrantRoleAboveOwnError,
+    CannotManageOwnerError,
+    WorkspaceNotFoundError,
+)
 from src.features.workspaces.models import Workspace, WorkspaceMember, WorkspaceRole
 from src.features.workspaces.repository import WorkspaceRepository, WorkspaceRepositoryProtocol
 
 logger = get_logger(__name__)
 
+# Permissões exclusivas do OWNER, nunca alcançáveis por override (Sprint 9.3,
+# ADR-058) — as duas ações irreversíveis/de posse do domínio (excluir/transferir
+# o workspace) mais a própria capacidade de gerenciar overrides (evita um ADMIN
+# se auto-conceder qualquer uma das duas primeiras via toggle).
+LOCKED_PERMISSIONS: frozenset[Permission] = frozenset(
+    {
+        Permission.WORKSPACE_DELETE,
+        Permission.WORKSPACE_TRANSFER_OWNERSHIP,
+        Permission.WORKSPACE_MANAGE_PERMISSIONS,
+    }
+)
+
 # Matriz de permissões por papel — a fonte de verdade é esta constante, a
 # documentação em `docs/07-security.md` §8 é a sua descrição legível para
-# humanos (divergência entre as duas é bug, nunca o contrário).
+# humanos (divergência entre as duas é bug, nunca o contrário). É o *default*
+# por papel; um workspace pode desviar disso por permissão via
+# `PermissionOverride` (Sprint 9.3) — ver `PermissionService.can` abaixo.
 #
 # OWNER tem toda permissão que existe hoje ou vier a existir (`frozenset(Permission)`
 # reavalia o enum inteiro, então uma permissão nova automaticamente cai aqui sem
-# exigir edição desta linha). ADMIN tem tudo exceto excluir o workspace e
-# transferir a propriedade — as duas únicas ações irreversíveis/de posse do
-# domínio, reservadas ao dono.
+# exigir edição desta linha). ADMIN tem tudo exceto `LOCKED_PERMISSIONS`.
 ROLE_PERMISSIONS: dict[WorkspaceRole, frozenset[Permission]] = {
     WorkspaceRole.OWNER: frozenset(Permission),
-    WorkspaceRole.ADMIN: frozenset(Permission)
-    - {Permission.WORKSPACE_DELETE, Permission.WORKSPACE_TRANSFER_OWNERSHIP},
+    WorkspaceRole.ADMIN: frozenset(Permission) - LOCKED_PERMISSIONS,
     WorkspaceRole.MEMBER: frozenset(
         {
             Permission.WORKSPACE_VIEW,
@@ -67,6 +85,7 @@ ROLE_PERMISSIONS: dict[WorkspaceRole, frozenset[Permission]] = {
             Permission.COMMENT_CREATE,
             Permission.LABEL_CREATE,
             Permission.LABEL_READ,
+            Permission.WORKFLOW_STATE_READ,
             Permission.ATTACHMENT_CREATE,
         }
     ),
@@ -77,9 +96,20 @@ ROLE_PERMISSIONS: dict[WorkspaceRole, frozenset[Permission]] = {
             Permission.ISSUE_READ,
             Permission.COMMENT_CREATE,
             Permission.LABEL_READ,
+            Permission.WORKFLOW_STATE_READ,
             Permission.ATTACHMENT_CREATE,
         }
     ),
+}
+
+# Hierarquia dos papéis, usada só para "não conceder acima do próprio papel"
+# (`PermissionService.can_grant_role`) — a matriz acima continua sendo a única
+# fonte do que cada papel pode fazer.
+_ROLE_RANK: dict[WorkspaceRole, int] = {
+    WorkspaceRole.GUEST: 0,
+    WorkspaceRole.MEMBER: 1,
+    WorkspaceRole.ADMIN: 2,
+    WorkspaceRole.OWNER: 3,
 }
 
 # Permissões concedidas a QUALQUER papel quando o chamador é o dono do recurso
@@ -97,6 +127,26 @@ OWNERSHIP_OVERRIDE_PERMISSIONS: frozenset[Permission] = frozenset(
 )
 
 
+@dataclass(frozen=True)
+class WorkspaceContext:
+    """Resultado da etapa "Workspace Context" do fluxo de autorização —
+    confirma que o workspace existe e que o chamador é membro dele antes de
+    qualquer permissão específica ser avaliada. Não-membro e workspace
+    inexistente colapsam no mesmo `WorkspaceNotFoundError` (404), mesmo
+    racional anti-enumeration já usado em toda a feature de workspaces
+    (`docs/07-security.md` §9.1).
+
+    `granted_overrides`/`revoked_overrides` (Sprint 9.3, ADR-058): os
+    `PermissionOverride` do workspace já resolvidos para `member.role` — vazios
+    (`frozenset()`) no caso comum de nenhum override configurado.
+    """
+
+    workspace: Workspace
+    member: WorkspaceMember
+    granted_overrides: frozenset[Permission] = field(default_factory=frozenset)
+    revoked_overrides: frozenset[Permission] = field(default_factory=frozenset)
+
+
 class PermissionService:
     """Único ponto de decisão de autorização do FlowDesk.
 
@@ -111,8 +161,19 @@ class PermissionService:
         member: WorkspaceMember,
         permission: Permission,
         resource_owner_id: uuid.UUID | None = None,
+        granted_overrides: frozenset[Permission] = frozenset(),
+        revoked_overrides: frozenset[Permission] = frozenset(),
     ) -> bool:
-        if permission in ROLE_PERMISSIONS[member.role]:
+        """`granted_overrides`/`revoked_overrides` (Sprint 9.3, ADR-058) — o
+        conjunto de `PermissionOverride` já resolvido para `member.role` neste
+        workspace (via `WorkspaceContext`). Uma permissão revogada nunca cai no
+        fallback de posse abaixo: se o workspace desligou `comment.delete` para
+        `MEMBER`, a intenção é remover a ação por completo, inclusive sobre o
+        próprio recurso — não apenas sobre o de terceiros.
+        """
+        if permission in revoked_overrides:
+            return False
+        if permission in granted_overrides or permission in ROLE_PERMISSIONS[member.role]:
             return True
         return (
             permission in OWNERSHIP_OVERRIDE_PERMISSIONS
@@ -126,8 +187,16 @@ class PermissionService:
         member: WorkspaceMember,
         permission: Permission,
         resource_owner_id: uuid.UUID | None = None,
+        granted_overrides: frozenset[Permission] = frozenset(),
+        revoked_overrides: frozenset[Permission] = frozenset(),
     ) -> None:
-        if self.can(member=member, permission=permission, resource_owner_id=resource_owner_id):
+        if self.can(
+            member=member,
+            permission=permission,
+            resource_owner_id=resource_owner_id,
+            granted_overrides=granted_overrides,
+            revoked_overrides=revoked_overrides,
+        ):
             return
         logger.warning(
             "permission_denied",
@@ -137,6 +206,27 @@ class PermissionService:
             permission=permission.value,
         )
         raise PermissionDeniedError()
+
+    def require_in_context(
+        self,
+        *,
+        context: WorkspaceContext,
+        permission: Permission,
+        resource_owner_id: uuid.UUID | None = None,
+    ) -> None:
+        """Forma preferida de checar permissão a partir de um `WorkspaceContext`:
+        repassa os overrides do workspace junto com a membership. Checagens
+        contextuais nos services (posse sobre issue/comentário/anexo) chamando
+        `require(member=...)` sem os overrides ignoravam silenciosamente uma
+        permissão revogada ou concedida pelo OWNER (ADR-065).
+        """
+        self.require(
+            member=context.member,
+            permission=permission,
+            resource_owner_id=resource_owner_id,
+            granted_overrides=context.granted_overrides,
+            revoked_overrides=context.revoked_overrides,
+        )
 
     def can_manage_member(self, *, actor_role: WorkspaceRole, target_role: WorkspaceRole) -> bool:
         """Regra contextual de `docs/07-security.md` §8 ("Alterar papel de
@@ -149,6 +239,22 @@ class PermissionService:
         if actor_role == WorkspaceRole.ADMIN:
             return target_role != WorkspaceRole.OWNER
         return False
+
+    def can_grant_role(self, *, actor_role: WorkspaceRole, target_role: WorkspaceRole) -> bool:
+        return _ROLE_RANK[target_role] <= _ROLE_RANK[actor_role]
+
+    def require_can_grant_role(
+        self, *, actor_role: WorkspaceRole, target_role: WorkspaceRole
+    ) -> None:
+        if self.can_grant_role(actor_role=actor_role, target_role=target_role):
+            return
+        logger.warning(
+            "permission_denied",
+            reason="cannot_grant_role_above_own",
+            actor_role=actor_role.value,
+            target_role=target_role.value,
+        )
+        raise CannotGrantRoleAboveOwnError()
 
     def require_can_manage_member(
         self, *, actor_role: WorkspaceRole, target_role: WorkspaceRole
@@ -168,20 +274,6 @@ def get_permission_service() -> PermissionService:
     return PermissionService()
 
 
-@dataclass(frozen=True)
-class WorkspaceContext:
-    """Resultado da etapa "Workspace Context" do fluxo de autorização —
-    confirma que o workspace existe e que o chamador é membro dele antes de
-    qualquer permissão específica ser avaliada. Não-membro e workspace
-    inexistente colapsam no mesmo `WorkspaceNotFoundError` (404), mesmo
-    racional anti-enumeration já usado em toda a feature de workspaces
-    (`docs/07-security.md` §9.1).
-    """
-
-    workspace: Workspace
-    member: WorkspaceMember
-
-
 async def get_workspace_context(
     workspace_id: uuid.UUID,
     current_user: CurrentUser = Depends(get_current_user),
@@ -197,7 +289,12 @@ async def get_workspace_context(
     if member is None:
         raise WorkspaceNotFoundError()
 
-    return WorkspaceContext(workspace=workspace, member=member)
+    override_repo = PermissionOverrideRepository(session)
+    granted, revoked = await override_repo.get_role_overrides(workspace_id, member.role)
+
+    return WorkspaceContext(
+        workspace=workspace, member=member, granted_overrides=granted, revoked_overrides=revoked
+    )
 
 
 def require_permission(permission: Permission) -> Callable[..., Awaitable[WorkspaceMember]]:
@@ -216,7 +313,7 @@ def require_permission(permission: Permission) -> Callable[..., Awaitable[Worksp
         context: WorkspaceContext = Depends(get_workspace_context),
         permission_service: PermissionService = Depends(get_permission_service),
     ) -> WorkspaceMember:
-        permission_service.require(member=context.member, permission=permission)
+        permission_service.require_in_context(context=context, permission=permission)
         return context.member
 
     return _require_permission

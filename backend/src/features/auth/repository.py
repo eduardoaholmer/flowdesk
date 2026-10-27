@@ -7,7 +7,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from src.features.auth.models import PasswordResetToken, RefreshToken, Session, User
+from src.features.auth.models import OAuthIdentity, PasswordResetToken, RefreshToken, Session, User
 
 
 class UserRepositoryProtocol(Protocol):
@@ -116,6 +116,37 @@ class SessionRepository:
             .where(RefreshToken.id == token_id)
             .values(revoked_at=datetime.now(UTC), replaced_by_id=replaced_by_id)
         )
+
+
+class OAuthIdentityRepositoryProtocol(Protocol):
+    async def create(self, identity: OAuthIdentity) -> OAuthIdentity: ...
+    async def get_by_provider_identity(
+        self, provider: str, provider_user_id: str
+    ) -> OAuthIdentity | None: ...
+
+
+class OAuthIdentityRepository:
+    """Agregado próprio, não colunas de `User` — mesmo racional de
+    `PasswordResetRepository` (CLAUDE.md §6): um usuário pode ter mais de uma
+    identidade social vinculada."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def create(self, identity: OAuthIdentity) -> OAuthIdentity:
+        self._session.add(identity)
+        await self._session.flush()
+        return identity
+
+    async def get_by_provider_identity(
+        self, provider: str, provider_user_id: str
+    ) -> OAuthIdentity | None:
+        stmt = select(OAuthIdentity).where(
+            OAuthIdentity.provider == provider,
+            OAuthIdentity.provider_user_id == provider_user_id,
+        )
+        result: OAuthIdentity | None = await self._session.scalar(stmt)
+        return result
 
 
 class PasswordResetRepositoryProtocol(Protocol):

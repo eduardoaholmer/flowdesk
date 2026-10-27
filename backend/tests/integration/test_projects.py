@@ -2,10 +2,12 @@ import pytest
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.features.auth.models import User
-from src.features.issues.models import Issue, IssueStatus
+from src.features.issues.models import Issue
 from src.features.issues.repository import IssueRepository
 from src.features.projects.models import Project, ProjectMember
 from src.features.projects.repository import ProjectRepository
+from src.features.workflow_states.models import WorkflowState, WorkflowStateCategory
+from src.features.workflow_states.repository import WorkflowStateRepository
 from src.features.workspaces.models import Workspace
 from tests.integration.conftest import unique_suffix
 
@@ -89,8 +91,28 @@ async def test_issue_counts_aggregates_total_and_done(
     workspace: Workspace,
     user: User,
 ) -> None:
+    workflow_state_repo = WorkflowStateRepository(db_session)
+    todo = await workflow_state_repo.create(
+        WorkflowState(
+            workspace_id=workspace.id,
+            name="Todo",
+            category=WorkflowStateCategory.UNSTARTED,
+            position=0,
+            is_default=True,
+        )
+    )
+    done = await workflow_state_repo.create(
+        WorkflowState(
+            workspace_id=workspace.id,
+            name="Done",
+            category=WorkflowStateCategory.COMPLETED,
+            position=1,
+            is_default=False,
+        )
+    )
+
     project = await _make_project(project_repo, workspace, user, key="ABC", name="Alpha")
-    for status in (IssueStatus.TODO, IssueStatus.DONE, IssueStatus.DONE):
+    for status_id in (todo.id, done.id, done.id):
         number = await issue_repo.next_number(workspace.id)
         await issue_repo.create(
             Issue(
@@ -98,7 +120,7 @@ async def test_issue_counts_aggregates_total_and_done(
                 project_id=project.id,
                 number=number,
                 title="t",
-                status=status,
+                status_id=status_id,
                 creator_id=user.id,
             )
         )
@@ -110,7 +132,7 @@ async def test_issue_counts_aggregates_total_and_done(
             project_id=project.id,
             number=number,
             title="t",
-            status=IssueStatus.TODO,
+            status_id=todo.id,
             creator_id=user.id,
         )
     )

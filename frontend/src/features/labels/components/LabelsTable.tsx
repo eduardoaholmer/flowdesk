@@ -19,6 +19,7 @@ export function LabelsTable({ workspaceId, labels }: { workspaceId: string; labe
           <TableRow>
             <TableHead>Label</TableHead>
             <TableHead>Descrição</TableHead>
+            <TableHead className="w-28 text-right">Uso</TableHead>
             <TableHead className="w-24 text-right">Ações</TableHead>
           </TableRow>
         </TableHeader>
@@ -30,6 +31,9 @@ export function LabelsTable({ workspaceId, labels }: { workspaceId: string; labe
               </TableCell>
               <TableCell className="max-w-md truncate text-muted-foreground">
                 {label.description || "—"}
+              </TableCell>
+              <TableCell className="text-right text-muted-foreground">
+                {label.issue_count} {label.issue_count === 1 ? "issue" : "issues"}
               </TableCell>
               <TableCell>
                 <div className="flex justify-end">

@@ -4,12 +4,14 @@ import { useSearchParams } from "react-router-dom";
 import { ErrorState } from "@/shared/components/feedback/ErrorState";
 import { Pagination } from "@/shared/components/navigation/Pagination";
 import { ListSkeleton } from "@/shared/components/skeletons/ListSkeleton";
+import { Button } from "@/shared/components/ui/button";
 import { useDebouncedValue } from "@/shared/hooks/useDebouncedValue";
+import { useUiStore } from "@/shared/stores/uiStore";
 import { cn } from "@/shared/lib/utils";
 
 import { useIssues } from "../hooks";
-import type { IssuePriority, IssueSort, IssueStatus } from "../types";
-import { CreateIssueDialog } from "./CreateIssueDialog";
+import type { IssuePriority, IssueSort } from "../types";
+import { IssueDetailView } from "./IssueDetailView";
 import { IssuesEmptyState } from "./IssuesEmptyState";
 import { IssuesTable } from "./IssuesTable";
 import { IssuesToolbar } from "./IssuesToolbar";
@@ -23,21 +25,23 @@ export function IssuesListPage({
   workspaceId: string;
   workspaceSlug: string;
 }) {
+  const setCreateIssueOpen = useUiStore((state) => state.setCreateIssueOpen);
   const [searchParams, setSearchParams] = useSearchParams();
   const [searchInput, setSearchInput] = useState(searchParams.get("q") ?? "");
   const debouncedSearch = useDebouncedValue(searchInput);
 
   const page = Number(searchParams.get("page") ?? "1");
-  const status = (searchParams.get("status") as IssueStatus | null) ?? "ALL";
+  const status = searchParams.get("status") ?? "ALL";
   const priority = (searchParams.get("priority") as IssuePriority | null) ?? "ALL";
   const projectId = searchParams.get("project_id") ?? "ALL";
   const sort = (searchParams.get("sort") as IssueSort | null) ?? "-updated_at";
+  const panelIssueId = searchParams.get("panel");
 
   const { data, isLoading, isError, refetch, isPlaceholderData } = useIssues(workspaceId, {
     page,
     per_page: PER_PAGE,
     q: debouncedSearch || undefined,
-    status: status === "ALL" ? undefined : status,
+    status_id: status === "ALL" ? undefined : status,
     priority: priority === "ALL" ? undefined : priority,
     project_id: projectId === "ALL" ? undefined : projectId,
     sort,
@@ -45,7 +49,7 @@ export function IssuesListPage({
 
   function updateParams(next: {
     q?: string;
-    status?: IssueStatus | "ALL";
+    status?: string | "ALL";
     priority?: IssuePriority | "ALL";
     project_id?: string | "ALL";
     sort?: IssueSort;
@@ -88,47 +92,95 @@ export function IssuesListPage({
   const hasFilters =
     Boolean(debouncedSearch) || status !== "ALL" || priority !== "ALL" || projectId !== "ALL";
 
+  /** Painel lateral (Sprint 9.5) — vive fora de `updateParams` porque não
+   * reseta a página nem é, em si, um filtro: é só "qual issue está aberta ao
+   * lado da lista atual". */
+  function setPanelIssueId(issueId: string | null) {
+    setSearchParams((prev) => {
+      const params = new URLSearchParams(prev);
+      if (issueId) params.set("panel", issueId);
+      else params.delete("panel");
+      return params;
+    });
+  }
+
+  const panelIndex = data?.data.findIndex((issue) => issue.id === panelIssueId) ?? -1;
+  const hasPreviousInPanel = panelIndex > 0;
+  const hasNextInPanel = panelIndex >= 0 && panelIndex < (data?.data.length ?? 0) - 1;
+
+  function navigatePanel(direction: "previous" | "next") {
+    if (!data || panelIndex < 0) return;
+    const nextIssue = data.data[direction === "previous" ? panelIndex - 1 : panelIndex + 1];
+    if (nextIssue) setPanelIssueId(nextIssue.id);
+  }
+
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center gap-3">
-        <h1 className="font-heading text-xl font-semibold">Issues</h1>
-        {data && <span className="text-xs text-t3">{data.meta.total} issues</span>}
-        <div className="flex-1" />
-        <CreateIssueDialog workspaceId={workspaceId} />
+    <div className="flex items-start gap-6">
+      <div className={cn("flex min-w-0 flex-1 flex-col gap-4", panelIssueId && "hidden md:flex")}>
+        <div className="flex items-center gap-3">
+          <h1 className="font-heading text-xl font-semibold">Issues</h1>
+          {data && <span className="text-xs text-t3">{data.meta.total} issues</span>}
+          <div className="flex-1" />
+          <Button onClick={() => setCreateIssueOpen(true)}>Nova issue</Button>
+        </div>
+
+        <IssuesToolbar
+          workspaceId={workspaceId}
+          search={searchInput}
+          onSearchChange={(value) => {
+            setSearchInput(value);
+            updateParams({ q: value });
+          }}
+          status={status}
+          onStatusChange={(value) => updateParams({ status: value })}
+          priority={priority}
+          onPriorityChange={(value) => updateParams({ priority: value })}
+          projectId={projectId}
+          onProjectChange={(value) => updateParams({ project_id: value })}
+          sort={sort}
+          onSortChange={(value) => updateParams({ sort: value })}
+        />
+
+        {isLoading ? (
+          <ListSkeleton rows={8} />
+        ) : isError ? (
+          <ErrorState message="Não foi possível carregar as issues." onRetry={() => refetch()} />
+        ) : data && data.data.length > 0 ? (
+          <div className={cn("flex flex-col gap-4", isPlaceholderData && "opacity-60")}>
+            <IssuesTable
+              workspaceId={workspaceId}
+              workspaceSlug={workspaceSlug}
+              issues={data.data}
+              selectedIssueId={panelIssueId ?? undefined}
+              getRowHref={(issue) => {
+                const next = new URLSearchParams(searchParams);
+                next.set("panel", issue.id);
+                return `?${next.toString()}`;
+              }}
+            />
+            <Pagination
+              meta={data.meta}
+              itemLabel="issue"
+              onPageChange={(next) => updateParams({ page: next })}
+            />
+          </div>
+        ) : (
+          <IssuesEmptyState hasFilters={hasFilters} />
+        )}
       </div>
 
-      <IssuesToolbar
-        workspaceId={workspaceId}
-        search={searchInput}
-        onSearchChange={(value) => {
-          setSearchInput(value);
-          updateParams({ q: value });
-        }}
-        status={status}
-        onStatusChange={(value) => updateParams({ status: value })}
-        priority={priority}
-        onPriorityChange={(value) => updateParams({ priority: value })}
-        projectId={projectId}
-        onProjectChange={(value) => updateParams({ project_id: value })}
-        sort={sort}
-        onSortChange={(value) => updateParams({ sort: value })}
-      />
-
-      {isLoading ? (
-        <ListSkeleton rows={8} />
-      ) : isError ? (
-        <ErrorState message="Não foi possível carregar as issues." onRetry={() => refetch()} />
-      ) : data && data.data.length > 0 ? (
-        <div className={cn("flex flex-col gap-4", isPlaceholderData && "opacity-60")}>
-          <IssuesTable workspaceId={workspaceId} workspaceSlug={workspaceSlug} issues={data.data} />
-          <Pagination
-            meta={data.meta}
-            itemLabel="issue"
-            onPageChange={(next) => updateParams({ page: next })}
+      {panelIssueId && (
+        <div className="w-full shrink-0 rounded-xl border p-5 md:w-[440px]">
+          <IssueDetailView
+            workspaceId={workspaceId}
+            workspaceSlug={workspaceSlug}
+            issueId={panelIssueId}
+            onClose={() => setPanelIssueId(null)}
+            onNavigate={navigatePanel}
+            hasPrevious={hasPreviousInPanel}
+            hasNext={hasNextInPanel}
           />
         </div>
-      ) : (
-        <IssuesEmptyState workspaceId={workspaceId} hasFilters={hasFilters} />
       )}
     </div>
   );

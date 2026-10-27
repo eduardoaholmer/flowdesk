@@ -40,8 +40,14 @@
 | Logout global | `POST /auth/logout-all` | Bearer | — | 204, limpa cookies, revoga **todas** as sessões do usuário | 204, 401 |
 | Solicitar reset de senha | `POST /auth/password-reset/request` | Nenhuma | `{ email }` | 202, sempre — nunca 200/404 conforme o e-mail exista ou não (anti-enumeration, `docs/07-security.md` §10); token nunca aparece no corpo da resposta | 202, 422, 429 |
 | Confirmar reset de senha | `POST /auth/password-reset/confirm` | Nenhuma | `{ token, new_password }` | 204, troca a senha e revoga todas as sessões ativas do usuário (mesmo efeito de `logout-all`) | 204, 401 (`invalid_password_reset_token`), 422, 429 |
+| Login social — início | `GET /auth/{provider}/login` | Nenhuma | `provider` = `google` \| `github` (path) | 302 para o provedor + cookie `oauth_state` (`SameSite=Lax`, 10 min) | 302 (inclusive para provedor desligado — ver nota abaixo), 422 (`provider` fora do enum) |
+| Login social — callback | `GET /auth/{provider}/callback` | Nenhuma | `code`, `state` (query, enviados pelo provedor) | 302 para `{FRONTEND_BASE_URL}/oauth/callback` (sucesso: também seta `refresh_token`/`csrf_token`/`remember_me`, mesmo formato de `POST /auth/login`; erro: `?error={code}` na query) | 302, 422 (`provider` fora do enum) |
 
 Regras de negócio notáveis: `register` não realiza login automático (fluxo explícito, evita ambiguidade de estado); `refresh` fora do padrão (detecção de reuso de refresh token revogado, que revoga a sessão inteira) está detalhado em `docs/07-security.md`. `GET /users/me` (perfil do usuário autenticado) vive em `/users`, não em `/auth` — ver §2.1: é um recurso (o usuário), não uma ação de autenticação. `password-reset/request` (RF-AUTH-06, Sprint 9) não tem uma "resposta de sucesso" que revele existência de e-mail — o efeito real (token criado, e-mail "enviado") só é observável indiretamente; não existe infraestrutura de e-mail transacional real ainda (`core/mail.py::MailSender`, ADR-017), o token só chega a quem tem acesso ao mecanismo de envio configurado, nunca à resposta HTTP.
+
+**Login social (Google/GitHub), Authorization Code flow — ADR-061.** As duas rotas acima são deliberadamente as únicas deste router que nunca respondem com o envelope JSON padrão de erro (§8 do `CLAUDE.md`), nem em falha: são alvo de navegação de página inteira do navegador (o usuário chega a `/auth/{provider}/login` clicando num link, não via `fetch`/`axios`), então tanto sucesso quanto erro sempre terminam em um `302` de volta para a SPA — um JSON cru nunca chega a aparecer numa aba do navegador. `GET /auth/{provider}/callback?error=<code>` é como o frontend (`OAuthCallbackPage`, `/oauth/callback`) descobre que algo deu errado; os `code`s possíveis são os mesmos do catálogo de erros (§11): `oauth_authentication_failed`, `oauth_provider_not_configured`, `oauth_email_already_registered`. Não há uma resposta JSON de sucesso nesta rota — diferente de `POST /auth/login`, o access token nunca aparece na URL de redirect (nunca em query string/fragment, que ficam em logs de acesso e histórico do navegador); o frontend obtém o access token chamando `POST /auth/refresh` normalmente a partir do cookie `refresh_token` que o callback já deixou pronto, o mesmo mecanismo que uma recarga de página usa (`AuthBootstrap`).
+
+Find-or-create/link acontece inteiramente no backend (`AuthService.login_with_oauth`): identidade social já vinculada → mesma conta de sempre; nenhuma identidade mas e-mail (verificado pelo provedor) já tem conta → vincula a essa conta em vez de duplicar; nenhuma das duas → cria conta nova sem senha (`password_hash NULL`, só possível via login social — `POST /auth/login` recusa com `invalid_credentials` uma conta assim, o mesmo `code` de e-mail/senha incorretos, para não revelar que a conta existe mas não tem senha). Cada provedor é opt-in por ambiente (`GOOGLE_CLIENT_ID`/`GITHUB_CLIENT_ID` em `core/config.py`) — um provedor sem `client_id` configurado responde com o erro `oauth_provider_not_configured` em vez de tentar chamá-lo sem credenciais.
 
 ### 2.1 Usuários (`/users`)
 
@@ -75,9 +81,11 @@ Não-membro em `workspace_id` existente recebe **404**, nunca **403** — mesmo 
 | Sair | `DELETE .../members/me` | Membro (sem permissão específica) | — | 204 | 204, 404, 409 (`sole_owner_cannot_leave`) |
 | Alterar papel | `PATCH .../members/{member_id}` | `member.update_role` (`OWNER`/`ADMIN`, exceto sobre outro `OWNER`) | `{ role }` (`role` ≠ `OWNER`) | `{ data: { member } }` | 200, 403 (`permission_denied`, `cannot_manage_owner`), 404 (`workspace_not_found`, `member_not_found`), 409 (`cannot_manage_own_membership`), 422 |
 | Remover membro | `DELETE .../members/{member_id}` | `member.remove` (`OWNER`/`ADMIN`, exceto sobre outro `OWNER`) | — | 204 | 204, 403 (`permission_denied`, `cannot_manage_owner`), 404 (`workspace_not_found`, `member_not_found`), 409 (`cannot_manage_own_membership`) |
-| Convidar | `POST .../invitations` | `workspace.invite` (`OWNER`/`ADMIN`) | `{ email, role }` (`role` ≠ `OWNER`) | `{ data: { invitation } }` — `token` em texto plano só nesta resposta (§3.2) | 201, 403, 404, 409 (`already_member`, `invitation_already_pending`) |
+| Convidar | `POST .../invitations` | `workspace.invite` (`OWNER`/`ADMIN`) | `{ email, role }` (`role` ≠ `OWNER` e nunca acima do papel de quem convida) | `{ data: { invitation } }` — `token` em texto plano só nesta resposta (§3.2) | 201, 403 (`permission_denied`, `cannot_grant_role_above_own`), 404, 409 (`already_member`, `invitation_already_pending`) |
 | Listar convites | `GET .../invitations?page=&per_page=` | `workspace.invite` (`OWNER`/`ADMIN`) | — | `{ data: [invitation], meta }` (sem `token`) | 200, 403, 404 |
 | Cancelar convite | `DELETE .../invitations/{invitation_id}` | `workspace.invite` (`OWNER`/`ADMIN`) | — | 204 (soft delete) | 204, 403, 404 |
+| Reenviar convite | `POST .../invitations/{invitation_id}/resend` | `workspace.invite` (`OWNER`/`ADMIN`) | — | `{ data: { invitation } }` — novo `token` em texto plano (§3.2) | 200, 403, 404, 409 (`invitation_already_accepted`) |
+| Pré-visualizar convite | `GET /invitations/{token}` | **Público** (sem autenticação) | — | `{ data: { email, role, status, workspace_name, invited_by_name } }` | 200, 404 (`invitation_not_found`) |
 | Aceitar convite | `POST /invitations/{token}/accept` | Autenticado (e-mail deve bater) | — | `{ data: { workspace_member } }` | 200, 403 (`invitation_email_mismatch`), 404 (`invitation_not_found`), 409 (`invitation_expired`, `already_member`) |
 | Transferir propriedade | `POST .../members/{member_id}/transfer-ownership` | `workspace.transfer_ownership` (só `OWNER`) | — | `{ data: { workspace } }` (`owner_id` atualizado) | 200, 403 (`permission_denied`), 404 (`workspace_not_found`, `member_not_found`), 409 (`cannot_transfer_ownership_to_self`) |
 
@@ -89,9 +97,13 @@ Não-membro em `workspace_id` existente recebe **404**, nunca **403** — mesmo 
 
 `POST /invitations/{token}/accept` fica fora de `/workspaces/{workspace_id}/...` deliberadamente: quem aceita ainda não é membro do workspace (não tem como o cliente afirmar um `workspace_id` de forma confiável antes de aceitar), e o token opaco já resolve o workspace correto no servidor — nenhum valor de segurança extra viria de exigir o `workspace_id` na URL também. Mesmo racional de `/auth/*` viver fora de `/users/{id}/...`.
 
+### 3.1.1 Pré-visualizar convite é público, e deliberadamente redundante com `Aceitar`
+
+`GET /invitations/{token}` (Sprint 21.1, M7) não checa expiração/aceite — só resolve o token e devolve metadados de exibição (`email`/`role`/`status`/`workspace_name`/`invited_by_name`), nunca `id`/`workspace_id`/`invited_by_id`. Existe para a tela de aceite montar "fulano convidou você para X como Y" **antes** de a pessoa logar ou criar conta — sem sessão, não há como chamar nenhum outro endpoint desta tabela para obter esse contexto. A validação real (expirado, já aceito, e-mail não bate) permanece só em `Aceitar convite`, não duplicada aqui: `status` no corpo é informativo (permite o frontend mostrar "convite já aceito" sem tentar aceitar), não uma segunda fonte de verdade.
+
 ### 3.2 Convite: token em texto plano só na criação
 
-O banco guarda apenas `token_hash` (`SHA-256`, mesmo padrão de `refresh_tokens`) — o valor em texto plano só existe no momento da criação e é devolvido uma única vez em `POST .../invitations`. Substitui o envio por e-mail transacional (fora do escopo de infraestrutura desta sprint, que não inclui um provedor de e-mail): o `OWNER`/`ADMIN` copia o token e o repassa manualmente. Nenhuma listagem subsequente (`GET .../invitations`) o expõe.
+O banco guarda apenas `token_hash` (`SHA-256`, mesmo padrão de `refresh_tokens`) — o valor em texto plano só existe no momento da criação e é devolvido uma única vez em `POST .../invitations`. Substitui o envio por e-mail transacional (fora do escopo de infraestrutura desta sprint, que não inclui um provedor de e-mail): o `OWNER`/`ADMIN` copia o token e o repassa manualmente. Nenhuma listagem subsequente (`GET .../invitations`) o expõe. `POST .../invitations/{invitation_id}/resend` (Sprint 20.1, M7) segue a mesma regra — reemite um convite pendente ou expirado com token/expiração novos (invalidando o link antigo) e devolve o novo token em texto plano pela mesma janela única; rejeita convite já aceito (`409 invitation_already_accepted`).
 
 ## 4. Times (`/workspaces/{workspace_id}/teams`)
 
@@ -110,18 +122,26 @@ O banco guarda apenas `token_hash` (`SHA-256`, mesmo padrão de `refresh_tokens`
 
 Implementado na Sprint 7 (`docs/09-decision-log.md` ADR-012 tem o racional completo dos desvios em relação ao esboço original abaixo — o principal sendo o desacoplamento de `Team`/`WorkflowState`, nunca implementados como feature).
 
+**Atualização Sprint 9.2 (ADR-056)**: `status` (enum fixo) virou `status_id` (UUID, FK para um status customizável por workspace — ver §5.1 abaixo). Todo request/response deste recurso que citava `status` abaixo foi atualizado para `status_id`.
+
+**Atualização Sprint 9.4 (ADR-059)**: novo campo `parent_id` (UUID, opcional) modela sub-issues — ver §5.2 abaixo.
+
 | Ação | Endpoint | Autorização | Request | Response | Códigos |
 |---|---|---|---|---|---|
-| Criar | `POST .../issues` | `issue.create` (`MEMBER`+) | `{ title, description?, project_id?, status?, priority?, assignee_id?, estimate?, due_date? }` | `{ data: { issue } }` (gera `number`/`identifier` sequencial por workspace, ex. `FD-1`) | 201, 401, 403, 404 (`project_not_found`, se `project_id` não pertence ao workspace), 422 |
-| Listar | `GET .../issues?page=&per_page=&status=&priority=&project_id=&assignee_id=&creator_id=&q=&sort=` | `issue.read` (qualquer papel) | — | `{ data: [issue], meta }` | 200, 401, 404 |
+| Criar | `POST .../issues` | `issue.create` (`MEMBER`+) | `{ title, description?, project_id?, parent_id?, status_id?, priority?, assignee_id?, estimate?, due_date?, label_ids? }` | `{ data: { issue } }` (gera `number`/`identifier` sequencial por workspace, ex. `FD-1`) | 201, 401, 403, 404 (`project_not_found`/`issue_not_found`/`workflow_state_not_found`/`label_not_found`, se `project_id`/`parent_id`/`status_id`/algum `label_ids` não pertencem ao workspace), 409 (`invalid_parent_issue`), 422 (`issue_assignee_not_in_workspace`, se `assignee_id` não é membro do workspace) |
+| Listar | `GET .../issues?page=&per_page=&status_id=&priority=&project_id=&parent_id=&assignee_id=&creator_id=&q=&sort=` | `issue.read` (qualquer papel) | — | `{ data: [issue], meta }` | 200, 401, 404 |
 | Detalhe | `GET .../issues/{issue_id}` | `issue.read` | — | `{ data: { issue } }` | 200, 401, 404 (`issue_not_found`) |
-| Atualizar | `PATCH .../issues/{issue_id}` | `issue.update` (`MEMBER`+, sem restrição de posse) | `{ title?, description?, project_id?, status?, priority?, assignee_id?, estimate?, due_date? }` + header opcional `If-Match: <version>` | `{ data: { issue } }` | 200, 401, 403, 404, 409 (`version_conflict`, se `If-Match` divergir da versão atual), 422 |
-| Excluir | `DELETE .../issues/{issue_id}` | `issue.delete` (Criador da issue **ou** `ADMIN`+ — posse-como-exceção) | — | 204 (soft delete) | 204, 401, 403, 404 |
+| Atualizar | `PATCH .../issues/{issue_id}` | `issue.update` (`MEMBER`+, sem restrição de posse) | `{ title?, description?, project_id?, parent_id?, status_id?, priority?, assignee_id?, estimate?, due_date? }` + header opcional `If-Match: <version>` | `{ data: { issue } }` | 200, 401, 403, 404 (inclui `workflow_state_not_found`), 409 (`version_conflict`, `invalid_parent_issue`), 422 (`issue_assignee_not_in_workspace`) |
+| Excluir | `DELETE .../issues/{issue_id}` | `issue.delete` (Criador da issue **ou** `ADMIN`+ — posse-como-exceção) | — | 204 (soft delete) | 204, 401, 403, 404, 409 (`issue_has_subissues`, se a issue tiver sub-issues vinculadas) |
 | Atividade | `GET .../issues/{issue_id}/activity` | `issue.read` | — | `{ data: [activity_log] }` | 200, 401, 404 |
 
-`q` aciona busca textual full-text (índice GIN, §9 de `docs/03-database.md`) sobre título/descrição; se o termo casar com o padrão `FD-\d+` ou um número puro, também compara contra `number` diretamente (busca por identificador). Demais filtros (`status`, `priority`, `project_id`, `assignee_id`, `creator_id`) combinam via AND, valor único por campo (sem OR multi-valor nesta sprint — YAGNI, `CLAUDE.md` §1.6). `sort` aceita `number|-number|created_at|-created_at|updated_at|-updated_at|priority|-priority|due_date|-due_date` (prioridade ordenada por rank semântico — `NO_PRIORITY < LOW < MEDIUM < HIGH < URGENT` —, não alfabeticamente), default `-updated_at`. Paginação **offset-based** (`{ page, per_page, total, total_pages }`, mesmo envelope de Projects/Members/Teams) — desvio deliberado do esboço original (cursor-based); ver ADR-012 Decisão 5.
+`q` aciona busca textual full-text (índice GIN, §9 de `docs/03-database.md`) sobre título/descrição; se o termo casar com o padrão `FD-\d+` ou um número puro, também compara contra `number` diretamente (busca por identificador). Demais filtros (`status_id`, `priority`, `project_id`, `parent_id`, `assignee_id`, `creator_id`) combinam via AND, valor único por campo (sem OR multi-valor nesta sprint — YAGNI, `CLAUDE.md` §1.6). `sort` aceita `number|-number|created_at|-created_at|updated_at|-updated_at|priority|-priority|due_date|-due_date` (prioridade ordenada por rank semântico — `NO_PRIORITY < LOW < MEDIUM < HIGH < URGENT` —, não alfabeticamente), default `-updated_at`. Paginação **offset-based** (`{ page, per_page, total, total_pages }`, mesmo envelope de Projects/Members/Teams) — desvio deliberado do esboço original (cursor-based); ver ADR-012 Decisão 5.
 
-`status` aceita `PATCH` genérico (ao contrário de `Project.status`, que só transiciona via `/archive`/`/restore`): mudança de status de issue é uma ação frequente e não tem workflow configurável nesta sprint, então não há transição inválida a bloquear — qualquer status pode ir para qualquer status.
+`status_id` aceita `PATCH` genérico (ao contrário de `Project.status`, que só transiciona via `/archive`/`/restore`): mudança de status de issue é uma ação frequente, e desde a Sprint 9.2 o conjunto de status é dado (não enum), então não há transição inválida a bloquear no código — qualquer status ativo do workspace pode ir para qualquer outro. Omitir `status_id` na criação atribui o status marcado `is_default` do workspace (§5.1).
+
+`label_ids` (ADR-064) aplica as labels na mesma transação da criação, até 20 ids (422 acima disso); ids repetidos contam uma vez. Um id que não pertence ao workspace devolve 404 `label_not_found` e nenhuma issue é criada. Não existe no `PATCH`: depois de criada, labels mudam por `POST`/`DELETE .../issues/{issue_id}/labels`.
+
+`due_date` aceita apenas datas entre `1900-01-01` e `2200-12-31` (422 fora da faixa — proteção contra corrupção de dado por erro de digitação, ADR-055). No `PATCH`, `due_date` segue a semântica padrão de todo campo opcional deste endpoint: **omitir a chave** preserva o valor atual; **enviar `due_date: null` explicitamente** limpa o campo (distinção feita via `model_fields_set` do Pydantic, não apenas `is not None`). `parent_id` (Sprint 9.4) segue a mesma semântica no `PATCH`: omitir preserva o vínculo atual, `parent_id: null` explícito desvincula. Desde a auditoria de 2026-10 (ADR-065), a mesma semântica vale para **todos** os campos anuláveis da issue — `description`, `project_id`, `assignee_id` e `estimate`: `null` explícito limpa o campo (antes era ignorado, e não havia como remover o responsável ou o projeto de uma issue). `title`, `status_id` e `priority` não podem ficar vazios; `null` neles continua sendo ignorado. `assignee_id`, quando não nulo, precisa ser membro do workspace (`422 issue_assignee_not_in_workspace`), tanto no `POST` quanto no `PATCH`.
 
 ### Exemplo — criar issue
 
@@ -131,7 +151,7 @@ Implementado na Sprint 7 (`docs/09-decision-log.md` ADR-012 tem o racional compl
   "title": "Corrigir vazamento de memória no worker",
   "description": "O worker de background acumula memória após 24h em produção.",
   "priority": "HIGH",
-  "status": "IN_PROGRESS",
+  "status_id": "019f6100-...",
   "estimate": 5
 }
 
@@ -145,7 +165,7 @@ Implementado na Sprint 7 (`docs/09-decision-log.md` ADR-012 tem o racional compl
     "number": 1,
     "title": "Corrigir vazamento de memória no worker",
     "description": "O worker de background acumula memória após 24h em produção.",
-    "status": "IN_PROGRESS",
+    "status_id": "019f6100-...",
     "priority": "HIGH",
     "assignee_id": null,
     "creator_id": "3fa2...",
@@ -192,7 +212,7 @@ sequenceDiagram
         end
         S->>IssueRepo: next_number(workspace_id) — INSERT ... ON CONFLICT DO UPDATE ... RETURNING
         IssueRepo->>DB: número atômico (sem lock explícito)
-        S->>IssueRepo: INSERT Issue (status=payload.status ou BACKLOG)
+        S->>IssueRepo: INSERT Issue (status_id=payload.status_id ou o status is_default do workspace)
         S->>IssueRepo: INSERT ActivityLog (issue.created)
         IssueRepo->>DB: commit (boundary controlado pelo service)
         S-->>C: 201 { data: issue }
@@ -228,6 +248,47 @@ Cada campo alterado gera uma entrada própria em `activity_logs` (`field`/`old_v
 ### Exclusão: posse como exceção
 
 `DELETE .../issues/{issue_id}` usa `Depends(require_permission(Permission.ISSUE_READ))` no router (garante só membership do workspace) — a permissão real (`Permission.ISSUE_DELETE`, que está em `OWNERSHIP_OVERRIDE_PERMISSIONS` desde a Sprint 5/ADR-010) é resolvida dentro do `IssueService.delete()`, depois de buscar a issue e conhecer `creator_id`. Um `MEMBER` que não é o criador recebe `403 permission_denied`; o criador ou qualquer `ADMIN`+/`OWNER` pode excluir.
+
+## 5.1 Status de Issue (`/workspaces/{workspace_id}/workflow-states`)
+
+Implementado na Sprint 9.2 (ADR-056, reabre a ADR-035) — reaproveita a tabela `workflow_states`, dormente desde a Sprint 2 em escopo de time (`Team`, nunca reativado), agora escopada diretamente por `workspace_id`. Todo workspace novo nasce com os mesmos 6 status que antes eram o enum fixo (`Backlog`/`Todo`/`In Progress`/`In Review`/`Done`/`Canceled`), semeados por `WorkspaceService.create` — a partir daí, editáveis.
+
+| Ação | Endpoint | Autorização | Request | Response | Códigos |
+|---|---|---|---|---|---|
+| Criar | `POST .../workflow-states` | `workflow_state.manage` (`ADMIN`+) | `{ name, category, is_default? }` | `{ data: { workflow_state } }` (`position` = último + 1) | 201, 401, 403, 409 (`workflow_state_name_taken`), 422 |
+| Listar | `GET .../workflow-states` | `workflow_state.read` (qualquer papel) | — | `{ data: [workflow_state] }` (ordenado por `position`, sem paginação) | 200, 401 |
+| Atualizar | `PATCH .../workflow-states/{state_id}` | `workflow_state.manage` | `{ name?, category?, is_default? }` | `{ data: { workflow_state } }` | 200, 401, 403, 404, 409, 422 |
+| Reordenar | `POST .../workflow-states/reorder` | `workflow_state.manage` | `{ ordered_ids: [uuid] }` (lista completa, nova ordem) | `{ data: [workflow_state] }` | 200, 401, 403, 404, 422 (lista incompleta/com repetição) |
+| Excluir | `DELETE .../workflow-states/{state_id}?reassign_to_id=` | `workflow_state.manage` | — | 204 | 204, 401, 403, 404, 409 (`workflow_state_has_issues`, `cannot_delete_last_workflow_state`, `invalid_reassign_target`) |
+
+`category` é um enum fixo (`BACKLOG`/`UNSTARTED`/`STARTED`/`COMPLETED`/`CANCELED`) — não editável pelo usuário além dessas 5 opções, usado por agregações internas (ex.: `ProjectRepository.issue_counts`, barra de progresso "concluídas/total" conta `category == COMPLETED`) para não acoplar a uma string de `name` livremente editável. `name` é o texto exibido, único por workspace.
+
+**Exclusão com reatribuição obrigatória**: excluir um status que ainda tem issues vinculadas sem informar `?reassign_to_id=` devolve `409 workflow_state_has_issues` com `details: { issue_count }` — o frontend usa isso para abrir um diálogo "para onde mover estas N issues?" e repetir a chamada com o `reassign_to_id` escolhido, que então reatribui todas as issues daquele status antes de excluí-lo (reatribuição + soft delete na mesma transação). Excluir o único status restante do workspace é sempre bloqueado (`409 cannot_delete_last_workflow_state`, `workspace.view` exige ao menos um). Excluir o status atualmente `is_default` promove automaticamente outro (o de menor `position` entre os remanescentes) a `is_default`, sem exigir passo extra do cliente.
+
+**Reordenar** aceita a lista completa de IDs ativos do workspace na nova ordem — o service rejeita (`422`) qualquer lista que não seja exatamente o conjunto atual (falta ou sobra um id). Internamente, o service move todas as posições para valores negativos temporários antes de aplicar a ordem final, porque o índice único parcial `(workspace_id, position)` não é `DEFERRABLE` — uma troca direta de posições entre duas linhas violaria a constraint no meio da transação.
+
+## 5.2 Permissões (`/workspaces/{workspace_id}/permission-overrides`)
+
+Implementado na Sprint 9.3 (ADR-058) — meio-termo entre RBAC fixo e cargos arbitrários (ver ADR-056): permissões individualmente ligáveis/desligáveis dentro dos 4 papéis fixos (`OWNER`/`ADMIN`/`MEMBER`/`GUEST`), não uma tabela de cargos nova. `OWNER` nunca aparece na matriz (sempre tem todas as permissões) e três permissões nunca aparecem como linha (`workspace.delete`, `workspace.transfer_ownership`, `workspace.manage_permissions` — exclusivas do OWNER, "`LOCKED_PERMISSIONS`" em `core/authorization.py`).
+
+| Ação | Endpoint | Autorização | Request | Response | Códigos |
+|---|---|---|---|---|---|
+| Ver matriz | `GET .../permission-overrides` | `workspace.manage_permissions` (`OWNER` apenas) | — | `{ data: [matrix_entry] }` (uma linha por papel × permissão customizável, 3 papéis × 26 permissões) | 200, 401, 403 |
+| Alterar uma célula | `PUT .../permission-overrides` | `workspace.manage_permissions` (`OWNER` apenas) | `{ role, permission, granted }` | `{ data: [matrix_entry] }` (matriz inteira recalculada) | 200, 401, 403, 422 (`cannot_override_owner_role`, `locked_permission`) |
+
+`matrix_entry` = `{ permission, role, default, effective, is_override }` — `default` é o valor de `ROLE_PERMISSIONS` sem nenhum override; `effective` já aplica o override do workspace, se houver; `is_override` diz se a célula diverge do padrão (para a UI destacar visualmente). Setar `granted` de volta ao valor de `default` **remove** o override em vez de gravar uma linha redundante — a tabela só guarda desvios reais (`permission_overrides`, `docs/03-database.md` §6.7).
+
+**Gerenciar é exclusivo do OWNER** — mesmo `ADMIN`, que já gerencia membros e status do board, não gerencia a própria régua de permissões (evita um ADMIN se auto-conceder qualquer coisa via toggle, incluindo teoricamente escalar para permissões que a UI de outra forma nunca ofereceria). Uma permissão revogada por override bloqueia a ação **por completo**, inclusive sobre o próprio recurso — se `comment.delete` é desligado para `MEMBER`, um membro deixa de poder excluir até o próprio comentário (a exceção de posse, `docs/07-security.md` §8.5, não é um fallback para permissão explicitamente revogada).
+
+## 5.3 Sub-issues (`parent_id` em `/workspaces/{workspace_id}/issues`)
+
+Implementado na Sprint 9.4 (ADR-059) — sem endpoint próprio: `parent_id` é só mais um campo de `Issue` (criar/atualizar via `POST`/`PATCH .../issues` de §5, listar filhas via `GET .../issues?parent_id=`), mesmo padrão de `project_id`. Limitado a **um único nível de hierarquia** — uma sub-issue não pode ter sub-issues — validado pelo service em toda escrita:
+
+- Vincular `A.parent_id = B` exige que **nem A nem B** já participem de outro vínculo pai/filho: `B` não pode já ser filha de alguém (`B.parent_id` precisa ser `null`) nem já ter filhas (`count_children(B) == 0`); `A` não pode já ter filhas (`count_children(A) == 0` — senão `A` deixaria de ser raiz e sua prole ficaria dois níveis abaixo de `B`). Qualquer violação devolve `409 invalid_parent_issue`.
+- `A == B` (auto-referência) também é `409 invalid_parent_issue`.
+- Excluir uma issue que ainda tem sub-issues vinculadas é bloqueado: `409 issue_has_subissues` — desvincule (`PATCH` com `parent_id: null` em cada filha) ou exclua as filhas primeiro. Sem reatribuição automática (ao contrário de `workflow_state_has_issues`, §5.1) — o vínculo pai/filho é opcional e reversível por issue, não obrigatório como um status.
+
+Não há campo agregado (`sub_issue_count`) no `IssueResponse` — o cliente que precisa saber quantas/quais sub-issues uma issue tem faz `GET .../issues?parent_id={issue_id}` e lê `meta.total`, mesmo padrão já usado por `ProjectDetailView` para listar as issues de um projeto (Sprint 23.2) — evita uma agregação extra em toda listagem geral de issues só para o caso raro de estar olhando o detalhe de uma.
 
 ## 6. Comentários (`/workspaces/{workspace_id}/issues/{issue_id}/comments`)
 
@@ -423,19 +484,27 @@ Paginação **offset-based** (`{ page, per_page, total, total_pages }`, mesmo en
 
 ## 11. Erros — catálogo de `code` (não exaustivo, cresce por feature)
 
-`invalid_credentials`, `email_already_registered`, `invalid_refresh_token`, `invalid_password_reset_token`, `invalid_token`, `workspace_not_found`, `slug_taken`, `already_member`, `invitation_already_pending`, `invitation_not_found`, `invitation_expired`, `invitation_email_mismatch`, `sole_owner_cannot_leave`, `member_not_found`, `cannot_manage_own_membership`, `cannot_manage_owner`, `cannot_transfer_ownership_to_self`, `key_taken`, `name_taken`, `team_not_found`, `issue_not_found`, `version_conflict`, `permission_denied`, `rate_limited`, `validation_error`, `project_not_found`, `project_slug_taken`, `project_name_taken`, `project_already_archived`, `project_not_archived`, `project_has_active_issues`, `comment_not_found`, `label_not_found`, `label_name_taken`, `attachment_not_found`, `attachment_too_large`, `attachment_type_not_allowed`, `notification_not_found`.
+`invalid_credentials`, `email_already_registered`, `invalid_refresh_token`, `invalid_password_reset_token`, `invalid_token`, `oauth_authentication_failed`, `oauth_provider_not_configured`, `oauth_email_already_registered`, `workspace_not_found`, `slug_taken`, `already_member`, `invitation_already_pending`, `invitation_not_found`, `invitation_expired`, `invitation_email_mismatch`, `sole_owner_cannot_leave`, `member_not_found`, `cannot_manage_own_membership`, `cannot_manage_owner`, `cannot_transfer_ownership_to_self`, `key_taken`, `name_taken`, `team_not_found`, `issue_not_found`, `version_conflict`, `permission_denied`, `rate_limited`, `validation_error`, `project_not_found`, `project_slug_taken`, `project_name_taken`, `project_already_archived`, `project_not_archived`, `project_has_active_issues`, `comment_not_found`, `label_not_found`, `label_name_taken`, `attachment_not_found`, `attachment_too_large`, `attachment_type_not_allowed`, `notification_not_found`, `workflow_state_not_found`, `workflow_state_name_taken`, `workflow_state_has_issues`, `cannot_delete_last_workflow_state`, `invalid_reassign_target`, `cannot_override_owner_role`, `locked_permission`, `invalid_parent_issue`, `issue_has_subissues`, `issue_assignee_not_in_workspace`, `cannot_grant_role_above_own`.
 
 `comment_not_found` (404), `label_not_found` (404), `label_name_taken` (409, unicidade por workspace), `attachment_not_found` (404), `attachment_too_large`/`attachment_type_not_allowed` (422, validados antes da persistência) são novos na Sprint 8 (§6–8, ADR-013). O esboço original deste catálogo já reservava `name_taken` genérico para labels; `label_name_taken` o substitui com um `code` específico por feature, mesmo padrão já usado por `project_name_taken` na Sprint 6 (evita que o cliente precise inferir o recurso a partir só do `code` genérico).
 
 `project_not_found` (404), `project_slug_taken`/`project_name_taken` (409, unicidade por workspace), `project_already_archived`/`project_not_archived` (409, transição de estado idempotency-guarded) e `project_has_active_issues` (409, exclusão bloqueada) são novos na Sprint 6 (§9).
 
-`issue_not_found` (404) e `version_conflict` (409, `If-Match` divergente) são efetivamente implementados na Sprint 7 (§5) — ambos já estavam reservados neste catálogo desde o esboço original da Sprint 0/2, sem uso até agora. `team_not_found` permanece reservado, sem uso: seria acionado por uma futura feature de Team (ainda sem service/router, ver ADR-012), não por Issues, que não depende mais de `team_id`. `invalid_status_transition` (também reservado desde o esboço original) **não** foi implementado nesta sprint e foi removido deste catálogo — `Issue.status` é um enum fixo sem grafo de transição configurável (nenhuma regra de negócio bloqueia uma mudança de status para outra), ver ADR-012 Decisão 1; o código volta ao catálogo se/quando um workflow configurável for implementado.
+`issue_not_found` (404) e `version_conflict` (409, `If-Match` divergente) são efetivamente implementados na Sprint 7 (§5) — ambos já estavam reservados neste catálogo desde o esboço original da Sprint 0/2, sem uso até agora. `team_not_found` permanece reservado, sem uso: seria acionado por uma futura feature de Team (ainda sem service/router, ver ADR-012), não por Issues, que não depende mais de `team_id`. `invalid_status_transition` (também reservado desde o esboço original) permanece **não implementado** — mesmo com status agora customizável por workspace (Sprint 9.2/ADR-056), não há grafo de transição configurável (nenhuma regra de negócio bloqueia mudar para qualquer outro status ativo); o código volta ao catálogo se/quando um workflow configurável (com transições restritas) for implementado.
+
+`workflow_state_not_found` (404), `workflow_state_name_taken` (409, unicidade por workspace), `workflow_state_has_issues` (409, exclusão bloqueada até reatribuição — carrega `details: { issue_count }`), `cannot_delete_last_workflow_state` (409) e `invalid_reassign_target` (409, `reassign_to_id` inválido/igual ao próprio status) são novos na Sprint 9.2 (§5.1, ADR-056).
+
+`cannot_override_owner_role` (422, tentativa de customizar o papel `OWNER`) e `locked_permission` (422, tentativa de conceder/revogar uma das três permissões exclusivas do OWNER) são novos na Sprint 9.3 (§5.2, ADR-058).
+
+`invalid_parent_issue` (409, auto-referência ou violação de "só um nível de sub-issues") e `issue_has_subissues` (409, exclusão bloqueada até desvincular/excluir as sub-issues) são novos na Sprint 9.4 (§5.3, ADR-059).
 
 `member_not_found` (404), `cannot_manage_own_membership` (409) e `cannot_manage_owner` (403) são novos na Sprint 5 (`PATCH`/`DELETE .../members/{member_id}`) — ver `docs/07-security.md` §8.4.
 
 `notification_not_found` (404) é implementado desde a Sprint 9 fase 1 (`features/notifications/exceptions.py`) mas nunca havia sido adicionado a este catálogo nem à tabela de §10 — corrigido na auditoria de gap do M4 (ADR-027).
 
 `invalid_token` (401) cobre qualquer falha de validação do access token Bearer em rota protegida — ausente, malformado, expirado, ou apontando para um usuário que não existe mais (inclusive soft-deleted). Deliberadamente um único código para todo esse espectro, mesmo racional anti-enumeration do `invalid_credentials` — ver `docs/07-security.md` §10 e ADR-008.
+
+`oauth_authentication_failed` (401) e `oauth_provider_not_configured` (404) são novos no login social (§2, ADR-061). O primeiro cobre todo o espectro de falha do handshake OAuth (`state` ausente/divergente do cookie, provedor retornou `error=`, troca de `code` por token falhou, perfil do provedor veio incompleto) com um único código, mesmo racional anti-enumeration de `invalid_refresh_token`; o segundo sinaliza um provedor sem `client_id` configurado neste ambiente (erro de operação, não do usuário). `oauth_email_already_registered` (409, ADR-066) indica que já existe uma conta **com senha** para o e-mail verificado pelo provedor — o vínculo automático é recusado e a pessoa precisa entrar com e-mail e senha. Só aparecem como `?error=<code>` no redirect de `GET /auth/{provider}/{login,callback}` para a SPA — nunca no envelope JSON padrão (ver nota em §2).
 
 `workspace_not_found` (404) cobre tanto workspace inexistente quanto workspace existente do qual o chamador não é membro (`docs/09-decision-log.md` ADR-009). `invitation_expired` (409, não 400 como o esboço original da Sprint 0 sugeria) cobre tanto convite expirado quanto já aceito — ambos "não pode mais ser usado"; ver ADR-009.
 

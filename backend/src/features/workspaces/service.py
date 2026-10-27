@@ -9,11 +9,13 @@ from src.core.config import Settings
 from src.core.security import CurrentUser, generate_invitation_token, hash_invitation_token
 from src.core.slug import slugify
 from src.features.auth.repository import UserRepositoryProtocol
+from src.features.workflow_states.service import WorkflowStateService
 from src.features.workspaces.exceptions import (
     AlreadyMemberError,
     CannotLeaveAsSoleOwnerError,
     CannotManageOwnMembershipError,
     CannotTransferOwnershipToSelfError,
+    InvitationAlreadyAcceptedError,
     InvitationAlreadyPendingError,
     InvitationEmailMismatchError,
     InvitationExpiredError,
@@ -50,7 +52,10 @@ class InvitationIssued:
 
 class WorkspaceService:
     def __init__(
-        self, workspace_repo: WorkspaceRepositoryProtocol, permission_service: PermissionService
+        self,
+        workspace_repo: WorkspaceRepositoryProtocol,
+        permission_service: PermissionService,
+        workflow_state_service: WorkflowStateService,
     ) -> None:
         """Autorização (posse de tenant e papel) não é mais checada aqui — o
         router já resolveu `Depends(require_permission(...))` antes deste
@@ -58,9 +63,15 @@ class WorkspaceService:
         service só recebe `permission_service` para checagens contextuais que
         dependem de um recurso já buscado (`require_can_manage_member`), que
         não são resolvíveis apenas a partir do path da requisição.
+
+        `workflow_state_service` (Sprint 9.2/ADR-056) semeia os 6 status
+        padrão de todo workspace novo — *service* de outra feature, não o
+        repository (`docs/02-architecture.md`), mesmo padrão de
+        `IssueService._notification_service`.
         """
         self._workspace_repo = workspace_repo
         self._permission_service = permission_service
+        self._workflow_state_service = workflow_state_service
 
     async def create(self, current_user: CurrentUser, payload: WorkspaceCreateRequest) -> Workspace:
         slug = await self._resolve_slug(payload.name, payload.slug)
@@ -77,6 +88,7 @@ class WorkspaceService:
                 workspace_id=workspace.id, user_id=current_user.id, role=WorkspaceRole.OWNER
             )
         )
+        await self._workflow_state_service.seed_defaults(workspace.id)
         await self._record_activity(
             workspace.id, current_user.id, "workspace.created", {"name": workspace.name}
         )
@@ -300,15 +312,25 @@ class InvitationService:
         workspace_repo: WorkspaceRepositoryProtocol,
         user_repo: UserRepositoryProtocol,
         settings: Settings,
+        permission_service: PermissionService,
     ) -> None:
         self._invitation_repo = invitation_repo
         self._workspace_repo = workspace_repo
         self._user_repo = user_repo
         self._settings = settings
+        self._permission_service = permission_service
 
     async def create(
-        self, current_user: CurrentUser, workspace_id: uuid.UUID, payload: InvitationCreateRequest
+        self,
+        current_user: CurrentUser,
+        workspace_id: uuid.UUID,
+        payload: InvitationCreateRequest,
+        *,
+        acting_role: WorkspaceRole,
     ) -> InvitationIssued:
+        self._permission_service.require_can_grant_role(
+            actor_role=acting_role, target_role=payload.role
+        )
         email = payload.email.lower()
         invited_user = await self._user_repo.get_by_email(email)
         if invited_user is not None:
@@ -354,6 +376,45 @@ class InvitationService:
             raise InvitationNotFoundError()
 
         await self._invitation_repo.cancel(invitation_id)
+
+    async def resend(
+        self, current_user: CurrentUser, workspace_id: uuid.UUID, invitation_id: uuid.UUID
+    ) -> InvitationIssued:
+        """Reemite um convite pendente ou expirado com um token novo — o produto não
+        envia e-mail de convite automaticamente (ADR-009), então "reenviar" aqui
+        significa invalidar o link antigo e gerar um novo para compartilhar,
+        cobrindo o caso real de link perdido ou expirado.
+        """
+        invitation = await self._invitation_repo.get_by_id(workspace_id, invitation_id)
+        if invitation is None:
+            raise InvitationNotFoundError()
+        if invitation.accepted_at is not None:
+            raise InvitationAlreadyAcceptedError()
+
+        token = generate_invitation_token()
+        invitation = await self._invitation_repo.reissue(
+            invitation,
+            token_hash=hash_invitation_token(token),
+            expires_at=datetime.now(UTC) + timedelta(days=self._settings.invitation_expire_days),
+        )
+        await self._record_activity(
+            workspace_id,
+            current_user.id,
+            "invitation.resent",
+            {"email": invitation.email},
+        )
+        return InvitationIssued(invitation=invitation, token=token)
+
+    async def preview(self, token: str) -> Invitation:
+        """Sem checagem de expiração/aceite aqui de propósito — é só leitura
+        informativa para a tela de aceite montar a mensagem "fulano convidou você
+        para X como Y" antes de logar/criar conta. A validação real (expirado,
+        já aceito, e-mail não bate) continua só em `accept`, não duplicada aqui.
+        """
+        invitation = await self._invitation_repo.get_by_token_hash(hash_invitation_token(token))
+        if invitation is None:
+            raise InvitationNotFoundError()
+        return invitation
 
     async def accept(self, current_user: CurrentUser, token: str) -> WorkspaceMember:
         invitation = await self._invitation_repo.get_by_token_hash(hash_invitation_token(token))

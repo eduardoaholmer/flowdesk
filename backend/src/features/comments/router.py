@@ -2,7 +2,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, Query, status
 
-from src.core.authorization import require_permission
+from src.core.authorization import WorkspaceContext, get_workspace_context, require_permission
 from src.core.dependencies import get_current_user
 from src.core.permissions import Permission
 from src.core.schemas import CollectionEnvelope, DataEnvelope, PaginationMeta
@@ -68,10 +68,11 @@ async def update_comment(
     workspace_id: uuid.UUID,
     comment_id: uuid.UUID,
     payload: CommentUpdateRequest,
-    acting_member: WorkspaceMember = Depends(require_permission(Permission.ISSUE_READ)),
+    _member: WorkspaceMember = Depends(require_permission(Permission.ISSUE_READ)),
+    acting: WorkspaceContext = Depends(get_workspace_context),
     service: CommentService = Depends(get_comment_service),
 ) -> DataEnvelope[CommentResponse]:
-    comment = await service.update(acting_member, workspace_id, comment_id, payload)
+    comment = await service.update(acting, workspace_id, comment_id, payload)
     return DataEnvelope(data=CommentResponse.model_validate(comment))
 
 
@@ -79,7 +80,8 @@ async def update_comment(
 async def delete_comment(
     workspace_id: uuid.UUID,
     comment_id: uuid.UUID,
-    acting_member: WorkspaceMember = Depends(require_permission(Permission.ISSUE_READ)),
+    _member: WorkspaceMember = Depends(require_permission(Permission.ISSUE_READ)),
+    acting: WorkspaceContext = Depends(get_workspace_context),
     service: CommentService = Depends(get_comment_service),
 ) -> None:
-    await service.delete(acting_member, workspace_id, comment_id)
+    await service.delete(acting, workspace_id, comment_id)

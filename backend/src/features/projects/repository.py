@@ -15,19 +15,23 @@ from src.features.projects.models import (
     ProjectStatus,
 )
 
-# Referência Core (não ORM) à tabela `issues` — só o suficiente para as
-# checagens/agregações deste repositório (`has_active_issues`, `issue_counts`).
-# Importar o model `Issue` aqui obrigaria o SQLAlchemy a configurar o mapper
-# inteiro de `Issue` (incluindo seu relationship com `Comment`) assim que
-# `ProjectRepository` fosse carregado — acoplando Projects ao grafo de mappers
-# de uma feature (Issues/Comments). `sqlalchemy.table()`/`column()` consultam
-# por nome de coluna sem passar pelo registry declarativo, evitando isso.
-_issues_table = table("issues", column("project_id"), column("deleted_at"), column("status"))
+# Referência Core (não ORM) às tabelas `issues`/`workflow_states` — só o
+# suficiente para as checagens/agregações deste repositório
+# (`has_active_issues`, `issue_counts`). Importar os models `Issue`/`WorkflowState`
+# aqui obrigaria o SQLAlchemy a configurar o mapper inteiro de `Issue`
+# (incluindo seu relationship com `Comment`) assim que `ProjectRepository`
+# fosse carregado — acoplando Projects ao grafo de mappers de outra feature.
+# `sqlalchemy.table()`/`column()` consultam por nome de coluna sem passar pelo
+# registry declarativo, evitando isso.
+_issues_table = table("issues", column("project_id"), column("deleted_at"), column("status_id"))
 
-# Espelha `IssueStatus.DONE` sem importar `features/issues/models` (mesmo
-# racional de `_issues_table`): só o valor da string entra na agregação de
-# progresso, não o enum nem o mapper de `Issue`.
-_DONE_STATUS = "DONE"
+# Desde a Sprint 9.2 (ADR-056), status deixou de ser um enum fixo — "concluída"
+# para fins de progresso é `WorkflowState.category == COMPLETED`, não mais uma
+# string `"DONE"` comparada direto na coluna (que não existe mais em `issues`).
+_workflow_states_table = table(
+    "workflow_states", column("id"), column("category"), column("deleted_at")
+)
+_COMPLETED_CATEGORY = "COMPLETED"
 
 ProjectSort = Literal[
     "name",
@@ -262,8 +266,9 @@ class ProjectRepository:
         self, project_ids: Sequence[uuid.UUID]
     ) -> dict[uuid.UUID, tuple[int, int]]:
         """Uma agregação (`GROUP BY project_id`) para uma página inteira — total
-        de issues não deletadas e quantas em `DONE`, suficiente para a barra de
-        progresso "concluídas/total" do frontend. Nunca uma query por projeto.
+        de issues não deletadas e quantas com status de categoria `COMPLETED`,
+        suficiente para a barra de progresso "concluídas/total" do frontend.
+        Nunca uma query por projeto.
         """
         counts: dict[uuid.UUID, tuple[int, int]] = {pid: (0, 0) for pid in project_ids}
         if not project_ids:
@@ -272,7 +277,14 @@ class ProjectRepository:
             select(
                 _issues_table.c.project_id,
                 func.count().label("total"),
-                func.count().filter(_issues_table.c.status == _DONE_STATUS).label("done"),
+                func.count()
+                .filter(_workflow_states_table.c.category == _COMPLETED_CATEGORY)
+                .label("done"),
+            )
+            .select_from(_issues_table)
+            .join(
+                _workflow_states_table,
+                _issues_table.c.status_id == _workflow_states_table.c.id,
             )
             .where(
                 _issues_table.c.project_id.in_(project_ids),

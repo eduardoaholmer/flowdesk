@@ -9,9 +9,12 @@ import {
   IssueDetailPage,
   IssuesPage,
   LabelsPage,
+  OAuthCallbackPage,
+  PrivacyPolicyPage,
   ProjectDetailPage,
   ProjectsPage,
   ResetPasswordPage,
+  TermsOfServicePage,
   WorkspaceSettingsPage,
 } from "@/app/lazyPages";
 import { AppLayout } from "@/shared/components/layout/AppLayout";
@@ -29,8 +32,20 @@ function withPageSuspense(element: ReactNode) {
 
 export const router = createBrowserRouter([
   { path: "/login", element: <LoginPage /> },
+  { path: "/oauth/callback", element: withPageSuspense(<OAuthCallbackPage />) },
+  { path: "/privacy", element: withPageSuspense(<PrivacyPolicyPage />) },
+  { path: "/terms", element: withPageSuspense(<TermsOfServicePage />) },
   { path: "/forgot-password", element: withPageSuspense(<ForgotPasswordPage />) },
   { path: routePatterns.resetPassword, element: withPageSuspense(<ResetPasswordPage />) },
+  {
+    // Fora de `RequireAuth` deliberadamente (Sprint 21.1, M7): a própria página
+    // decide o que renderizar a partir do `accessToken` (formulário de criar
+    // conta + aceitar em uma tela só para quem está deslogada, confirmação
+    // simples para quem já tem sessão) — um redirect para `/login` aqui
+    // impediria a pessoa deslogada de sequer ver o convite.
+    path: routePatterns.invitationAccept,
+    element: withPageSuspense(<InvitationAcceptPage />),
+  },
   {
     element: <RequireAuth />,
     children: [
@@ -39,10 +54,6 @@ export const router = createBrowserRouter([
         children: [
           { index: true, path: "/", element: <HomePage /> },
           { path: routePatterns.workspaceHome, element: withPageSuspense(<DashboardPage />) },
-          {
-            path: routePatterns.invitationAccept,
-            element: withPageSuspense(<InvitationAcceptPage />),
-          },
           { path: routePatterns.projects, element: withPageSuspense(<ProjectsPage />) },
           {
             path: routePatterns.projectDetail,

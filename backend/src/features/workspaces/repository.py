@@ -232,6 +232,9 @@ class InvitationRepositoryProtocol(Protocol):
     async def count_by_workspace(self, workspace_id: uuid.UUID) -> int: ...
     async def cancel(self, invitation_id: uuid.UUID) -> None: ...
     async def mark_accepted(self, invitation_id: uuid.UUID) -> None: ...
+    async def reissue(
+        self, invitation: Invitation, *, token_hash: str, expires_at: datetime
+    ) -> Invitation: ...
 
 
 class InvitationRepository:
@@ -255,8 +258,14 @@ class InvitationRepository:
         return result
 
     async def get_by_token_hash(self, token_hash: str) -> Invitation | None:
-        stmt = select(Invitation).where(
-            Invitation.token_hash == token_hash, Invitation.deleted_at.is_(None)
+        """`selectinload` de `workspace`/`invited_by` — usado tanto por `accept` (só
+        precisa de `workspace_id`, carga extra desprezível) quanto por `preview`
+        (precisa de `workspace.name`/`invited_by.name`, evita um segundo round-trip).
+        """
+        stmt = (
+            select(Invitation)
+            .options(selectinload(Invitation.workspace), selectinload(Invitation.invited_by))
+            .where(Invitation.token_hash == token_hash, Invitation.deleted_at.is_(None))
         )
         result: Invitation | None = await self._session.scalar(stmt)
         return result
@@ -304,3 +313,11 @@ class InvitationRepository:
             .where(Invitation.id == invitation_id)
             .values(accepted_at=datetime.now(UTC))
         )
+
+    async def reissue(
+        self, invitation: Invitation, *, token_hash: str, expires_at: datetime
+    ) -> Invitation:
+        invitation.token_hash = token_hash
+        invitation.expires_at = expires_at
+        await self._session.flush()
+        return invitation

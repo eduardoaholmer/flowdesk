@@ -57,6 +57,26 @@ function deferred<T = unknown>() {
   return { promise, resolve };
 }
 
+describe("CommandPalette static commands", () => {
+  it("opens the create-issue dialog and closes the palette when 'Nova issue' is run", async () => {
+    listIssuesMock.mockResolvedValue({
+      data: [],
+      meta: { page: 1, per_page: 5, total: 0, total_pages: 0 },
+    });
+    listProjectsMock.mockResolvedValue({
+      data: [],
+      meta: { page: 1, per_page: 5, total: 0, total_pages: 0 },
+    });
+    const user = userEvent.setup();
+
+    renderPalette();
+    await user.click(await screen.findByText("Nova issue"));
+
+    expect(useUiStore.getState().isCreateIssueOpen).toBe(true);
+    expect(useUiStore.getState().isCommandPaletteOpen).toBe(false);
+  });
+});
+
 describe("CommandPalette search", () => {
   it("shows a loading indicator while the search is in flight, then the results", async () => {
     const issues = deferred();

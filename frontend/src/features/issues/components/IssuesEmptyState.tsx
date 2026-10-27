@@ -1,16 +1,12 @@
 import { ListTodo } from "lucide-react";
 
 import { EmptyState } from "@/shared/components/feedback/EmptyState";
+import { Button } from "@/shared/components/ui/button";
+import { useUiStore } from "@/shared/stores/uiStore";
 
-import { CreateIssueDialog } from "./CreateIssueDialog";
+export function IssuesEmptyState({ hasFilters }: { hasFilters: boolean }) {
+  const setCreateIssueOpen = useUiStore((state) => state.setCreateIssueOpen);
 
-export function IssuesEmptyState({
-  workspaceId,
-  hasFilters,
-}: {
-  workspaceId: string;
-  hasFilters: boolean;
-}) {
   return (
     <EmptyState
       icon={ListTodo}
@@ -18,7 +14,7 @@ export function IssuesEmptyState({
       description={
         hasFilters ? "Ajuste a busca ou os filtros." : "Crie a primeira issue deste workspace."
       }
-      action={!hasFilters && <CreateIssueDialog workspaceId={workspaceId} />}
+      action={!hasFilters && <Button onClick={() => setCreateIssueOpen(true)}>Nova issue</Button>}
     />
   );
 }
