@@ -10,9 +10,9 @@ export function TermsOfServicePage() {
         Termos de Serviço
       </h1>
       <p>
-        O FlowDesk é um projeto de portfólio (clone de propósito educacional do Linear) mantido
-        por Eduardo Holmer, disponibilizado "como está", sem garantias, para fins de demonstração
-        e aprendizado.
+        O FlowDesk é um projeto de portfólio (clone de propósito educacional do Linear) mantido por
+        Eduardo Holmer, disponibilizado "como está", sem garantias, para fins de demonstração e
+        aprendizado.
       </p>
       <h2 className="mt-4 font-heading text-lg font-semibold text-t1">Uso do serviço</h2>
       <p>
@@ -23,8 +23,8 @@ export function TermsOfServicePage() {
       </p>
       <h2 className="mt-4 font-heading text-lg font-semibold text-t1">Login social</h2>
       <p>
-        Ao entrar via Google ou GitHub, você autoriza o FlowDesk a criar/vincular uma conta usando
-        o e-mail verificado pelo provedor, conforme descrito na{" "}
+        Ao entrar via Google ou GitHub, você autoriza o FlowDesk a criar/vincular uma conta usando o
+        e-mail verificado pelo provedor, conforme descrito na{" "}
         <Link className="underline" to="/privacy">
           Política de Privacidade
         </Link>

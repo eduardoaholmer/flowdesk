@@ -168,7 +168,7 @@ export function IssueDetailRail({
             key: NONE,
             label: "Sem responsável",
             checked: !issue.assignee_id,
-            onSelect: () => updateIssue.mutate({ assignee_id: undefined }),
+            onSelect: () => updateIssue.mutate({ assignee_id: null }),
           },
           ...(members ?? []).map((member) => ({
             key: member.user.id,
@@ -188,7 +188,7 @@ export function IssueDetailRail({
             key: NONE,
             label: "Sem projeto",
             checked: !issue.project_id,
-            onSelect: () => updateIssue.mutate({ project_id: undefined }),
+            onSelect: () => updateIssue.mutate({ project_id: null }),
           },
           ...(projects?.data ?? []).map((p) => ({
             key: p.id,
@@ -226,7 +226,7 @@ export function IssueDetailRail({
             key: NONE,
             label: "Sem estimativa",
             checked: !issue.estimate,
-            onSelect: () => updateIssue.mutate({ estimate: undefined }),
+            onSelect: () => updateIssue.mutate({ estimate: null }),
           },
           ...ISSUE_ESTIMATE_OPTIONS.map((points) => ({
             key: String(points),

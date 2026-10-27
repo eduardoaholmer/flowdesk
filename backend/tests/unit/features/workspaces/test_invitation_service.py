@@ -9,6 +9,7 @@ from src.features.auth.models import User
 from src.features.workflow_states.service import WorkflowStateService
 from src.features.workspaces.exceptions import (
     AlreadyMemberError,
+    CannotGrantRoleAboveOwnError,
     InvitationAlreadyAcceptedError,
     InvitationAlreadyPendingError,
     InvitationEmailMismatchError,
@@ -59,7 +60,9 @@ def service(
     user_repo: FakeUserRepository,
     settings: Settings,
 ) -> InvitationService:
-    return InvitationService(invitation_repo, workspace_repo, user_repo, settings)
+    return InvitationService(
+        invitation_repo, workspace_repo, user_repo, settings, PermissionService()
+    )
 
 
 def _user(email: str = "ada@example.com") -> CurrentUser:
@@ -78,6 +81,7 @@ async def test_create_issues_token_and_records_activity(
         owner,
         workspace.id,
         InvitationCreateRequest(email="invitee@example.com", role=WorkspaceRole.MEMBER),
+        acting_role=WorkspaceRole.OWNER,
     )
 
     assert issued.token
@@ -91,10 +95,10 @@ async def test_create_rejects_duplicate_pending_invitation(
     owner = _user()
     workspace = await workspace_service.create(owner, WorkspaceCreateRequest(name="Acme"))
     payload = InvitationCreateRequest(email="invitee@example.com", role=WorkspaceRole.MEMBER)
-    await service.create(owner, workspace.id, payload)
+    await service.create(owner, workspace.id, payload, acting_role=WorkspaceRole.OWNER)
 
     with pytest.raises(InvitationAlreadyPendingError):
-        await service.create(owner, workspace.id, payload)
+        await service.create(owner, workspace.id, payload, acting_role=WorkspaceRole.OWNER)
 
 
 async def test_create_rejects_email_already_member(
@@ -120,6 +124,7 @@ async def test_create_rejects_email_already_member(
             owner,
             workspace.id,
             InvitationCreateRequest(email="grace@example.com", role=WorkspaceRole.MEMBER),
+            acting_role=WorkspaceRole.OWNER,
         )
 
 
@@ -134,6 +139,7 @@ async def test_accept_creates_membership(
         owner,
         workspace.id,
         InvitationCreateRequest(email="invitee@example.com", role=WorkspaceRole.MEMBER),
+        acting_role=WorkspaceRole.OWNER,
     )
     invitee = _user("invitee@example.com")
     # `accept` assume que `current_user` já foi resolvido por `get_current_user`
@@ -164,6 +170,7 @@ async def test_accept_rejects_expired_invitation(
         owner,
         workspace.id,
         InvitationCreateRequest(email="invitee@example.com", role=WorkspaceRole.MEMBER),
+        acting_role=WorkspaceRole.OWNER,
     )
     issued.invitation.expires_at = datetime.now(UTC) - timedelta(days=1)
 
@@ -180,6 +187,7 @@ async def test_accept_rejects_mismatched_email(
         owner,
         workspace.id,
         InvitationCreateRequest(email="invitee@example.com", role=WorkspaceRole.MEMBER),
+        acting_role=WorkspaceRole.OWNER,
     )
 
     with pytest.raises(InvitationEmailMismatchError):
@@ -195,7 +203,10 @@ async def test_accept_rejects_when_already_member(
     workspace = await workspace_service.create(owner, WorkspaceCreateRequest(name="Acme"))
     invitee = _user("invitee@example.com")
     issued = await service.create(
-        owner, workspace.id, InvitationCreateRequest(email=invitee.email, role=WorkspaceRole.MEMBER)
+        owner,
+        workspace.id,
+        InvitationCreateRequest(email=invitee.email, role=WorkspaceRole.MEMBER),
+        acting_role=WorkspaceRole.OWNER,
     )
     await workspace_repo.add_member(
         WorkspaceMember(workspace_id=workspace.id, user_id=invitee.id, role=WorkspaceRole.GUEST)
@@ -214,6 +225,7 @@ async def test_preview_returns_invitation_metadata(
         owner,
         workspace.id,
         InvitationCreateRequest(email="invitee@example.com", role=WorkspaceRole.MEMBER),
+        acting_role=WorkspaceRole.OWNER,
     )
 
     invitation = await service.preview(issued.token)
@@ -238,6 +250,7 @@ async def test_cancel_invitation(
         owner,
         workspace.id,
         InvitationCreateRequest(email="invitee@example.com", role=WorkspaceRole.MEMBER),
+        acting_role=WorkspaceRole.OWNER,
     )
 
     await service.cancel(workspace.id, issued.invitation.id)
@@ -267,6 +280,7 @@ async def test_resend_issues_new_token_and_extends_expiry(
         owner,
         workspace.id,
         InvitationCreateRequest(email="invitee@example.com", role=WorkspaceRole.MEMBER),
+        acting_role=WorkspaceRole.OWNER,
     )
     issued.invitation.expires_at = datetime.now(UTC) - timedelta(days=1)
     old_token, old_hash = issued.token, issued.invitation.token_hash
@@ -311,6 +325,7 @@ async def test_resend_rejects_already_accepted_invitation(
         owner,
         workspace.id,
         InvitationCreateRequest(email="invitee@example.com", role=WorkspaceRole.MEMBER),
+        acting_role=WorkspaceRole.OWNER,
     )
     invitee = _user("invitee@example.com")
     await user_repo.create(
@@ -320,3 +335,34 @@ async def test_resend_rejects_already_accepted_invitation(
 
     with pytest.raises(InvitationAlreadyAcceptedError):
         await service.resend(owner, workspace.id, issued.invitation.id)
+
+
+async def test_create_rejects_role_above_inviter_role(
+    service: InvitationService, workspace_service: WorkspaceService
+) -> None:
+    owner = _user()
+    workspace = await workspace_service.create(owner, WorkspaceCreateRequest(name="Acme"))
+
+    with pytest.raises(CannotGrantRoleAboveOwnError):
+        await service.create(
+            _user("member@example.com"),
+            workspace.id,
+            InvitationCreateRequest(email="alt@example.com", role=WorkspaceRole.ADMIN),
+            acting_role=WorkspaceRole.MEMBER,
+        )
+
+
+async def test_create_allows_role_equal_to_inviter_role(
+    service: InvitationService, workspace_service: WorkspaceService
+) -> None:
+    owner = _user()
+    workspace = await workspace_service.create(owner, WorkspaceCreateRequest(name="Acme"))
+
+    issued = await service.create(
+        _user("admin@example.com"),
+        workspace.id,
+        InvitationCreateRequest(email="other-admin@example.com", role=WorkspaceRole.ADMIN),
+        acting_role=WorkspaceRole.ADMIN,
+    )
+
+    assert issued.invitation.role == WorkspaceRole.ADMIN

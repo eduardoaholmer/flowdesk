@@ -1,4 +1,4 @@
-from src.core.exceptions import ConflictError, NotFoundError
+from src.core.exceptions import ConflictError, NotFoundError, ValidationError
 
 
 class IssueNotFoundError(NotFoundError):
@@ -27,6 +27,15 @@ class InvalidParentIssueError(ConflictError):
 
     code = "invalid_parent_issue"
     message = "Vínculo de sub-issue inválido."
+
+
+class IssueAssigneeNotInWorkspaceError(ValidationError):
+    """Mesmo racional de `ProjectMemberNotInWorkspaceError`: sem esta checagem,
+    qualquer `user_id` do sistema podia virar responsável — e receber
+    notificações com dados de um workspace do qual não faz parte."""
+
+    code = "issue_assignee_not_in_workspace"
+    message = "O responsável precisa ser membro deste workspace."
 
 
 class IssueHasSubIssuesError(ConflictError):

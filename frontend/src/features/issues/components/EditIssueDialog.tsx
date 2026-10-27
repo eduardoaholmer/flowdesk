@@ -85,12 +85,12 @@ export function EditIssueDialog({
   async function onSubmit(values: IssueFormValues) {
     await updateIssue.mutateAsync({
       title: values.title,
-      description: values.description || undefined,
-      project_id: values.project_id || undefined,
+      description: values.description || null,
+      project_id: values.project_id || null,
       status_id: values.status_id,
       priority: values.priority,
-      assignee_id: values.assignee_id || undefined,
-      estimate: values.estimate ? Number(values.estimate) : undefined,
+      assignee_id: values.assignee_id || null,
+      estimate: values.estimate ? Number(values.estimate) : null,
       due_date: values.due_date || null,
     });
     setOpen(false);

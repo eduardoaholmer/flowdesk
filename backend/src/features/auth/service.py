@@ -20,6 +20,7 @@ from src.features.auth.exceptions import (
     InvalidCredentialsError,
     InvalidPasswordResetTokenError,
     InvalidRefreshTokenError,
+    OAuthEmailAlreadyRegisteredError,
     OAuthProviderNotConfiguredError,
 )
 from src.features.auth.models import OAuthIdentity, PasswordResetToken, RefreshToken, Session, User
@@ -129,12 +130,15 @@ class AuthService:
         (RF social-auth, `docs/09-decision-log.md` ADR-061):
 
         1. Identidade já vinculada (`oauth_identities`) -> é o mesmo usuário de sempre.
-        2. Nenhuma identidade, mas já existe conta com este e-mail (tradicional ou de
-           outro provedor) -> vincula a identidade a essa conta em vez de duplicar
-           (RF "evitar contas duplicadas") — seguro porque o e-mail aqui já foi
-           verificado pelo provedor, ao contrário de um e-mail informado livremente
-           pelo usuário.
-        3. Nenhuma das duas -> cria conta nova, sem senha (`password_hash=None`).
+        2. Nenhuma identidade, mas já existe conta *sem senha* com este e-mail (criada
+           por outro provedor) -> vincula a identidade a essa conta em vez de duplicar
+           (RF "evitar contas duplicadas") — as duas pontas tiveram o e-mail
+           verificado por um provedor.
+        3. Já existe conta *com senha* com este e-mail -> recusa
+           (`OAuthEmailAlreadyRegisteredError`, ADR-066): o cadastro por senha não
+           verifica e-mail, então vincular entregaria a conta a quem criou a senha
+           (pre-account takeover).
+        4. Nenhuma conta -> cria conta nova, sem senha (`password_hash=None`).
         """
         client = self._oauth_clients.get(provider)
         if client is None:
@@ -168,6 +172,8 @@ class AuthService:
             user = await self._user_repo.create(
                 User(name=profile.name, email=profile.email, avatar_url=profile.avatar_url)
             )
+        elif user.password_hash is not None:
+            raise OAuthEmailAlreadyRegisteredError()
         elif user.avatar_url is None and profile.avatar_url is not None:
             # "Não sobrescrever informações existentes sem necessidade" — só completa
             # o que faltava, nunca substitui um avatar que a pessoa já tinha.
@@ -190,6 +196,17 @@ class AuthService:
             raise InvalidRefreshTokenError()
 
         if token.revoked_at is not None:
+            grace = timedelta(seconds=self._settings.refresh_token_reuse_grace_seconds)
+            within_grace = (
+                token.replaced_by_id is not None and datetime.now(UTC) - token.revoked_at < grace
+            )
+            if within_grace:
+                # Corrida entre duas requisições quase simultâneas com o mesmo cookie
+                # (ex.: duas abas renovando ao mesmo tempo) — este token já foi
+                # rotacionado há poucos segundos por uma requisição legítima, não é
+                # reuso malicioso. Falha só esta requisição; a sessão e o token
+                # vencedor da corrida continuam válidos (docs/09-decision-log.md ADR-062).
+                raise InvalidRefreshTokenError()
             # Token já revogado (rotacionado ou sessão deslogada) sendo reapresentado
             # — possível roubo. Revoga toda a sessão como precaução (docs/07-security.md §2).
             logger.warning("refresh_token_reuse_detected", session_id=str(token.session_id))

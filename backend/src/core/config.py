@@ -42,6 +42,10 @@ class Settings(BaseSettings):
     # decodificar JSON para tipos complexos vindos de variável de ambiente/.env —
     # incompatível com o formato "a, b, c" que .env files usam na prática.
     cors_origins_raw: str = Field(default="http://localhost:5173", alias="CORS_ORIGINS")
+    # Regex opcional para origens que não cabem numa lista fixa (ex.: previews da
+    # Vercel do próprio projeto). Sem default: um `*.vercel.app` genérico confiava
+    # em qualquer site de qualquer conta da Vercel, com credenciais (ADR-067).
+    cors_origin_regex: str | None = Field(default=None, alias="CORS_ORIGIN_REGEX")
 
     # PEM com quebras de linha escapadas (`\n` literal) em vez de multilinha real —
     # o mesmo valor funciona sem sintaxe especial tanto em ".env" quanto no bloco
@@ -50,6 +54,12 @@ class Settings(BaseSettings):
     jwt_public_key: str
     access_token_expire_minutes: int = 15
     refresh_token_expire_days: int = 30
+    # Janela em que um refresh token recém-rotacionado ainda pode ser reapresentado
+    # sem disparar a detecção de reuso (`AuthService.refresh`) — cobre a corrida
+    # legítima de duas requisições quase simultâneas com o mesmo cookie (ex.: duas
+    # abas renovando ao mesmo tempo), que de outra forma seria indistinguível de um
+    # roubo de token e derrubaria a sessão inteira (docs/09-decision-log.md ADR-062).
+    refresh_token_reuse_grace_seconds: int = 5
     invitation_expire_days: int = 7
     # Curta de propósito (RF-AUTH-06): bem menor que refresh (30 dias) ou convite
     # (7 dias) — a janela de exposição de um token que dá controle total da conta
