@@ -42,5 +42,8 @@ def get_invitation_service(
     workspace_repo: WorkspaceRepositoryProtocol = Depends(get_workspace_repository),
     user_repo: UserRepositoryProtocol = Depends(get_user_repository),
     settings: Settings = Depends(get_settings),
+    permission_service: PermissionService = Depends(get_permission_service),
 ) -> InvitationService:
-    return InvitationService(invitation_repo, workspace_repo, user_repo, settings)
+    return InvitationService(
+        invitation_repo, workspace_repo, user_repo, settings, permission_service
+    )
