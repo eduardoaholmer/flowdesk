@@ -55,6 +55,7 @@ export interface IssueCreateInput {
   assignee_id?: string;
   estimate?: number;
   due_date?: string | null;
+  label_ids?: string[];
 }
 
 /**

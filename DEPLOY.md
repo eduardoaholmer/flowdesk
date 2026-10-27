@@ -26,7 +26,7 @@ para este arquivo nem para o repositório** — só nos painéis do Render/Verce
 - **CORS**: `backend/src/main.py` aceita a origem exata de `CORS_ORIGINS`
   (configurada no Render como `https://flowdesk.eduardoaholmer.dev`) e,
   opcionalmente, `CORS_ORIGIN_REGEX`. A regex fixa `*.vercel.app` foi removida
-  (ADR-065): confiava em qualquer site de qualquer conta da Vercel. Com o
+  (ADR-067): confiava em qualquer site de qualquer conta da Vercel. Com o
   proxy same-origin abaixo, nem produção nem previews precisam de CORS.
 - **`render.yaml`** (raiz, não em `backend/`): é um Blueprint — já provisiona
   Postgres (`flowdesk-postgres`) e Redis (`flowdesk-redis`) do próprio Render
@@ -90,9 +90,37 @@ ao banco. A Parte 2 migrou `DATABASE_URL`/`REDIS_URL` para Supabase/Upstash
 | URL pública do backend (Render) | `https://flowdesk-backend-ngcl.onrender.com` |
 | Connection string Postgres (Supabase) | só no painel do Render — não registrada aqui (session pooler, `aws-0-us-west-2.pooler.supabase.com:5432`) |
 | URL Redis (Upstash) | só no painel do Render — não registrada aqui (`guided-grizzly-87434.upstash.io:6379`, TLS) |
-| `VITE_API_URL` (Vercel) | `https://flowdesk-backend-ngcl.onrender.com/api/v1` — trocar para `/api/v1` (ver ADR-065 abaixo) |
+| `VITE_API_URL` (Vercel) | `/api/v1` — relativo, via proxy da Vercel (ADR-063). Antes: `https://flowdesk-backend-ngcl.onrender.com/api/v1` |
 | Domínio final | `https://flowdesk.eduardoaholmer.dev` — ativo, SSL válido |
 | CNAME (Vercel → Namecheap) | Host `flowdesk` → `d992bf47352c080b.vercel-dns-017.com.` |
+
+## API same-origin via proxy da Vercel + login social (ADR-063)
+
+O SPA não chama mais `onrender.com` direto: `frontend/vercel.json` reescreve
+`/api/*` para `https://flowdesk-backend-ngcl.onrender.com/api/*`. Sem isso, o
+cookie `csrf_token` ficava no domínio da API (ilegível pelo SPA) e o
+`/auth/refresh` falhava sempre — quebrando o login com Google/GitHub e
+derrubando a sessão a cada reload. Passos manuais para ativar:
+
+1. **Vercel → Settings → Environment Variables**: `VITE_API_URL` = `/api/v1`
+   (Production e Preview) e redeploy (variável `VITE_*` entra no build).
+2. **Render → `flowdesk-backend` → Environment**:
+   - `GOOGLE_REDIRECT_URI` = `https://flowdesk.eduardoaholmer.dev/api/v1/auth/google/callback`
+   - `GITHUB_REDIRECT_URI` = `https://flowdesk.eduardoaholmer.dev/api/v1/auth/github/callback`
+   - `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`/`GITHUB_CLIENT_ID`/`GITHUB_CLIENT_SECRET`
+     preenchidos (sem eles o botão cai em `oauth_provider_not_configured`).
+   - Salvar com "Save, rebuild, and deploy" (mudança de env var não entra no
+     serviço em execução sem um novo deploy).
+3. **Google Cloud Console → APIs & Services → Credentials → OAuth client**:
+   em "Authorized redirect URIs", adicionar a URL de callback do Google acima
+   (precisa bater exatamente, senão o Google responde `redirect_uri_mismatch`).
+4. **GitHub → Settings → Developer settings → OAuth Apps → FlowDesk**:
+   "Authorization callback URL" = a URL de callback do GitHub acima (o host
+   precisa ser o mesmo do `redirect_uri` enviado, senão o GitHub recusa).
+
+Feito e validado em produção em 2026-10-26 (login com Google e GitHub
+concluindo na home, sessão mantida após reload). Ordem recomendada: 2 → 3 → 4 → 1. `CORS_ORIGINS` não precisa mudar (com o
+proxy as chamadas do SPA são same-origin e nem passam por CORS).
 
 ## Limpeza pós-migração (feita em 2026-09-08)
 
@@ -109,72 +137,51 @@ ao banco. A Parte 2 migrou `DATABASE_URL`/`REDIS_URL` para Supabase/Upstash
   voltaria a recriar os dois e resetaria `DATABASE_URL`/`REDIS_URL` para
   `fromDatabase`/`fromService` (quebrando a integração com Supabase/Upstash).
 
-## Como redeployar (confirmado em 2026-10-22)
+## Como redeployar (atualizado em 2026-10-26)
 
-- **Vercel (frontend):** auto-deploy já ativo — todo push em `main` dispara
-  build/deploy sozinho, sem passo manual.
-- **Render (backend): auto-deploy está DESLIGADO.** Confirmado checando o
-  histórico de deploys do `flowdesk-backend` — os 11 deploys existentes até
-  essa data foram todos `Trigger: Manual` (ou `Blueprint`, da criação
-  inicial), nenhum automático por push. Um merge em `main` **não** atualiza o
-  backend sozinho.
-  - Para redeployar o backend: dashboard do Render → `flowdesk-backend` →
-    Deploys → botão **Manual Deploy** → **Deploy latest commit** (pega o HEAD
-    de `main`). Build + `alembic upgrade head` + restart levam ~1min quando a
-    imagem já está em cache (build do zero pode levar mais).
-  - Alternativa permanente: Render → `flowdesk-backend` → Settings → Build &
-    Deploy → habilitar "Auto-Deploy". Não habilitado ainda porque não foi
-    testado o impacto de migrations automáticas em todo push — decisão
+- **Vercel (frontend):** auto-deploy já ativo — todo push em `main- **Render (backend): auto-deploy LIGADO (`On Commit`).** Visto no dashboard
+  em 2026-10-26 (`flowdesk-backend` → Settings → Deploy → Auto-Deploy). Até
+  2026-10-22 os deploys eram todos `Trigger: Manual`; não há registro de quem
+  ligou nem quando. Hoje todo push em `main` redeploya o backend, rodando
+  `alembic upgrade head` (`backend/render_start.sh`).
+  - Deploy manual continua disponível: `flowdesk-backend` → **Manual Deploy**
+    → **Deploy latest commit**.
+  - Para voltar ao controle manual: Settings → Deploy → Auto-Deploy → `Off`.
+
+
     consciente de manter controle manual por ora.
 
-## Sessão same-origin via proxy da Vercel (ADR-065) — migração pendente
+## Pendências de CORS e rede (ADR-067)
 
-**Problema**: com o SPA em `flowdesk.eduardoaholmer.dev` chamando a API direto
-em `flowdesk-backend-ngcl.onrender.com`, os cookies de sessão (`refresh_token`,
-`csrf_token`) ficam gravados no domínio do Render. O JavaScript do SPA não lê
-cookie de outro domínio, então `csrf_token` nunca é visível: o bootstrap pula o
-refresh (`hasSessionCookie()` é sempre falso) e todo reload desloga. Além disso,
-`onrender.com` está na Public Suffix List — Safari/Firefox tratam esses cookies
-como de terceiros e podem bloqueá-los.
+- **CORS**: a regex fixa `*.vercel.app` saiu do backend (confiava, com
+  credenciais, em qualquer site de qualquer conta da Vercel). Com
+  `VITE_API_URL=/api/v1` também em Preview, cada preview usa o próprio proxy
+  e nenhuma `CORS_ORIGIN_REGEX` é necessária.
+- **Follow-up**: com o proxy validado (ADR-063), os cookies de auth podem
+  voltar a `SameSite=Strict` em produção (hoje `None`, ADR-062), e
+  `CORS_ORIGINS` no Render pode ficar só com o domínio final.
+- **Rate limit por IP (não resolvido)**: o Uvicorn roda sem
+  `--forwarded-allow-ips`, então `request.client.host` é o IP do proxy (Render,
+  e agora também Vercel), não o do usuário — o limite de 5 logins/min por IP
+  vira, na prática, um limite global compartilhado. Corrigir exige confirmar em
+  produção qual cabeçalho/posição de `X-Forwarded-For` carrega o IP real depois
+  dos dois proxies; confiar cegamente em `X-Forwarded-For` deixaria o cliente
+  forjar o próprio IP e furar o limite.
 
-**Solução**: `frontend/vercel.json` agora repassa `/api/*` para o Render. O SPA
-chama `/api/v1/...` no próprio domínio e os cookies passam a ser first-party.
-O rewrite já está no repo e é inofensivo sozinho; a troca efetiva depende dos
-passos manuais abaixo, **nesta ordem**:
+## Keep-alive do backend (UptimeRobot, configurado em 2026-10-26)
 
-1. **Vercel → Settings → Environment Variables**: `VITE_API_URL` = `/api/v1`
-   (Production e Preview). Redeploy do frontend (a variável é embutida no build).
-2. **Login social (se configurado)**: no Render, `GOOGLE_REDIRECT_URI` =
-   `https://flowdesk.eduardoaholmer.dev/api/v1/auth/google/callback` e
-   `GITHUB_REDIRECT_URI` = `https://flowdesk.eduardoaholmer.dev/api/v1/auth/github/callback`;
-   cadastrar as mesmas URLs no Google Cloud Console e no GitHub OAuth App.
-   Redeploy manual do backend (auto-deploy está desligado, ver acima).
-3. **Previews**: com `VITE_API_URL=/api/v1` também em Preview, cada preview usa
-   o próprio proxy — nenhuma `CORS_ORIGIN_REGEX` é necessária.
-4. **Validar em produção**:
-   - Login, depois F5: a sessão precisa continuar.
-   - DevTools → Application → Cookies: `refresh_token` (path `/api/v1/auth`) e
-     `csrf_token` (path `/`) devem aparecer em `flowdesk.eduardoaholmer.dev`.
-   - Fechar e reabrir o navegador com "Lembrar de mim" marcado.
-   - Primeira requisição após o Render "dormir" (~50s de cold start): confirmar
-     que o proxy da Vercel não corta a requisição antes do Render responder.
-5. Usuários com sessão antiga precisam logar uma vez de novo (os cookies
-   antigos ficaram no domínio do Render e deixam de ser usados).
+O Render free tier "dorme" o serviço após ~15 min sem requisições, e a
+primeira requisição seguinte espera ~1 min pelo cold start. No login social
+isso aparecia como a página de carregamento do Render antes do redirect para
+o Google/GitHub.
 
-**Follow-up depois da migração**: com tudo same-origin, os cookies de auth
-podem voltar a `SameSite=Strict` em produção (hoje `None`, ADR-062), e
-`CORS_ORIGINS` no Render pode ficar só com o domínio final.
-
-**Rate limit por IP (não resolvido)**: o Uvicorn roda sem
-`--forwarded-allow-ips`, então `request.client.host` é o IP do proxy (Render, e
-agora também Vercel), não o do usuário — o limite de 5 logins/min por IP vira,
-na prática, um limite global compartilhado. Corrigir exige confirmar em
-produção qual cabeçalho/posição de `X-Forwarded-For` carrega o IP real depois
-dos dois proxies; confiar cegamente em `X-Forwarded-For` deixaria o cliente
-forjar o próprio IP e furar o limite.
-
-## Follow-up sugerido
-
-- Backend no Render free tier "dorme" após ~15 min de inatividade (delay de
-  até 50s na primeira requisição depois disso) — considerar upgrade de plano
-  se isso for um problema para demonstrações ao vivo.
+- **Monitor**: UptimeRobot (plano free), tipo HTTP(s), intervalo de 5 min,
+  alerta por e-mail para o dono da conta.
+- **URL**: `https://flowdesk-backend-ngcl.onrender.com/health/ready`. Usa
+  `/health/ready` (não `/health`) para que o ping também toque Postgres
+  (Supabase) e Redis (Upstash): o Supabase free pausa o projeto após 7 dias
+  sem atividade. Custo: ~9 mil requisições/mês, dentro dos limites free.
+- **Horas do Render**: um serviço acordado 24/7 consome ~744 h/mês, dentro das
+  750 h/mês do free tier — não sobra margem para um segundo serviço free
+  acordado o tempo todo.
+- Alternativa sem keep-alive: plano pago do Render (Starter), que não dorme.

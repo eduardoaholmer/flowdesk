@@ -218,7 +218,7 @@ async def test_cannot_override_a_locked_permission(client: AsyncClient) -> None:
 async def test_revoked_issue_delete_blocks_admin(client: AsyncClient) -> None:
     """`issue.delete` faz parte do padrão de ADMIN; revogado pelo OWNER, o
     service ainda autorizava a exclusão porque a checagem contextual ignorava
-    os overrides — regressão da auditoria de 2026-10 (ADR-063)."""
+    os overrides — regressão da auditoria de 2026-10 (ADR-065)."""
     _, owner_token = await _register_and_login(client)
     workspace_id = await _create_workspace(client, owner_token)
     _, admin_token = await _invite_and_accept_member(

@@ -44,7 +44,7 @@ class Settings(BaseSettings):
     cors_origins_raw: str = Field(default="http://localhost:5173", alias="CORS_ORIGINS")
     # Regex opcional para origens que não cabem numa lista fixa (ex.: previews da
     # Vercel do próprio projeto). Sem default: um `*.vercel.app` genérico confiava
-    # em qualquer site de qualquer conta da Vercel, com credenciais (ADR-065).
+    # em qualquer site de qualquer conta da Vercel, com credenciais (ADR-067).
     cors_origin_regex: str | None = Field(default=None, alias="CORS_ORIGIN_REGEX")
 
     # PEM com quebras de linha escapadas (`\n` literal) em vez de multilinha real —

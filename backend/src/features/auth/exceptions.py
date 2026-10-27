@@ -44,7 +44,7 @@ class OAuthProviderNotConfiguredError(NotFoundError):
 
 
 class OAuthEmailAlreadyRegisteredError(ConflictError):
-    """Login social com o e-mail de uma conta que tem senha (ADR-064). Sem
+    """Login social com o e-mail de uma conta que tem senha (ADR-066). Sem
     verificação de e-mail no cadastro, essa senha pode ter sido criada por
     outra pessoa — vincular a identidade do provedor entregaria ao dono da
     senha a conta de quem acabou de provar posse do e-mail."""

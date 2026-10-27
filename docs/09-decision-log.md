@@ -1416,7 +1416,41 @@ Hardening de rate limit por rota (mesma sprint, gap independente encontrado ao r
 
 **Pendências**: o cenário de corrida genuinamente concorrente (duas transações de banco disputando o mesmo `UPDATE` no mesmo instante, não apenas duas requisições sequenciais rápidas) não é reproduzível de forma determinística num teste com repository fake — a janela de graça foi validada pela lógica (reapresentação dentro/fora da janela), não por um teste de concorrência real de banco. Validação em produção real (domínio `flowdesk.eduardoaholmer.dev` contra a API do Render) não foi possível nesta sessão (sem acesso a esse ambiente); a correção foi validada localmente via `docker compose` (mesmo comportamento de cookie, `ENVIRONMENT=production` forçado via override de dependência no teste de contrato) e por leitura de código contra a configuração real documentada em `DEPLOY.md`.
 
-## ADR-063 — Auditoria 2026-10: autorização contextual e tenancy de issues/convites
+## ADR-063 — Correção: login social (Google/GitHub) e sessão quebrados em produção — API servida same-origin via proxy da Vercel
+
+**Contexto**: relato do usuário — login com Google e GitHub não funciona em produção (`flowdesk.eduardoaholmer.dev`). O handshake com o provedor chega ao fim, mas a SPA mostra "Não foi possível concluir o login social" e volta para `/login`.
+
+**Causa raiz**: ADR-062 corrigiu `SameSite` dos cookies para o deploy cross-site (Vercel em `eduardoaholmer.dev`, API em `onrender.com`), mas o double-submit CSRF (`docs/07-security.md` §4) pressupõe que o frontend consiga **ler** o cookie `csrf_token` via `document.cookie` — e um cookie emitido por `onrender.com` nunca é visível ao JavaScript de `flowdesk.eduardoaholmer.dev`, qualquer que seja o `SameSite`/`Path`. Consequências determinísticas:
+- `OAuthCallbackPage` chama `refreshAccessToken()` sem header `X-CSRF-Token` → `verify_csrf_token` recusa (401 `invalid_refresh_token`) → toast de erro + `/login`. É exatamente o sintoma relatado; o callback em si (troca do `code`, criação de sessão, cookies) funciona.
+- `hasSessionCookie()` (ADR-062/`AuthBootstrap`) é sempre `false` em produção → toda recarga de página perde a sessão, também no login por senha.
+- Independente do CSRF: Safari (ITP), Firefox (Total Cookie Protection) e a aba anônima do Chrome bloqueiam ou particionam cookies de terceiros — o `refresh_token` de `onrender.com` nem seria enviado numa chamada XHR vinda de `eduardoaholmer.dev`.
+
+**Alternativas consideradas**:
+- **Devolver o CSRF token no corpo de login/refresh (ou na URL do redirect OAuth) para o SPA guardar em memória/`localStorage`**: resolve só o CSRF; não resolve o bloqueio de cookie de terceiros, então continuaria quebrado em Safari/Firefox. Rejeitado.
+- **Domínio próprio para a API (`api.flowdesk.eduardoaholmer.dev` → Render)**: mesmo site, resolve tudo, mas exige domínio custom no Render + DNS + certificado — mais infraestrutura que o necessário.
+- **Rewrite da Vercel `/api/:path*` → `https://flowdesk-backend-ngcl.onrender.com/api/:path*`** (escolhido): o navegador só conversa com `flowdesk.eduardoaholmer.dev`; todos os cookies (`refresh_token`, `csrf_token`, `remember_me`, `oauth_state`) passam a ser first-party, `document.cookie` enxerga o `csrf_token`, e nenhum bloqueio de cookie de terceiro se aplica. Zero mudança de código no backend nem no `src/` do frontend — só `frontend/vercel.json` e configuração dos painéis.
+
+**Decisão**: `frontend/vercel.json` ganha a regra de rewrite para `/api/*` **antes** do fallback SPA (`/(.*)` → `index.html`; a Vercel aplica a primeira regra que casar). `VITE_API_URL` na Vercel passa a ser relativo (`/api/v1`). Os `GOOGLE_REDIRECT_URI`/`GITHUB_REDIRECT_URI` do Render e as URLs de callback cadastradas no Google Cloud Console/GitHub OAuth App passam a apontar para `https://flowdesk.eduardoaholmer.dev/api/v1/auth/{provider}/callback` — o callback precisa cair no mesmo host que gravou `oauth_state` em `/auth/{provider}/login`, e é nele que os cookies de sessão devem ser gravados. Passo a passo em `DEPLOY.md`.
+
+**Mantido de propósito**: `SameSite=None` em produção (ADR-062) e o CORS do backend. Com o proxy, `None` não é mais necessário para o SPA, mas mantê-lo não abre brecha (CSRF segue mitigado pelo double-submit, agora funcional) e evita quebrar quem ainda acessa a URL do Render diretamente durante a transição. Voltar para `Strict` em produção fica como possível endurecimento futuro, depois que o proxy estiver validado.
+
+**Consequências**: toda chamada da API passa por um salto extra (edge da Vercel → Render), com latência marginal. O IP visto pelo backend (`request.client.host`, usado no rate limit por IP e em `Session.ip_address`) já era o do proxy do Render antes desta mudança (Uvicorn só confia em `X-Forwarded-For` vindo de `127.0.0.1` por padrão) — limitação pré-existente, não introduzida nem resolvida aqui.
+
+**Verificação**: diagnóstico feito por leitura de código contra a topologia real documentada em `DEPLOY.md` — sem acesso ao ambiente de produção nesta sessão (a rede do sandbox bloqueia `onrender.com`). Validação ponta a ponta depende dos passos manuais de `DEPLOY.md` (Vercel, Render, Google, GitHub). **Atualização 2026-10-26**: passos manuais aplicados e login com Google e GitHub validado pelo usuário em produção. A demora de ~1 min observada no primeiro login era cold start do Render free tier, resolvida com keep-alive (`DEPLOY.md`, "Keep-alive do backend").
+
+## ADR-064 — Labels na criação da issue e criação de label sem sair da issue
+
+**Contexto**: pedido do usuário — poder criar uma label nova direto do formulário de criação de issue e do detalhe da issue. Antes, o formulário de criação nem tinha campo de label, e o seletor do detalhe só listava labels já existentes; criar uma exigia ir até a página de Labels.
+
+**Decisão — `label_ids` em `POST /issues`**: `IssueCreateRequest.label_ids` (até 20, duplicados removidos) e `IssueService.create` valida cada id contra o workspace **antes** de criar a issue e aplica os vínculos (com `label.added` no activity log) na mesma transação. Alternativa descartada: o frontend criar a issue e depois chamar `POST /issues/{id}/labels` uma vez por label — N+1 requisições e uma issue com só parte das labels se uma delas falhasse no meio. Não foi para o `PATCH`: depois da criação, a associação continua pelos endpoints dedicados, que registram adição e remoção uma a uma.
+
+**Decisão — um único componente de seleção (`LabelCombobox`)**: popover com busca (`cmdk`) que lista as labels, marca/desmarca e, quando o termo não bate com nenhum nome existente (comparação sem diferenciar maiúsculas, para não oferecer "Bug" ao lado de "bug"), oferece "Criar label “termo”". A label criada volta já marcada. O componente não sabe o que "marcar" significa: no detalhe (`IssueLabelPicker`) aplica na hora via `POST .../labels`; no `CreateIssueDialog` só guarda o id no formulário e vai em `label_ids`. A cor da label criada assim sai da paleta de `ColorSwatchPicker` (`PRESET_COLORS`, movida para `shared/lib/constants.ts`), em rodízio pelo número de labels existentes; dá para trocar depois na página de Labels.
+
+**Sem mudança de RBAC**: criar label continua exigindo `label.create` (`MEMBER`+); sem a permissão, o backend responde 403 e o toast de erro aparece, mesmo comportamento da página de Labels, que também não esconde o botão por papel. Aplicar labels na criação fica coberto por `issue.create`, como os demais campos da issue nesse momento.
+
+**Verificação**: backend — 3 testes unitários novos de `IssueService.create` (aplica e registra activity, rejeita label de outro workspace sem criar a issue, limite de 20) e 2 de contrato (`label_ids` aplicados; label de outro workspace → 404 `label_not_found` sem issue criada); `ruff`/`mypy` limpos. Frontend — `tests/LabelCombobox.test.tsx` (criar e aplicar pelo detalhe, não oferecer criação de nome existente, `label_ids` enviados pelo diálogo de criação); `tsc`/`eslint`/`prettier` limpos.
+
+## ADR-065 — Auditoria 2026-10: autorização contextual e tenancy de issues/convites
 
 **Contexto**: auditoria de segurança do backend (outubro/2026) encontrou quatro falhas de autorização/tenancy, todas reproduzidas com testes contra a app real antes da correção.
 
@@ -1432,7 +1466,7 @@ Hardening de rate limit por rota (mesma sprint, gap independente encontrado ao r
 
 **Não corrigido (registrado)**: repositories sem `workspace_id` em métodos de filho de issue (`list_activity`, `list_labels`, `soft_delete`, `list_by_issue`) — hoje seguros porque o service valida a issue antes; trava otimista não atômica (versão fora do `WHERE`); `/metrics` e `/version` públicos.
 
-## ADR-064 — Login social não vincula automaticamente a conta com senha
+## ADR-066 — Login social não vincula automaticamente a conta com senha
 
 **Contexto**: ADR-061 vinculava a identidade do provedor a qualquer conta existente com o mesmo e-mail, assumindo que "o e-mail já foi verificado pelo provedor". A verificação cobre só um lado: `POST /auth/register` não verifica e-mail. Um atacante cadastrava `vitima@...` com senha própria; quando a vítima entrava com Google/GitHub, o vínculo automático colocava os dois na mesma conta (pre-account takeover). Além disso, `GoogleOAuthClient` não checava `email_verified`.
 
@@ -1442,12 +1476,10 @@ Hardening de rate limit por rota (mesma sprint, gap independente encontrado ao r
 
 **Consequência**: quem tem conta por senha não consegue mais entrar com Google/GitHub no mesmo e-mail até existir um fluxo de "vincular provedor" autenticado (a partir das configurações da conta, com a sessão por senha já provando a posse). Teste `test_login_with_oauth_links_existing_account_by_email` (que exigia o comportamento antigo) substituído por `..._links_existing_social_account_by_email` + `..._refuses_to_link_account_with_password`.
 
-## ADR-065 — Proxy same-origin da Vercel para a API; fim da regex `*.vercel.app` no CORS
+## ADR-067 — Fim da regex `*.vercel.app` no CORS (`CORS_ORIGIN_REGEX` opcional)
 
-**Contexto**: ADR-062 corrigiu `SameSite` para o deploy cross-site (SPA em `flowdesk.eduardoaholmer.dev`, API em `onrender.com`), mas não o double-submit de CSRF: o cookie `csrf_token` é gravado pelo domínio da API, e o JavaScript do SPA não lê cookie de outro domínio. Em produção, `hasSessionCookie()` (`httpClient.ts`) é sempre falso, então o bootstrap pula o refresh e todo reload derruba a sessão; quando o refresh roda (401 com token expirado), vai sem `X-CSRF-Token`. `onrender.com` também está na Public Suffix List, então Safari/Firefox tratam esses cookies como de terceiros. Separadamente, `main.py` aceitava `^https://[a-zA-Z0-9-]+\.vercel\.app$` com `allow_credentials=True` — qualquer site de qualquer conta da Vercel.
+**Contexto**: `main.py` aceitava `^https://[a-zA-Z0-9-]+\.vercel\.app$` com `allow_credentials=True`, para cobrir os deploys de preview. Qualquer conta da Vercel cria subdomínios em `vercel.app`, então a regex tornava confiável, com credenciais, o site de qualquer pessoa. Com o proxy same-origin do ADR-063, o SPA (produção e previews, ambos com `VITE_API_URL=/api/v1`) nem passa mais por CORS, e a regex deixou de ter uso legítimo.
 
-**Decisão — proxy same-origin**: `frontend/vercel.json` repassa `/api/*` para o Render; com `VITE_API_URL=/api/v1` na Vercel, o SPA chama a API no próprio domínio e todos os cookies passam a ser first-party. Escolhido em vez de domínio próprio para a API (`api.flowdesk.eduardoaholmer.dev`, mesmo site) porque não exige DNS/plano no Render, cobre também os previews e elimina CORS do caminho do SPA. A migração tem passos manuais (variável na Vercel, redirect URIs de OAuth) documentados em `DEPLOY.md`; o rewrite sozinho não muda nada até `VITE_API_URL` ser trocada.
+**Decisão**: a regex fixa sai de `main.py` e vira `CORS_ORIGIN_REGEX` (`Settings.cors_origin_regex`), opcional e sem default. Sem ela, só as origens exatas de `CORS_ORIGINS` são aceitas. Quem precisar liberar previews que chamem a API do Render direto define uma regex restrita ao próprio projeto.
 
-**Decisão — CORS**: a regex vira `CORS_ORIGIN_REGEX`, opcional e sem default.
-
-**Pendências**: validar em produção (cookies no domínio do SPA, reload mantendo sessão, cold start do Render dentro do timeout do proxy da Vercel); depois disso, voltar os cookies de auth a `SameSite=Strict` em produção. Rate limit por IP continua usando o IP do proxy (Uvicorn sem `--forwarded-allow-ips`) — exige confirmar em produção qual posição de `X-Forwarded-For` é confiável depois de Vercel + Render.
+**Pendências**: com o proxy validado em produção (ADR-063), os cookies de auth podem voltar a `SameSite=Strict` e `CORS_ORIGINS` no Render pode ficar só com o domínio final. Rate limit por IP continua usando o IP do proxy (Uvicorn sem `--forwarded-allow-ips`) — exige confirmar em produção qual posição de `X-Forwarded-For` é confiável depois de Vercel + Render.

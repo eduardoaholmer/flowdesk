@@ -612,6 +612,54 @@ async def test_delete_by_admin_succeeds_without_being_creator(
     assert issue_repo.issues[issue.id].deleted_at is not None
 
 
+async def test_create_with_label_ids_applies_labels_and_records_activity(
+    service: IssueService,
+    issue_repo: FakeIssueRepository,
+    label_repo: FakeLabelRepository,
+    workflow_state_repo: FakeWorkflowStateRepository,
+) -> None:
+    workspace_id = _workspace_id()
+    await _seed_status(workflow_state_repo, workspace_id)
+    bug = await label_repo.create(Label(workspace_id=workspace_id, name="bug", color="#FF0000"))
+    ui = await label_repo.create(Label(workspace_id=workspace_id, name="ui", color="#00FF00"))
+
+    issue = await service.create(
+        _user(),
+        workspace_id,
+        IssueCreateRequest(title="Issue", label_ids=[bug.id, ui.id, bug.id]),
+    )
+
+    applied = [link.label_id for link in issue_repo.labels if link.issue_id == issue.id]
+    assert applied == [bug.id, ui.id]
+    added_names = [e.new_value for e in issue_repo.activity_log if e.action == "label.added"]
+    assert added_names == ["bug", "ui"]
+
+
+async def test_create_rejects_label_from_another_workspace_without_creating_issue(
+    service: IssueService,
+    issue_repo: FakeIssueRepository,
+    label_repo: FakeLabelRepository,
+    workflow_state_repo: FakeWorkflowStateRepository,
+) -> None:
+    workspace_id = _workspace_id()
+    await _seed_status(workflow_state_repo, workspace_id)
+    foreign_label = await label_repo.create(
+        Label(workspace_id=_workspace_id(), name="bug", color="#FF0000")
+    )
+
+    with pytest.raises(LabelNotFoundError):
+        await service.create(
+            _user(), workspace_id, IssueCreateRequest(title="Issue", label_ids=[foreign_label.id])
+        )
+
+    assert issue_repo.issues == {}
+
+
+def test_create_request_rejects_too_many_label_ids() -> None:
+    with pytest.raises(ValidationError):
+        IssueCreateRequest(title="Issue", label_ids=[uuid.uuid4() for _ in range(21)])
+
+
 async def test_add_label_links_label_and_records_activity(
     service: IssueService,
     issue_repo: FakeIssueRepository,

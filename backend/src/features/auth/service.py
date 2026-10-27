@@ -135,7 +135,7 @@ class AuthService:
            (RF "evitar contas duplicadas") — as duas pontas tiveram o e-mail
            verificado por um provedor.
         3. Já existe conta *com senha* com este e-mail -> recusa
-           (`OAuthEmailAlreadyRegisteredError`, ADR-064): o cadastro por senha não
+           (`OAuthEmailAlreadyRegisteredError`, ADR-066): o cadastro por senha não
            verifica e-mail, então vincular entregaria a conta a quem criou a senha
            (pre-account takeover).
         4. Nenhuma conta -> cria conta nova, sem senha (`password_hash=None`).

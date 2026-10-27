@@ -1,7 +1,7 @@
 import uuid
 from datetime import date, datetime
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from src.features.issues.models import IssuePriority
 
@@ -9,6 +9,7 @@ _TITLE_MIN_LENGTH = 1
 _TITLE_MAX_LENGTH = 255
 _MIN_DUE_DATE = date(1900, 1, 1)
 _MAX_DUE_DATE = date(2200, 12, 31)
+_MAX_LABELS_ON_CREATE = 20
 
 
 def _validate_title(value: str) -> str:
@@ -39,7 +40,12 @@ class IssueCreateRequest(BaseModel):
     """`status_id` opcional: quando omitido, o service atribui o status
     marcado `is_default` no workspace (ver `WorkflowStateService.seed_defaults`,
     Sprint 9.2/ADR-056) — sem valor fixo aqui, já que o status default agora é
-    dado de workspace, não uma constante do código."""
+    dado de workspace, não uma constante do código.
+
+    `label_ids` aplica labels já na criação, na mesma transação (ADR-064) — sem
+    isso o frontend teria de criar a issue e depois chamar
+    `POST /issues/{id}/labels` uma vez por label, deixando a issue sem parte das
+    labels se uma dessas chamadas falhasse."""
 
     title: str
     description: str | None = None
@@ -50,11 +56,17 @@ class IssueCreateRequest(BaseModel):
     assignee_id: uuid.UUID | None = None
     estimate: int | None = None
     due_date: date | None = None
+    label_ids: list[uuid.UUID] = Field(default_factory=list, max_length=_MAX_LABELS_ON_CREATE)
 
     @field_validator("title")
     @classmethod
     def _check_title(cls, value: str) -> str:
         return _validate_title(value)
+
+    @field_validator("label_ids")
+    @classmethod
+    def _dedupe_label_ids(cls, value: list[uuid.UUID]) -> list[uuid.UUID]:
+        return list(dict.fromkeys(value))
 
     @field_validator("estimate")
     @classmethod

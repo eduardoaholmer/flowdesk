@@ -88,7 +88,7 @@ async def test_metrics_groups_unmatched_routes_under_a_single_label(client: Asyn
 
 async def test_cors_rejects_arbitrary_vercel_subdomain_by_default(client: AsyncClient) -> None:
     """Qualquer conta da Vercel cria `<nome>.vercel.app` — sem `CORS_ORIGIN_REGEX`
-    configurado, só as origens exatas de `CORS_ORIGINS` são aceitas (ADR-065)."""
+    configurado, só as origens exatas de `CORS_ORIGINS` são aceitas (ADR-067)."""
     response = await client.get("/health", headers={"Origin": "https://attacker-site.vercel.app"})
 
     assert "access-control-allow-origin" not in response.headers

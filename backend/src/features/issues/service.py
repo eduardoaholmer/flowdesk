@@ -88,6 +88,9 @@ class IssueService:
         if payload.assignee_id is not None:
             await self._validate_assignee(workspace_id, payload.assignee_id)
         status_id = await self._resolve_status_id(workspace_id, payload.status_id)
+        labels = [
+            await self._get_active_label(workspace_id, label_id) for label_id in payload.label_ids
+        ]
 
         number = await self._issue_repo.next_number(workspace_id)
         issue = await self._issue_repo.create(
@@ -113,6 +116,11 @@ class IssueService:
             "issue.created",
             new_value=issue.identifier,
         )
+        for label in labels:
+            await self._issue_repo.add_label(issue.id, label.id)
+            await self._record_activity(
+                workspace_id, issue.id, current_user.id, "label.added", new_value=label.name
+            )
         return issue
 
     async def list_for_workspace(
@@ -385,6 +393,12 @@ class IssueService:
         if issue is None:
             raise IssueNotFoundError()
         return issue
+
+    async def _get_active_label(self, workspace_id: uuid.UUID, label_id: uuid.UUID) -> Label:
+        label = await self._label_repo.get_by_id(workspace_id, label_id)
+        if label is None:
+            raise LabelNotFoundError()
+        return label
 
     async def _get_active_project(self, workspace_id: uuid.UUID, project_id: uuid.UUID) -> None:
         project = await self._project_repo.get_by_id(workspace_id, project_id)

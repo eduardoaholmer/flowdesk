@@ -132,7 +132,7 @@ async def test_login_with_oauth_refuses_to_link_account_with_password(
     session_repo: FakeSessionRepository,
     oauth_identity_repo: FakeOAuthIdentityRepository,
 ) -> None:
-    """Pre-account takeover (ADR-064): o cadastro por senha não verifica e-mail,
+    """Pre-account takeover (ADR-066): o cadastro por senha não verifica e-mail,
     então quem registrou a senha pode não ser o dono do e-mail."""
     await service.register(
         RegisterRequest(name="Atacante", email="ada@example.com", password="Str0ng!Passw0rd")

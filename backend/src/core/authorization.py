@@ -218,7 +218,7 @@ class PermissionService:
         repassa os overrides do workspace junto com a membership. Checagens
         contextuais nos services (posse sobre issue/comentário/anexo) chamando
         `require(member=...)` sem os overrides ignoravam silenciosamente uma
-        permissão revogada ou concedida pelo OWNER (ADR-063).
+        permissão revogada ou concedida pelo OWNER (ADR-065).
         """
         self.require(
             member=context.member,
