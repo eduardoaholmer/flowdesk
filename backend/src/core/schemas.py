@@ -1,12 +1,9 @@
 import math
-from typing import Generic, TypeVar
 
 from pydantic import BaseModel
 
-T = TypeVar("T")
 
-
-class DataEnvelope(BaseModel, Generic[T]):
+class DataEnvelope[T](BaseModel):
     """Envelope de sucesso padrão (CLAUDE.md §8) — `{"data": ...}`.
 
     Toda rota de recurso único usa isso como `response_model`, nunca retornando
@@ -33,7 +30,7 @@ class PaginationMeta(BaseModel):
         return cls(page=page, per_page=per_page, total=total, total_pages=total_pages)
 
 
-class CollectionEnvelope(BaseModel, Generic[T]):
+class CollectionEnvelope[T](BaseModel):
     """Envelope de sucesso padrão para coleção paginada — `{"data": [...], "meta": {...}}`."""
 
     data: list[T]
