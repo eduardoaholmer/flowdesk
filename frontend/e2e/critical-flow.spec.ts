@@ -23,12 +23,12 @@ test("cadastro → login → criar workspace → criar issue → mudar status", 
   await page.getByRole("button", { name: "Criar conta" }).click();
   await page.getByLabel("Nome").fill(name);
   await page.getByLabel("E-mail").fill(email);
-  await page.getByLabel("Senha").fill(password);
+  await page.getByLabel("Senha", { exact: true }).fill(password);
   await page.locator("form").getByRole("button", { name: "Criar conta" }).click();
 
   await page.getByRole("link", { name: "Esqueci minha senha" }).waitFor();
   await page.getByLabel("E-mail").fill(email);
-  await page.getByLabel("Senha").fill(password);
+  await page.getByLabel("Senha", { exact: true }).fill(password);
   await page.locator("form").getByRole("button", { name: "Entrar" }).click();
 
   await expect(page.getByRole("heading", { name: "Crie seu primeiro workspace" })).toBeVisible();
@@ -45,15 +45,18 @@ test("cadastro → login → criar workspace → criar issue → mudar status", 
   const issueLink = page.getByRole("link", { name: issueTitle });
   await issueLink.waitFor();
   await issueLink.click();
-  await expect(page).toHaveURL(/\/issues\/[^/]+$/);
-  await expect(page.getByText("Backlog", { exact: true })).toBeVisible();
+  // Desde a Sprint 9.5 a issue abre no painel lateral da lista (`?panel=`), não
+  // numa página própria.
+  await expect(page).toHaveURL(/\/issues\?panel=[^&]+$/);
+  const panel = page.getByRole("region", { name: "Detalhe da issue" });
+  await expect(panel.getByText("Backlog", { exact: true })).toBeVisible();
 
-  await page.getByRole("button", { name: "Editar issue" }).click();
+  await panel.getByRole("button", { name: "Editar issue" }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible();
   await dialog.getByRole("combobox").first().click();
   await page.getByRole("option", { name: "In Progress" }).click();
   await dialog.getByRole("button", { name: "Salvar alterações" }).click();
 
-  await expect(page.getByText("In Progress", { exact: true })).toBeVisible();
+  await expect(panel.getByText("In Progress", { exact: true })).toBeVisible();
 });

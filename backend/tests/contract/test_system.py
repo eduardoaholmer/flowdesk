@@ -1,3 +1,4 @@
+import pytest
 from httpx import AsyncClient
 
 
@@ -98,3 +99,23 @@ async def test_cors_rejects_lookalike_non_vercel_origin(client: AsyncClient) -> 
     response = await client.get("/health", headers={"Origin": "https://evil.com/.vercel.app"})
 
     assert "access-control-allow-origin" not in response.headers
+
+
+@pytest.mark.parametrize("method", ["GET", "POST", "PUT", "PATCH", "DELETE"])
+async def test_cors_preflight_allows_every_method_the_api_uses(
+    client: AsyncClient, method: str
+) -> None:
+    """`PUT` (overrides de permissão, regras do GitHub) ficou de fora da lista até a
+    Sprint 10.4: o preflight dava 400 e o navegador nem enviava a requisição quando
+    SPA e API estão em origens diferentes (ADR-075)."""
+    response = await client.options(
+        "/api/v1/workspaces/00000000-0000-0000-0000-000000000000/permission-overrides",
+        headers={
+            "Origin": "http://localhost:5173",
+            "Access-Control-Request-Method": method,
+            "Access-Control-Request-Headers": "authorization,content-type",
+        },
+    )
+
+    assert response.status_code == 200
+    assert method in response.headers["access-control-allow-methods"]

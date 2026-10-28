@@ -71,3 +71,43 @@ def test_cors_origin_regex_is_read_from_environment(monkeypatch: pytest.MonkeyPa
     settings = Settings(**_BASE_KWARGS, jwt_public_key="irrelevant")
 
     assert settings.cors_origin_regex == r"^https://flowdesk-[a-z0-9-]+\.vercel\.app$"
+
+
+def test_github_app_is_off_when_not_configured() -> None:
+    settings = Settings(**_BASE_KWARGS, jwt_public_key="irrelevant")
+
+    assert settings.github_app_configured is False
+
+
+def test_github_app_with_all_three_fields_is_configured() -> None:
+    settings = Settings(
+        **_BASE_KWARGS,
+        jwt_public_key="irrelevant",
+        github_app_slug="flowdesk",
+        github_app_client_id="Iv1.abc",
+        github_app_client_secret="secret",
+        github_webhook_secret="webhook-secret",
+    )
+
+    assert settings.github_app_configured is True
+
+
+def test_partial_github_app_config_raises() -> None:
+    with pytest.raises(ValidationError, match="GITHUB_APP_SLUG"):
+        Settings(
+            **_BASE_KWARGS,
+            jwt_public_key="irrelevant",
+            github_app_slug="flowdesk",
+            github_app_client_id="Iv1.abc",
+        )
+
+
+def test_github_app_without_webhook_secret_raises() -> None:
+    with pytest.raises(ValidationError, match="GITHUB_WEBHOOK_SECRET"):
+        Settings(
+            **_BASE_KWARGS,
+            jwt_public_key="irrelevant",
+            github_app_slug="flowdesk",
+            github_app_client_id="Iv1.abc",
+            github_app_client_secret="secret",
+        )

@@ -61,3 +61,15 @@ services:
         sync: false
       - key: FRONTEND_BASE_URL
         sync: false
+      # Integração com GitHub (M10, `DEPLOY.md` → "Integração com GitHub"). Os quatro
+      # vão juntos: o backend não sobe com só parte deles
+      # (`core/config.py::_require_full_github_app_config`). Sem nenhum, a
+      # integração fica desligada e o resto do app funciona normalmente.
+      - key: GITHUB_APP_SLUG
+        sync: false
+      - key: GITHUB_APP_CLIENT_ID
+        sync: false
+      - key: GITHUB_APP_CLIENT_SECRET
+        sync: false
+      - key: GITHUB_WEBHOOK_SECRET
+        sync: false

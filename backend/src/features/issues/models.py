@@ -3,7 +3,7 @@ import uuid
 from datetime import date, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Date, DateTime, ForeignKey, Index, func, text
+from sqlalchemy import CheckConstraint, Date, DateTime, ForeignKey, Index, func, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.db.base import Base, SoftDeleteMixin, TimestampMixin, UUIDPrimaryKeyMixin, domain_enum
@@ -15,7 +15,9 @@ from src.features.workflow_states.models import WorkflowState
 if TYPE_CHECKING:
     from src.features.comments.models import Comment
 
-_IDENTIFIER_PREFIX = "FD"
+# Público desde a Sprint 10.3: o vínculo de pull requests do GitHub procura este
+# mesmo prefixo (`FD-123`) em branch, título e corpo do PR.
+ISSUE_IDENTIFIER_PREFIX = "FD"
 
 
 class IssuePriority(enum.StrEnum):
@@ -114,7 +116,7 @@ class Issue(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
 
     @property
     def identifier(self) -> str:
-        return f"{_IDENTIFIER_PREFIX}-{self.number}"
+        return f"{ISSUE_IDENTIFIER_PREFIX}-{self.number}"
 
 
 Index(
@@ -160,13 +162,29 @@ class IssueLabel(Base):
     label: Mapped[Label] = relationship(back_populates="issue_links")
 
 
+class ActivityActorSource(enum.StrEnum):
+    """De onde veio a mudança (Sprint 10.4, ADR-070). `GITHUB` é uma automação
+    disparada por um evento de pull request: `actor_id` é o membro do workspace que
+    fez login com a mesma conta do GitHub, ou `NULL` quando não há esse vínculo."""
+
+    USER = "USER"
+    GITHUB = "GITHUB"
+
+
 class ActivityLog(UUIDPrimaryKeyMixin, Base):
     """Append-only por natureza (auditoria) — sem `updated_at`, sem soft delete.
     "Excluir" um log de auditoria contradiria seu propósito (docs/03-database.md §2).
     """
 
     __tablename__ = "activity_logs"
-    __table_args__ = (Index("ix_activity_logs_issue_id_created_at", "issue_id", "created_at"),)
+    __table_args__ = (
+        Index("ix_activity_logs_issue_id_created_at", "issue_id", "created_at"),
+        # Mudança feita por uma pessoa sempre tem autor; só automação pode não ter.
+        CheckConstraint(
+            "actor_source <> 'USER' OR actor_id IS NOT NULL",
+            name="ck_activity_logs_user_actor_required",
+        ),
+    )
 
     workspace_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("workspaces.id", ondelete="RESTRICT"), nullable=False
@@ -174,8 +192,14 @@ class ActivityLog(UUIDPrimaryKeyMixin, Base):
     issue_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("issues.id", ondelete="RESTRICT"), nullable=False
     )
-    actor_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), default=None
+    )
+    actor_source: Mapped[ActivityActorSource] = mapped_column(
+        domain_enum(ActivityActorSource),
+        nullable=False,
+        default=ActivityActorSource.USER,
+        server_default=ActivityActorSource.USER.value,
     )
     action: Mapped[str] = mapped_column(nullable=False)
     field: Mapped[str | None] = mapped_column(default=None)

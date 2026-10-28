@@ -6,6 +6,7 @@ from typing import cast
 from src.core.redis_client import get_redis
 
 _ROUTES_KEY = "metrics:routes"
+_COUNTERS_KEY = "metrics:counters"
 _UNMATCHED_ROUTE_LABEL = "<unmatched>"
 _MAX_LATENCY_SAMPLES = 1000
 
@@ -41,6 +42,27 @@ async def record_request(
         # vida do processo, para sempre.
         pipe.ltrim(f"metrics:latencies:{endpoint}", -_MAX_LATENCY_SAMPLES, -1)
         await pipe.execute()
+
+
+async def increment_counter(name: str) -> None:
+    """Contador de evento de negócio exposto em `GET /metrics` ao lado das métricas
+    por endpoint (ex.: `github_webhook.installation.PROCESSED`, Sprint 10.2). Quem
+    chama é responsável por manter `name` num conjunto pequeno e fechado de valores:
+    cada nome distinto vira uma chave nova no Redis, para sempre."""
+    redis = get_redis()
+    async with redis.pipeline(transaction=True) as pipe:
+        pipe.sadd(_COUNTERS_KEY, name)
+        pipe.incr(f"metrics:counter:{name}")
+        await pipe.execute()
+
+
+async def get_counters_snapshot() -> dict[str, int]:
+    redis = get_redis()
+    names = sorted(cast(set[str], await redis.smembers(_COUNTERS_KEY)))
+    if not names:
+        return {}
+    values = await redis.mget([f"metrics:counter:{name}" for name in names])
+    return {name: int(value or 0) for name, value in zip(names, values, strict=True)}
 
 
 @dataclass(frozen=True)

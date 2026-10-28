@@ -135,6 +135,8 @@ Implementado na Sprint 7 (`docs/09-decision-log.md` ADR-012 tem o racional compl
 | Excluir | `DELETE .../issues/{issue_id}` | `issue.delete` (Criador da issue **ou** `ADMIN`+ — posse-como-exceção) | — | 204 (soft delete) | 204, 401, 403, 404, 409 (`issue_has_subissues`, se a issue tiver sub-issues vinculadas) |
 | Atividade | `GET .../issues/{issue_id}/activity` | `issue.read` | — | `{ data: [activity_log] }` | 200, 401, 404 |
 
+`activity_log` = `{ id, issue_id, actor_id, actor_source, action, field, old_value, new_value, created_at }`. **Mudança de contrato na Sprint 10.4 (ADR-070/ADR-075)**: `actor_id` passou a ser anulável e entrou `actor_source` (`USER` ou `GITHUB`). `GITHUB` é uma mudança de status feita por automação de pull request (§5.4); nela `actor_id` é o membro do workspace que entrou no FlowDesk com a mesma conta do GitHub, ou `null` quando não há esse vínculo. Mudanças feitas por pessoas continuam com `actor_source = USER` e `actor_id` sempre preenchido. O SPA foi atualizado no mesmo conjunto de mudanças; para um cliente externo que tratava `actor_id` como sempre presente, é uma mudança incompatível.
+
 `q` aciona busca textual full-text (índice GIN, §9 de `docs/03-database.md`) sobre título/descrição; se o termo casar com o padrão `FD-\d+` ou um número puro, também compara contra `number` diretamente (busca por identificador). Demais filtros (`status_id`, `priority`, `project_id`, `parent_id`, `assignee_id`, `creator_id`) combinam via AND, valor único por campo (sem OR multi-valor nesta sprint — YAGNI, `CLAUDE.md` §1.6). `sort` aceita `number|-number|created_at|-created_at|updated_at|-updated_at|priority|-priority|due_date|-due_date` (prioridade ordenada por rank semântico — `NO_PRIORITY < LOW < MEDIUM < HIGH < URGENT` —, não alfabeticamente), default `-updated_at`. Paginação **offset-based** (`{ page, per_page, total, total_pages }`, mesmo envelope de Projects/Members/Teams) — desvio deliberado do esboço original (cursor-based); ver ADR-012 Decisão 5.
 
 `status_id` aceita `PATCH` genérico (ao contrário de `Project.status`, que só transiciona via `/archive`/`/restore`): mudança de status de issue é uma ação frequente, e desde a Sprint 9.2 o conjunto de status é dado (não enum), então não há transição inválida a bloquear no código — qualquer status ativo do workspace pode ir para qualquer outro. Omitir `status_id` na criação atribui o status marcado `is_default` do workspace (§5.1).
@@ -263,7 +265,7 @@ Implementado na Sprint 9.2 (ADR-056, reabre a ADR-035) — reaproveita a tabela 
 
 `category` é um enum fixo (`BACKLOG`/`UNSTARTED`/`STARTED`/`COMPLETED`/`CANCELED`) — não editável pelo usuário além dessas 5 opções, usado por agregações internas (ex.: `ProjectRepository.issue_counts`, barra de progresso "concluídas/total" conta `category == COMPLETED`) para não acoplar a uma string de `name` livremente editável. `name` é o texto exibido, único por workspace.
 
-**Exclusão com reatribuição obrigatória**: excluir um status que ainda tem issues vinculadas sem informar `?reassign_to_id=` devolve `409 workflow_state_has_issues` com `details: { issue_count }` — o frontend usa isso para abrir um diálogo "para onde mover estas N issues?" e repetir a chamada com o `reassign_to_id` escolhido, que então reatribui todas as issues daquele status antes de excluí-lo (reatribuição + soft delete na mesma transação). Excluir o único status restante do workspace é sempre bloqueado (`409 cannot_delete_last_workflow_state`, `workspace.view` exige ao menos um). Excluir o status atualmente `is_default` promove automaticamente outro (o de menor `position` entre os remanescentes) a `is_default`, sem exigir passo extra do cliente.
+**Exclusão com reatribuição obrigatória**: excluir um status que ainda tem issues vinculadas sem informar `?reassign_to_id=` devolve `409 workflow_state_has_issues` com `details: { issue_count }` — o frontend usa isso para abrir um diálogo "para onde mover estas N issues?" e repetir a chamada com o `reassign_to_id` escolhido, que então reatribui todas as issues daquele status antes de excluí-lo (reatribuição + soft delete na mesma transação). Excluir o único status restante do workspace é sempre bloqueado (`409 cannot_delete_last_workflow_state`, `workspace.view` exige ao menos um). Excluir o status atualmente `is_default` promove automaticamente outro (o de menor `position` entre os remanescentes) a `is_default`, sem exigir passo extra do cliente. Regras de automação do GitHub que miravam o status excluído (§5.4, Sprint 10.4) seguem as issues para o mesmo `reassign_to_id`; sem issues reatribuídas, viram "sem ação".
 
 **Reordenar** aceita a lista completa de IDs ativos do workspace na nova ordem — o service rejeita (`422`) qualquer lista que não seja exatamente o conjunto atual (falta ou sobra um id). Internamente, o service move todas as posições para valores negativos temporários antes de aplicar a ordem final, porque o índice único parcial `(workspace_id, position)` não é `DEFERRABLE` — uma troca direta de posições entre duas linhas violaria a constraint no meio da transação.
 
@@ -273,7 +275,7 @@ Implementado na Sprint 9.3 (ADR-058) — meio-termo entre RBAC fixo e cargos arb
 
 | Ação | Endpoint | Autorização | Request | Response | Códigos |
 |---|---|---|---|---|---|
-| Ver matriz | `GET .../permission-overrides` | `workspace.manage_permissions` (`OWNER` apenas) | — | `{ data: [matrix_entry] }` (uma linha por papel × permissão customizável, 3 papéis × 26 permissões) | 200, 401, 403 |
+| Ver matriz | `GET .../permission-overrides` | `workspace.manage_permissions` (`OWNER` apenas) | — | `{ data: [matrix_entry] }` (uma linha por papel × permissão customizável, 3 papéis × 27 permissões) | 200, 401, 403 |
 | Alterar uma célula | `PUT .../permission-overrides` | `workspace.manage_permissions` (`OWNER` apenas) | `{ role, permission, granted }` | `{ data: [matrix_entry] }` (matriz inteira recalculada) | 200, 401, 403, 422 (`cannot_override_owner_role`, `locked_permission`) |
 
 `matrix_entry` = `{ permission, role, default, effective, is_override }` — `default` é o valor de `ROLE_PERMISSIONS` sem nenhum override; `effective` já aplica o override do workspace, se houver; `is_override` diz se a célula diverge do padrão (para a UI destacar visualmente). Setar `granted` de volta ao valor de `default` **remove** o override em vez de gravar uma linha redundante — a tabela só guarda desvios reais (`permission_overrides`, `docs/03-database.md` §6.7).
@@ -289,6 +291,60 @@ Implementado na Sprint 9.4 (ADR-059) — sem endpoint próprio: `parent_id` é s
 - Excluir uma issue que ainda tem sub-issues vinculadas é bloqueado: `409 issue_has_subissues` — desvincule (`PATCH` com `parent_id: null` em cada filha) ou exclua as filhas primeiro. Sem reatribuição automática (ao contrário de `workflow_state_has_issues`, §5.1) — o vínculo pai/filho é opcional e reversível por issue, não obrigatório como um status.
 
 Não há campo agregado (`sub_issue_count`) no `IssueResponse` — o cliente que precisa saber quantas/quais sub-issues uma issue tem faz `GET .../issues?parent_id={issue_id}` e lê `meta.total`, mesmo padrão já usado por `ProjectDetailView` para listar as issues de um projeto (Sprint 23.2) — evita uma agregação extra em toda listagem geral de issues só para o caso raro de estar olhando o detalhe de uma.
+
+## 5.4 Integração com GitHub (`/workspaces/{workspace_id}/integrations/github`)
+
+Implementado na Sprint 10.1 (ADR-068/ADR-072). Conecta instalações de um GitHub App ao workspace; vínculo de PRs e automação de status chegam nas Sprints 10.3/10.4. Fluxo e defesas em `docs/07-security.md` §17.
+
+| Ação | Endpoint | Autorização | Request | Response | Códigos |
+|---|---|---|---|---|---|
+| Ver integração | `GET .../integrations/github` | `workspace.manage_integrations` (`ADMIN`+) | — | `{ data: { configured, installations: [installation] } }` | 200, 401, 403, 404 |
+| Iniciar conexão | `POST .../integrations/github/connect` | `workspace.manage_integrations` | — | `{ data: { install_url } }` + cookie `github_connect_state` (`HttpOnly`, `SameSite=Lax`, `Path=/api/v1/integrations/github`, 10 min) | 200, 401, 403, 404, 422 (`github_integration_not_configured`) |
+| Desconectar | `DELETE .../integrations/github/installations/{installation_id}` | `workspace.manage_integrations` | — | — | 204, 401, 403, 404 (`github_installation_not_found`) |
+| Ver regras de automação | `GET .../integrations/github/automations` | `workspace.manage_integrations` | — | `{ data: [automation] }` (sempre os 4 eventos) | 200, 401, 403, 404 |
+| Alterar uma regra | `PUT .../integrations/github/automations` | `workspace.manage_integrations` | `{ event, target_state_id }` (`null` = sem ação) | `{ data: [automation] }` (as 4 regras) | 200, 401, 403, 404 (`workflow_state_not_found`, status de outro workspace ou excluído), 422 |
+| Retorno do GitHub | `GET /integrations/github/setup` | Nenhuma (identidade vem do `state` + cookie) | `state`, `code`, `installation_id`, `setup_action` (query, enviados pelo GitHub) | 302 para `{FRONTEND_BASE_URL}/integrations/github/callback` (erro: `?error={code}`) | 302 |
+
+`installation` = `{ id, installation_id, account_login, account_type, connected_by_id, suspended_at, created_at }` — `id` é o UUID do FlowDesk (usado no `DELETE`), `installation_id` é o id numérico do GitHub. `configured: false` indica que o GitHub App não está configurado neste ambiente (`GITHUB_APP_*` ausentes); a listagem continua respondendo 200, só o `connect` recusa.
+
+`automation` = `{ event, target_state_id }`, com `event` em `PR_DRAFT` (aberto como rascunho ou convertido em rascunho), `PR_OPEN` (aberto, reaberto ou pronto para revisão), `PR_MERGED` (fechado com merge) e `PR_CLOSED` (fechado sem merge) — Sprint 10.4 (ADR-070/ADR-075). As regras são gravadas na primeira conexão com os defaults pela posição no board: primeiro status `STARTED` para rascunho, último `STARTED` para PR aberto, primeiro `COMPLETED` para merge, nada para fechado sem merge. Reconectar não sobrescreve regras já editadas. Excluir um status reaponta as regras que miravam nele para o mesmo destino das issues reatribuídas, ou deixa "sem ação" quando não havia issues (§5.1).
+
+`connect` não redireciona: devolve a URL para o SPA navegar até ela, porque uma navegação de página inteira não levaria o access token, que só existe em memória (`CLAUDE.md` §11). `GET /integrations/github/setup` é o "Callback URL" do GitHub App (com "Request user authorization (OAuth) during installation" ligado) e, como os callbacks do login social (§2), nunca responde com o envelope JSON: sucesso e erro terminam em `302` para a SPA, que mostra o resultado (`GitHubCallbackPage`). Fica fora de `/workspaces/{workspace_id}` porque o GitHub não conhece o workspace; ele sai do `state` gravado no servidor, nunca da URL. Reconectar uma instalação que já pertence ao próprio workspace (o GitHub manda `setup_action=update` quando o dono só muda os repositórios) atualiza a linha existente em vez de duplicar.
+
+### Webhook do GitHub (`POST /webhooks/github`)
+
+Implementado na Sprint 10.2 (ADR-069/ADR-073). Recebe as entregas do GitHub App; é o "Webhook URL" do app.
+
+| Ação | Endpoint | Autorização | Request | Response | Códigos |
+|---|---|---|---|---|---|
+| Receber entrega | `POST /webhooks/github` | HMAC-SHA256 do corpo com `GITHUB_WEBHOOK_SECRET`, em `X-Hub-Signature-256` | corpo JSON do GitHub + `X-GitHub-Event`, `X-GitHub-Delivery` | `{ data: { outcome, duplicate } }` | 200, 401 (`invalid_webhook_signature`), 422 (`github_webhook_payload_too_large`, `invalid_webhook_payload`), 429 |
+
+`outcome` é `PROCESSED` (o FlowDesk agiu sobre o evento) ou `IGNORED` (assinatura válida, mas nada a fazer). `duplicate: true` indica que esse `X-GitHub-Delivery` já tinha sido recebido: a resposta repete o `outcome` da primeira vez e nenhum efeito é reaplicado. Evento válido que não interessa responde **200**, nunca 4xx — um 4xx faria o GitHub marcar a entrega como falha sem nenhum benefício. Só assinatura inválida (401), corpo grande demais ou cabeçalhos/corpo fora do formato (422) são erro.
+
+Efeitos nesta sprint, sempre para uma instalação conectada a algum workspace (instalação desconhecida → `IGNORED`):
+
+| Evento (`X-GitHub-Event`) | `action` | Efeito |
+|---|---|---|
+| `installation` | `deleted` | desconecta a instalação do workspace (soft delete) |
+| `installation` | `suspend` / `unsuspend` | preenche / limpa `suspended_at` |
+| `installation` | outras (`created`, `new_permissions_accepted`...) | `IGNORED` — a conexão só nasce pelo fluxo de §5.4 |
+| `installation_repositories` | qualquer | só registrado (`PROCESSED`, sem efeito) |
+| `pull_request` | `opened`, `reopened`, `edited`, `ready_for_review`, `converted_to_draft`, `closed` | sincroniza os vínculos PR ↔ issue (§5.5, Sprint 10.3) e aplica a regra de automação da situação do PR (Sprint 10.4): a todas as issues citadas quando o PR muda de situação, só às recém-citadas em `edited`; issues `COMPLETED`/`CANCELED` nunca são movidas; demais ações → `IGNORED` |
+| qualquer outro (`ping`, `issues`...) | — | `IGNORED` |
+
+Ordem de checagem: tamanho do corpo (antes de ler tudo, por streaming) → assinatura → cabeçalhos e JSON → idempotência → efeito. Nada do corpo é interpretado antes de a assinatura ser validada. Fica fora de `/workspaces/{workspace_id}` e sem JWT pelo mesmo motivo do retorno de instalação: o GitHub não conhece o workspace; ele sai do `installation.id` do corpo já verificado (`docs/07-security.md` §18).
+
+## 5.5 Pull requests vinculados (`/workspaces/{workspace_id}/issues/{issue_id}/github-links`)
+
+Implementado na Sprint 10.3 (ADR-070/ADR-074). Um PR é vinculado a toda issue **ativa do workspace da instalação** cujo identificador (`FD-<n>`, sem diferenciar maiúsculas, com fronteira de palavra, até 9 dígitos) aparece na branch de origem, no título ou no corpo do PR. Os vínculos são mantidos pelo webhook (§5.4): cada evento tratado deixa o conjunto de vínculos do PR igual às issues que ele cita naquele momento — cria os novos, atualiza título/estado dos que continuam, remove os de issues que deixaram de ser citadas ou foram excluídas. Não há escrita pela API.
+
+| Ação | Endpoint | Autorização | Response | Códigos |
+|---|---|---|---|---|
+| Listar PRs da issue | `GET .../issues/{issue_id}/github-links` | `issue.read` | `{ data: [pull_request_link] }`, mais recente primeiro | 200, 401, 403, 404 (`issue_not_found`) |
+
+`pull_request_link` = `{ id, repository_full_name, pr_number, pr_url, pr_title, pr_state, author_login, head_branch, pr_updated_at }`. `pr_state` é `OPEN`, `DRAFT`, `MERGED` ou `CLOSED` (fechado sem merge), derivado do PR e não da ação do evento. Os campos são cópias do último evento aplicado; a UI não chama o GitHub.
+
+Regras do lado do webhook: um evento cujo `pull_request.updated_at` é mais antigo que o já aplicado é ignorado (`reason = stale_event` — o GitHub não garante ordem de entrega); um PR que não cita nenhuma issue ativa e não tinha vínculos é ignorado (`no_issue_reference`); no máximo 50 identificadores distintos por PR são considerados.
 
 ## 6. Comentários (`/workspaces/{workspace_id}/issues/{issue_id}/comments`)
 
@@ -484,7 +540,7 @@ Paginação **offset-based** (`{ page, per_page, total, total_pages }`, mesmo en
 
 ## 11. Erros — catálogo de `code` (não exaustivo, cresce por feature)
 
-`invalid_credentials`, `email_already_registered`, `invalid_refresh_token`, `invalid_password_reset_token`, `invalid_token`, `oauth_authentication_failed`, `oauth_provider_not_configured`, `oauth_email_already_registered`, `workspace_not_found`, `slug_taken`, `already_member`, `invitation_already_pending`, `invitation_not_found`, `invitation_expired`, `invitation_email_mismatch`, `sole_owner_cannot_leave`, `member_not_found`, `cannot_manage_own_membership`, `cannot_manage_owner`, `cannot_transfer_ownership_to_self`, `key_taken`, `name_taken`, `team_not_found`, `issue_not_found`, `version_conflict`, `permission_denied`, `rate_limited`, `validation_error`, `project_not_found`, `project_slug_taken`, `project_name_taken`, `project_already_archived`, `project_not_archived`, `project_has_active_issues`, `comment_not_found`, `label_not_found`, `label_name_taken`, `attachment_not_found`, `attachment_too_large`, `attachment_type_not_allowed`, `notification_not_found`, `workflow_state_not_found`, `workflow_state_name_taken`, `workflow_state_has_issues`, `cannot_delete_last_workflow_state`, `invalid_reassign_target`, `cannot_override_owner_role`, `locked_permission`, `invalid_parent_issue`, `issue_has_subissues`, `issue_assignee_not_in_workspace`, `cannot_grant_role_above_own`.
+`invalid_credentials`, `email_already_registered`, `invalid_refresh_token`, `invalid_password_reset_token`, `invalid_token`, `oauth_authentication_failed`, `oauth_provider_not_configured`, `oauth_email_already_registered`, `workspace_not_found`, `slug_taken`, `already_member`, `invitation_already_pending`, `invitation_not_found`, `invitation_expired`, `invitation_email_mismatch`, `sole_owner_cannot_leave`, `member_not_found`, `cannot_manage_own_membership`, `cannot_manage_owner`, `cannot_transfer_ownership_to_self`, `key_taken`, `name_taken`, `team_not_found`, `issue_not_found`, `version_conflict`, `permission_denied`, `rate_limited`, `validation_error`, `project_not_found`, `project_slug_taken`, `project_name_taken`, `project_already_archived`, `project_not_archived`, `project_has_active_issues`, `comment_not_found`, `label_not_found`, `label_name_taken`, `attachment_not_found`, `attachment_too_large`, `attachment_type_not_allowed`, `notification_not_found`, `workflow_state_not_found`, `workflow_state_name_taken`, `workflow_state_has_issues`, `cannot_delete_last_workflow_state`, `invalid_reassign_target`, `cannot_override_owner_role`, `locked_permission`, `invalid_parent_issue`, `issue_has_subissues`, `issue_assignee_not_in_workspace`, `cannot_grant_role_above_own`, `github_integration_not_configured`, `github_connect_state_invalid`, `github_authorization_failed`, `github_installation_pending_approval`, `github_installation_not_accessible`, `github_installation_already_connected`, `github_installation_not_found`, `invalid_webhook_signature`, `github_webhook_payload_too_large`, `invalid_webhook_payload`.
 
 `comment_not_found` (404), `label_not_found` (404), `label_name_taken` (409, unicidade por workspace), `attachment_not_found` (404), `attachment_too_large`/`attachment_type_not_allowed` (422, validados antes da persistência) são novos na Sprint 8 (§6–8, ADR-013). O esboço original deste catálogo já reservava `name_taken` genérico para labels; `label_name_taken` o substitui com um `code` específico por feature, mesmo padrão já usado por `project_name_taken` na Sprint 6 (evita que o cliente precise inferir o recurso a partir só do `code` genérico).
 
@@ -497,6 +553,10 @@ Paginação **offset-based** (`{ page, per_page, total, total_pages }`, mesmo en
 `cannot_override_owner_role` (422, tentativa de customizar o papel `OWNER`) e `locked_permission` (422, tentativa de conceder/revogar uma das três permissões exclusivas do OWNER) são novos na Sprint 9.3 (§5.2, ADR-058).
 
 `invalid_parent_issue` (409, auto-referência ou violação de "só um nível de sub-issues") e `issue_has_subissues` (409, exclusão bloqueada até desvincular/excluir as sub-issues) são novos na Sprint 9.4 (§5.3, ADR-059).
+
+`invalid_webhook_signature` (401: assinatura ausente, malformada ou divergente, ou nenhum segredo configurado no ambiente), `github_webhook_payload_too_large` (422, corpo acima de `GITHUB_WEBHOOK_MAX_BODY_BYTES`; 422 e não 413 porque a hierarquia de exceções não tem 413, mesmo caso de `attachment_too_large`) e `invalid_webhook_payload` (422, assinatura válida mas sem `X-GitHub-Event`/`X-GitHub-Delivery` ou com corpo fora do JSON esperado) são novos na Sprint 10.2 (webhook do GitHub, ADR-073).
+
+`github_integration_not_configured` (422) e `github_installation_not_found` (404) são novos na Sprint 10.1 (§5.4, ADR-068) e aparecem no envelope JSON. Os outros cinco só aparecem como `?error=<code>` no redirect de `GET /integrations/github/setup`: `github_connect_state_invalid` (401, `state` ausente, expirado, já usado ou sem o cookie do navegador que iniciou), `github_authorization_failed` (401, `code` ou `installation_id` ausente/malformado, ou falha ao falar com o GitHub), `github_installation_pending_approval` (422, o GitHub devolveu `setup_action=request` e a instalação espera um dono da organização), `github_installation_not_accessible` (403, a conta do GitHub autorizada não enxerga a instalação) e `github_installation_already_connected` (409, a instalação já pertence a outro workspace). `permission_denied`/`workspace_not_found` também podem aparecer nesse redirect, quando quem iniciou perdeu a permissão ou o acesso ao workspace antes de voltar.
 
 `member_not_found` (404), `cannot_manage_own_membership` (409) e `cannot_manage_owner` (403) são novos na Sprint 5 (`PATCH`/`DELETE .../members/{member_id}`) — ver `docs/07-security.md` §8.4.
 

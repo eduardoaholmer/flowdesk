@@ -4,6 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 
 import { AttachmentList } from "@/features/attachments/components/AttachmentList";
 import { CommentList } from "@/features/comments/components/CommentList";
+import { CopyBranchNameButton } from "@/features/github/components/CopyBranchNameButton";
 import { ErrorState } from "@/shared/components/feedback/ErrorState";
 import { ListSkeleton } from "@/shared/components/skeletons/ListSkeleton";
 import { Button } from "@/shared/components/ui/button";
@@ -139,6 +140,7 @@ export function IssueDetailView({
             <h1 className="font-heading text-2xl leading-tight font-semibold">{issue.title}</h1>
           </div>
           <div className="flex items-center gap-1">
+            <CopyBranchNameButton identifier={issue.identifier} title={issue.title} />
             <CopyIssuePromptButton
               workspaceId={workspaceId}
               issue={issue}

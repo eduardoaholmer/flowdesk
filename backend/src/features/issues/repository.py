@@ -1,6 +1,6 @@
 import re
 import uuid
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from datetime import UTC, datetime
 from typing import Any, Literal, Protocol
 
@@ -62,6 +62,9 @@ class IssueRepositoryProtocol(Protocol):
     async def create(self, issue: Issue) -> Issue: ...
     async def get_by_id(self, workspace_id: uuid.UUID, issue_id: uuid.UUID) -> Issue | None: ...
     async def next_number(self, workspace_id: uuid.UUID) -> int: ...
+    async def list_active_by_numbers(
+        self, workspace_id: uuid.UUID, numbers: Collection[int]
+    ) -> Sequence[Issue]: ...
     async def list_by_workspace(
         self,
         workspace_id: uuid.UUID,
@@ -123,6 +126,21 @@ class IssueRepository:
         )
         result: Issue | None = await self._session.scalar(stmt)
         return result
+
+    async def list_active_by_numbers(
+        self, workspace_id: uuid.UUID, numbers: Collection[int]
+    ) -> Sequence[Issue]:
+        """Issues ativas do workspace com estes `number`s — usado pelo vínculo de
+        pull requests do GitHub (Sprint 10.3), que só conhece o `FD-<n>` do texto
+        do PR. Número sem issue (ou de issue excluída) simplesmente não volta."""
+        if not numbers:
+            return []
+        stmt = select(Issue).where(
+            Issue.workspace_id == workspace_id,
+            Issue.number.in_(numbers),
+            Issue.deleted_at.is_(None),
+        )
+        return (await self._session.scalars(stmt)).all()
 
     async def next_number(self, workspace_id: uuid.UUID) -> int:
         """Gera o próximo `number` sequencial do workspace de forma atômica.

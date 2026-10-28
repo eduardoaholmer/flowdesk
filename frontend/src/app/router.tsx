@@ -5,6 +5,7 @@ import {
   BoardPage,
   DashboardPage,
   ForgotPasswordPage,
+  GitHubCallbackPage,
   InvitationAcceptPage,
   IssueDetailPage,
   IssuesPage,
@@ -33,6 +34,10 @@ function withPageSuspense(element: ReactNode) {
 export const router = createBrowserRouter([
   { path: "/login", element: <LoginPage /> },
   { path: "/oauth/callback", element: withPageSuspense(<OAuthCallbackPage />) },
+  {
+    path: routePatterns.githubCallback,
+    element: withPageSuspense(<GitHubCallbackPage />),
+  },
   { path: "/privacy", element: withPageSuspense(<PrivacyPolicyPage />) },
   { path: "/terms", element: withPageSuspense(<TermsOfServicePage />) },
   { path: "/forgot-password", element: withPageSuspense(<ForgotPasswordPage />) },

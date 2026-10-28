@@ -74,10 +74,15 @@ export interface IssueUpdateInput {
   due_date?: string | null;
 }
 
+/** `GITHUB`: mudança feita por uma automação do GitHub (Sprint 10.4). */
+export type ActivityActorSource = "USER" | "GITHUB";
+
 export interface IssueActivityLogEntry {
   id: string;
   issue_id: string;
-  actor_id: string;
+  /** `null` só em automação, quando quem agiu no GitHub não é membro conhecido. */
+  actor_id: string | null;
+  actor_source: ActivityActorSource;
   action: string;
   field: string | null;
   old_value: string | null;

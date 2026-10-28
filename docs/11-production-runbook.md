@@ -144,3 +144,101 @@ Sprint 17.2.
 **Já pronto no código**: `--workers 4` fixo por imagem é o teto de
 escala-vertical por instância; elasticidade real é escala-horizontal (mais
 instâncias), o que a recomendação acima endereça.
+
+## 11. Integração com GitHub (M10, Sprint 10.5, ADR-076)
+
+Diferente dos itens acima, este é operação do ambiente que existe (Render +
+Supabase + Vercel, `DEPLOY.md`), não estratégia hipotética. Configuração inicial e
+validação: `DEPLOY.md` → "Integração com GitHub".
+
+### 11.1 Entrega do webhook que falhou
+
+O GitHub **não reenvia sozinho** uma entrega que falhou (backend fora do ar,
+deploy em andamento, cold start acima dos 10 s de prazo — ADR-069). Sintoma: um
+PR mudou no GitHub e a issue não acompanhou.
+
+1. GitHub App → Advanced → **Recent Deliveries**. Entregas com falha aparecem com
+   ícone de alerta e o status HTTP.
+2. Abrir a entrega → **Redeliver**. É seguro reenviar: a entrega é idempotente
+   pelo `X-GitHub-Delivery` (`github_webhook_deliveries`, ADR-069), e reenviar uma
+   que já tinha sido processada só devolve `"duplicate": true`.
+3. O GitHub só guarda entregas recentes para reenvio (poucos dias). Uma falha mais
+   antiga que isso não volta; a issue precisa ser ajustada à mão, ou o próximo
+   evento do mesmo PR (edição, merge) atualiza o vínculo.
+
+Reenvio pela API (`GET /app/hook/deliveries`, `POST
+/app/hook/deliveries/{id}/attempts`) exige o JWT do app, assinado com a chave
+privada, que o FlowDesk não tem configurada (ADR-072). Pelo painel é o caminho
+suportado; automatizar exige essa chave e fica como candidato futuro, se a perda
+de entregas se mostrar frequente.
+
+### 11.2 "O GitHub mandou e o FlowDesk ignorou"
+
+Toda entrega com assinatura válida fica em `github_webhook_deliveries`, com o
+motivo quando foi ignorada. No SQL editor do Supabase:
+
+```sql
+-- Últimas entregas
+SELECT received_at, event, action, installation_id, workspace_id, outcome, reason
+FROM github_webhook_deliveries
+ORDER BY received_at DESC
+LIMIT 50;
+
+-- Resumo da última semana
+SELECT outcome, reason, count(*)
+FROM github_webhook_deliveries
+WHERE received_at > now() - interval '7 days'
+GROUP BY outcome, reason
+ORDER BY count(*) DESC;
+```
+
+| `reason` | Significado | O que fazer |
+|---|---|---|
+| `unknown_installation` | instalação não conectada a nenhum workspace | conectar pela aba Integrações; desconectar no FlowDesk não desinstala no GitHub |
+| `no_issue_reference` | PR sem `FD-<n>` de issue ativa na branch, título ou corpo | renomear a branch ou editar o título/corpo do PR |
+| `stale_event` | entrega mais antiga que a última aplicada ao mesmo PR | nada: o estado mais novo já foi aplicado |
+| `unhandled_event` / `unhandled_action` | evento ou ação que o FlowDesk não usa | nada |
+| `missing_installation` | evento sem `installation` (ex.: `ping`) | nada |
+
+Entregas recusadas antes disso (assinatura inválida → 401, corpo grande demais →
+422) não chegam à tabela: aparecem só no log (`github_webhook_signature_invalid`)
+e no Recent Deliveries do GitHub. Contadores agregados: `GET /metrics` →
+`counters` (`github_webhook.<evento>.<resultado>`).
+
+### 11.3 Expurgo de `github_webhook_deliveries` (mensal)
+
+Retenção de 30 dias (ADR-069). Sem job automático; rodar no SQL editor do
+Supabase uma vez por mês:
+
+```sql
+DELETE FROM github_webhook_deliveries WHERE received_at < now() - interval '30 days';
+```
+
+Usa o índice `ix_github_webhook_deliveries_received_at`. Não há risco de
+reprocessamento: o GitHub não permite reenviar entregas com mais de poucos dias,
+bem abaixo dos 30.
+
+### 11.4 Rotação de segredos
+
+- **Client secret** (sem indisponibilidade): o GitHub permite dois client secrets
+  ativos ao mesmo tempo. Gerar o novo na página do app → trocar
+  `GITHUB_APP_CLIENT_SECRET` no Render ("Save, rebuild, and deploy") → conferir
+  uma conexão nova → apagar o antigo no GitHub.
+- **Webhook secret** (com janela curta): o GitHub guarda um único segredo de
+  webhook. Trocar no app e em `GITHUB_WEBHOOK_SECRET` no Render em sequência;
+  entregas que chegarem entre as duas trocas recebem 401. Depois, reenviar as
+  falhas pelo Recent Deliveries (§11.1).
+- Em qualquer suspeita de vazamento do webhook secret, trocar imediatamente: com
+  ele, qualquer pessoa assina entregas falsas (desconectar instalações, vincular
+  PRs, mover issues).
+
+### 11.5 Desligar, desconectar, desinstalar
+
+- **Desconectar** (aba Integrações): só desfaz o vínculo no FlowDesk. O app
+  continua instalado no GitHub e as entregas passam a ser `unknown_installation`.
+- **Desinstalar** (GitHub → Settings → Applications → Installed GitHub Apps): o
+  GitHub manda `installation.deleted` e o FlowDesk desconecta sozinho.
+- **Desligar a integração** no ambiente: remover as quatro variáveis
+  `GITHUB_APP_*`/`GITHUB_WEBHOOK_SECRET` **juntas**. A aba passa a mostrar
+  "Integração indisponível" e toda entrega recebe 401. Vínculos e regras ficam no
+  banco e voltam a valer quando as variáveis voltarem.
