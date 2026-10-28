@@ -78,7 +78,11 @@ app.add_middleware(
     allow_origins=settings.cors_origins,
     allow_origin_regex=settings.cors_origin_regex,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    # `PUT` faltava desde a Sprint 9.3 (`PUT .../permission-overrides`): o preflight
+    # respondia 400 e o navegador nem enviava a requisição quando SPA e API estão em
+    # origens diferentes (dev, ou a URL do Render chamada direto). Em produção o proxy
+    # da Vercel deixa tudo na mesma origem, por isso não aparecia (ADR-075).
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "X-CSRF-Token"],
     expose_headers=["X-Request-ID"],
 )
