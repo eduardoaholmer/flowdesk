@@ -170,7 +170,10 @@ export function IssuesListPage({
       </div>
 
       {panelIssueId && (
-        <div className="w-full shrink-0 rounded-xl border p-5 md:w-[440px]">
+        <section
+          aria-label="Detalhe da issue"
+          className="w-full shrink-0 rounded-xl border p-5 md:w-[440px]"
+        >
           <IssueDetailView
             workspaceId={workspaceId}
             workspaceSlug={workspaceSlug}
@@ -180,7 +183,7 @@ export function IssuesListPage({
             hasPrevious={hasPreviousInPanel}
             hasNext={hasNextInPanel}
           />
-        </div>
+        </section>
       )}
     </div>
   );
