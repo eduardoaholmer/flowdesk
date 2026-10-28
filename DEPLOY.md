@@ -184,3 +184,102 @@ o Google/GitHub.
   750 h/mês do free tier — não sobra margem para um segundo serviço free
   acordado o tempo todo.
 - Alternativa sem keep-alive: plano pago do Render (Starter), que não dorme.
+
+## Integração com GitHub (M10, ADR-068 a ADR-076)
+
+Estado: código pronto (Sprints 10.1–10.4), **ainda não configurado em produção**.
+Sem as variáveis abaixo a aba Configurações → Integrações mostra "Integração
+indisponível" e o resto do app funciona normalmente, então dá para fazer o merge
+antes de configurar.
+
+### 0. Merge em `main`
+
+O auto-deploy do Render roda `alembic upgrade head` (`backend/render_start.sh`), e
+entram cinco migrations novas do M10, todas aditivas: `ce37f86e65da`,
+`84416f31625b`, `5f80ea552189`, `b1ec8ae65958` e `0ebd683a090e`. A de
+`activity_logs` acrescenta uma coluna com default `USER`, deixa `actor_id`
+anulável e cria um `CHECK` que toda linha existente já satisfaz; nenhum dado muda.
+
+### 1. Criar o GitHub App
+
+GitHub → Settings → Developer settings → **GitHub Apps** → New GitHub App (na
+conta ou organização que vai ser dona do app). Este app é **diferente** do OAuth
+App do login com GitHub: são dois consentimentos diferentes (ADR-068).
+
+| Campo | Valor |
+|---|---|
+| GitHub App name | ex.: `FlowDesk` (único no GitHub; o *slug* sai daqui) |
+| Homepage URL | `https://flowdesk.eduardoaholmer.dev` |
+| Callback URL | `https://flowdesk.eduardoaholmer.dev/api/v1/integrations/github/setup` |
+| Expire user authorization tokens | marcado (padrão) |
+| **Request user authorization (OAuth) during installation** | **marcado** — é o que manda o `code` usado para provar que quem instala tem acesso à instalação (ADR-068); sem ele toda conexão falha |
+| Enable Device Flow | desmarcado |
+| Setup URL | não usado (fica desabilitado com o item acima marcado) |
+| Webhook → Active | marcado |
+| Webhook URL | `https://flowdesk.eduardoaholmer.dev/api/v1/webhooks/github` |
+| Webhook secret | gerar com `openssl rand -hex 32` e guardar para o passo 2 |
+| Repository permissions | **Pull requests: Read-only**; Metadata: Read-only (obrigatória). Nenhuma outra |
+| Subscribe to events | **Pull request** (eventos de `installation` chegam sempre, sem marcar) |
+| Where can this GitHub App be installed? | **Any account** para qualquer organização conectar um workspace; "Only on this account" limita à sua conta |
+
+Depois de criar, na página do app:
+
+- **Client ID**: copiar.
+- **Generate a new client secret**: copiar na hora (o GitHub só mostra uma vez).
+- O *slug* é o final da URL pública do app (`https://github.com/apps/<slug>`).
+- **Não** é preciso gerar chave privada: o FlowDesk não usa o JWT do app (ADR-072).
+
+### 2. Configurar o Render
+
+`flowdesk-backend` → Environment, **as quatro na mesma edição**, e "Save, rebuild,
+and deploy":
+
+| Variável | Valor |
+|---|---|
+| `GITHUB_APP_SLUG` | slug do app |
+| `GITHUB_APP_CLIENT_ID` | Client ID |
+| `GITHUB_APP_CLIENT_SECRET` | client secret |
+| `GITHUB_WEBHOOK_SECRET` | o mesmo segredo do campo "Webhook secret" |
+
+As quatro são obrigatórias juntas: com só parte delas o backend não sobe
+(`core/config.py::_require_full_github_app_config`) e o deploy falha. Nada muda
+na Vercel: callback e webhook passam pelo mesmo proxy `/api/*` do login social
+(ADR-063).
+
+### 3. Validar em produção
+
+1. **Proxy e segredo**: GitHub App → Advanced → **Recent Deliveries**. O `ping` da
+   criação do app chegou antes do segredo existir no Render e deve ter falhado com
+   401; clique em **Redeliver**. Esperado: `200` com
+   `{"data":{"outcome":"IGNORED","duplicate":false}}`. Um 401
+   `invalid_webhook_signature` aqui significa segredo diferente nos dois lados, ou
+   corpo alterado no caminho (o HMAC é sobre os bytes exatos). Este passo confirma
+   que o rewrite da Vercel repassa corpo e cabeçalhos sem mudança, o que não deu
+   para verificar sem o app real.
+2. **Conexão**: num workspace, Configurações → Integrações → **Conectar GitHub** →
+   instalar numa conta ou organização com um repositório de teste. Esperado: volta à
+   aba com "GitHub conectado.", a conta listada e as regras de automação
+   preenchidas (In Progress / In Review / Done / Sem ação). Se voltar com "A conexão
+   com o GitHub expirou ou foi iniciada em outro navegador", o GitHub não devolveu o
+   `state` no retorno: anote e me avise, porque é o único ponto do fluxo que não dá
+   para provar sem o GitHub real.
+3. **Vínculo e automação**: criar uma issue (`FD-n`), copiar o nome da branch pelo
+   botão do cabeçalho da issue, abrir um PR **como rascunho** a partir dela. Esperado:
+   PR no rail da issue e issue em In Progress. Marcar "Ready for review" → In
+   Review. Fazer o merge → Done, com "via GitHub" na atividade.
+4. **Entregas**: Recent Deliveries todas com 200; `GET
+   https://flowdesk-backend-ngcl.onrender.com/metrics` com contadores
+   `github_webhook.*` em `counters`.
+
+### Desenvolvimento local
+
+Crie um segundo app (ex.: `FlowDesk (dev)`) com Callback URL
+`http://localhost:8000/api/v1/integrations/github/setup` e as mesmas permissões. O
+webhook precisa de uma URL pública: use um túnel que repasse o corpo sem alterar,
+como `cloudflared tunnel --url http://localhost:8000`, e cadastre
+`https://<subdomínio>.trycloudflare.com/api/v1/webhooks/github`. Proxies que
+reserializam o JSON quebram o HMAC. As quatro variáveis vão no `backend/.env`
+(modelo em `backend/.env.example`).
+
+Operação (reenvio de entregas falhas, expurgo, rotação de segredos):
+`docs/11-production-runbook.md` §11.

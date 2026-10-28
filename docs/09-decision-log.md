@@ -1761,3 +1761,27 @@ Migration puramente aditiva (`actor_id` passa de `NOT NULL` para `NULL`, coluna 
   - editor em 390px sem rolagem horizontal.
 
 **Pendências**: o mapeamento do autor só cobre quem tem conta 100% social com GitHub (ADR-066); os demais aparecem como "GitHub" até existir um fluxo autenticado de "vincular provedor". A validação contra um GitHub App real continua na Sprint 10.5.
+
+## ADR-076 — Sprint 10.5: preparação de produção da integração com GitHub e E2E
+
+**Contexto**: Sprint 10.5 (`docs/08-roadmap.md`). Fecha o M10 em duas partes: o que dá para fazer no repositório (passo a passo, runbook, configuração de referência, E2E), entregue agora; e o que só o dono das contas consegue fazer (criar o GitHub App, preencher segredos no Render, validar com o GitHub real), que fica como pendência explícita da sprint.
+
+**Decisão 1 — E2E do fluxo de conexão sem mock no backend**: o roadmap pedia um E2E até o estado "conectado" "com o cliente do GitHub mockado no backend de teste". O E2E deste projeto roda contra um backend real em execução, não um app montado pelo próprio teste, e chegar a "conectado" exige trocar um `code` com o GitHub. As únicas formas de mockar isso seriam um caminho de código só para teste em produção ou URLs da API do GitHub configuráveis só para apontar a um servidor falso. As duas acrescentam superfície sem consumidor real (`CLAUDE.md` §1.6). O E2E (`frontend/e2e/github-connect.spec.ts`) cobre tudo até a troca e o caminho de volta. A navegação para `github.com` é interceptada pelo Playwright, que devolve o navegador ao backend como o GitHub faria, em dois retornos que não precisam da troca: instalação aguardando aprovação do dono (`setup_action=request`), que passa pela validação real de `state` + cookie, e `state` de outro navegador, que é recusado. A troca do `code` e o estado "conectado" continuam cobertos pelos testes de contrato com o cliente substituído, e a validação real é o passo manual em produção. O teste é pulado se o backend não tiver `GITHUB_APP_*`.
+
+**Decisão 2 — um cadastro por execução da suíte E2E**: `/auth/register` e `/auth/login` têm limite de 5 por minuto por IP. Com o fluxo crítico e os dois cenários do GitHub em testes separados, a suíte fazia 6 chamadas e o terceiro teste caía em 429. Os dois cenários do GitHub ficaram num teste só, e a suíte faz 4 chamadas por execução. Rodar a suíte duas vezes no mesmo minuto ainda esbarra no limite; o limite é de produção e não foi afrouxado para teste.
+
+**Decisão 3 — sem automação de reenvio nem de expurgo**: reenviar entregas falhas pela API exige o JWT do app (chave privada), que o FlowDesk não usa (ADR-072). O runbook (`docs/11-production-runbook.md` §11) documenta o reenvio pelo painel do app e o expurgo mensal por SQL. Um job automático fica como candidato futuro, se a perda de entregas ou o volume da tabela justificarem. A rotação "da chave privada do app", citada no escopo original, não se aplica, porque não há chave privada.
+
+**Decisão 4 — túnel de dev que não reserializa o corpo**: o escopo original sugeria `smee.io` para receber webhooks em dev. Como o HMAC é calculado sobre os bytes exatos do corpo, um repasse que interpreta e reescreve o JSON pode quebrar a assinatura. `DEPLOY.md` e `backend/.env.example` passaram a recomendar um túnel que repassa os bytes (ex.: `cloudflared tunnel`).
+
+**Também nesta sprint — E2E existente estava quebrado**: ao rodar a suíte E2E, o fluxo crítico (Sprint 14.4) falhou por dois motivos anteriores a esta sprint, nunca vistos porque o E2E não roda no CI:
+- `getByLabel("Senha")` passou a casar também com o botão "Mostrar senha" (`d88f0fb`). O seletor passou a usar `exact: true`.
+- Desde a Sprint 9.5, abrir a issue pela lista abre o painel lateral (`?panel=`), não a página da issue. O teste foi ajustado a esse comportamento. Para o teste conseguir se restringir ao painel, o contêiner virou `<section aria-label="Detalhe da issue">`, o que também dá ao painel um nome de região para leitor de tela.
+
+**Verificação**:
+- E2E: a suíte completa (fluxo crítico + conexão do GitHub) rodou contra Postgres, Redis, o backend real (com `GITHUB_APP_*` fictícios) e o Vite. Passou em três execuções seguidas, com as chaves de rate limit do Redis limpas entre elas. O Chromium pré-instalado neste ambiente é de outra build que a esperada pelo `@playwright/test` do projeto; a execução usou uma config local, fora do repositório, apontando para ele, sem mudar `playwright.config.ts`.
+- As consultas SQL do runbook (diagnóstico e expurgo, este dentro de uma transação revertida) foram rodadas contra o Postgres local.
+- `render.yaml` validado como YAML.
+- Frontend: `tsc`/`eslint`/`prettier`, `vitest` e `npm run build` verdes.
+
+**Pendências (manuais, do dono das contas)**: criar o GitHub App, preencher as quatro variáveis no Render e seguir a validação de `DEPLOY.md` → "Integração com GitHub" → passo 3. Dois pontos só se provam com o GitHub real: que o rewrite da Vercel repassa corpo e cabeçalhos sem alteração (o HMAC do `ping` reenviado confirma), e que o GitHub devolve o `state` no retorno da instalação com autorização de usuário.
