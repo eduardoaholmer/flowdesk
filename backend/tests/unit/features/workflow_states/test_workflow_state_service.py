@@ -165,6 +165,9 @@ async def test_delete_without_issues_succeeds(
 
     remaining = await repo.list_by_workspace(workspace_id)
     assert target.workflow_state.id not in [s.id for s in remaining]
+    # Sem issues movidas, regras de automação do GitHub que miravam o status
+    # ficam "sem ação" (Sprint 10.4).
+    assert repo.automation_repoints == [(target.workflow_state.id, None)]
 
 
 async def test_delete_with_issues_requires_reassign_target(
@@ -195,6 +198,7 @@ async def test_delete_with_issues_reassigns_when_target_given(
 
     assert repo.reassignments == [(source.workflow_state.id, destination.workflow_state.id)]
     assert repo.issue_count_by_state[destination.workflow_state.id] == 3
+    assert repo.automation_repoints == [(source.workflow_state.id, destination.workflow_state.id)]
 
 
 async def test_delete_rejects_invalid_reassign_target(

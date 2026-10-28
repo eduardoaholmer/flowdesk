@@ -9,6 +9,7 @@ from pydantic import ValidationError as PydanticValidationError
 from src.features.github.exceptions import GitHubWebhookPayloadInvalidError
 from src.features.github.models import (
     GITHUB_DELIVERY_ID_MAX_LENGTH,
+    GitHubAutomationEvent,
     GitHubInstallation,
     GitHubPullRequestState,
     GitHubWebhookOutcome,
@@ -72,6 +73,11 @@ class GitHubAccountRef(BaseModel):
     login: str
 
 
+class GitHubSenderRef(BaseModel):
+    id: int
+    login: str
+
+
 class GitHubBranchRef(BaseModel):
     ref: str
 
@@ -120,6 +126,7 @@ class GitHubPullRequestEventPayload(GitHubWebhookPayload):
 
     pull_request: GitHubPullRequestPayload
     repository: GitHubRepositoryRef
+    sender: GitHubSenderRef | None = None
 
 
 @dataclass(frozen=True)
@@ -173,3 +180,21 @@ class GitHubPullRequestLinkResponse(BaseModel):
     author_login: str
     head_branch: str
     pr_updated_at: datetime
+
+
+@dataclass(frozen=True)
+class GitHubStatusAutomationView:
+    event: GitHubAutomationEvent
+    target_state_id: uuid.UUID | None
+
+
+class GitHubStatusAutomationResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    event: GitHubAutomationEvent
+    target_state_id: uuid.UUID | None
+
+
+class GitHubStatusAutomationUpdateRequest(BaseModel):
+    event: GitHubAutomationEvent
+    target_state_id: uuid.UUID | None

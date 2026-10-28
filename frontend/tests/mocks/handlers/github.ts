@@ -1,9 +1,9 @@
 import { http, HttpResponse } from "msw";
 
-import type { GitHubInstallation } from "@/features/github/types";
+import type { GitHubInstallation, GitHubStatusAutomation } from "@/features/github/types";
 
 import { API_BASE_URL } from "../apiBaseUrl";
-import { demoMember } from "../fixtures";
+import { demoMember, demoWorkflowState } from "../fixtures";
 
 export const demoGitHubInstallation: GitHubInstallation = {
   id: "gh-installation-1",
@@ -15,7 +15,30 @@ export const demoGitHubInstallation: GitHubInstallation = {
   created_at: "2026-10-27T12:00:00Z",
 };
 
+export const demoGitHubAutomations: GitHubStatusAutomation[] = [
+  { event: "PR_DRAFT", target_state_id: null },
+  { event: "PR_OPEN", target_state_id: demoWorkflowState.id },
+  { event: "PR_MERGED", target_state_id: null },
+  { event: "PR_CLOSED", target_state_id: null },
+];
+
 export const githubHandlers = [
+  http.get(`${API_BASE_URL}/workspaces/:workspaceId/integrations/github/automations`, () =>
+    HttpResponse.json({ data: demoGitHubAutomations }),
+  ),
+
+  http.put(
+    `${API_BASE_URL}/workspaces/:workspaceId/integrations/github/automations`,
+    async ({ request }) => {
+      const rule = (await request.json()) as GitHubStatusAutomation;
+      return HttpResponse.json({
+        data: demoGitHubAutomations.map((current) =>
+          current.event === rule.event ? rule : current,
+        ),
+      });
+    },
+  ),
+
   // Sem PR vinculado por padrão: o rail da issue faz esta chamada em todo teste
   // que renderiza o detalhe, e `onUnhandledRequest: "error"` quebraria todos eles.
   http.get(`${API_BASE_URL}/workspaces/:workspaceId/issues/:issueId/github-links`, () =>

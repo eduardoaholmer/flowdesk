@@ -22,6 +22,8 @@ from src.features.github.schemas import (
     GitHubConnectResponse,
     GitHubIntegrationResponse,
     GitHubPullRequestLinkResponse,
+    GitHubStatusAutomationResponse,
+    GitHubStatusAutomationUpdateRequest,
     GitHubWebhookDeliveryInput,
     GitHubWebhookResponse,
 )
@@ -85,6 +87,37 @@ async def connect_github(
         samesite="lax",
     )
     return DataEnvelope(data=GitHubConnectResponse(install_url=connection.install_url))
+
+
+@router.get("/automations", response_model=DataEnvelope[list[GitHubStatusAutomationResponse]])
+async def list_github_automations(
+    workspace_id: uuid.UUID,
+    _member: WorkspaceMember = Depends(
+        require_permission(Permission.WORKSPACE_MANAGE_INTEGRATIONS)
+    ),
+    service: GitHubIntegrationService = Depends(get_github_integration_service),
+) -> DataEnvelope[list[GitHubStatusAutomationResponse]]:
+    automations = await service.list_automations(workspace_id)
+    return DataEnvelope(
+        data=[GitHubStatusAutomationResponse.model_validate(rule) for rule in automations]
+    )
+
+
+@router.put("/automations", response_model=DataEnvelope[list[GitHubStatusAutomationResponse]])
+async def set_github_automation(
+    workspace_id: uuid.UUID,
+    payload: GitHubStatusAutomationUpdateRequest,
+    _member: WorkspaceMember = Depends(
+        require_permission(Permission.WORKSPACE_MANAGE_INTEGRATIONS)
+    ),
+    service: GitHubIntegrationService = Depends(get_github_integration_service),
+) -> DataEnvelope[list[GitHubStatusAutomationResponse]]:
+    """Grava a regra de um evento (`target_state_id: null` = sem ação) e devolve as
+    quatro, como o `PUT` de overrides de permissão devolve a matriz inteira."""
+    automations = await service.set_automation(workspace_id, payload.event, payload.target_state_id)
+    return DataEnvelope(
+        data=[GitHubStatusAutomationResponse.model_validate(rule) for rule in automations]
+    )
 
 
 @router.delete("/installations/{installation_id}", status_code=status.HTTP_204_NO_CONTENT)

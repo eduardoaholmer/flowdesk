@@ -142,6 +142,7 @@ class WorkflowStateService:
 
         counts = await self._repo.issue_counts([state.id])
         issue_count = counts.get(state.id, 0)
+        reassigned_to: uuid.UUID | None = None
         if issue_count > 0:
             if reassign_to_id is None:
                 raise WorkflowStateHasIssuesError(details={"issue_count": issue_count})
@@ -151,6 +152,11 @@ class WorkflowStateService:
             if target is None:
                 raise InvalidReassignTargetError()
             await self._repo.reassign_issues(state.id, target.id)
+            reassigned_to = target.id
+        # Regras de automação do GitHub que miravam este status seguem as issues
+        # para o mesmo destino; sem issues movidas, ficam "sem ação" em vez de apontar
+        # para um status excluído (Sprint 10.4, ADR-070).
+        await self._repo.repoint_github_automations(state.id, reassigned_to)
 
         # Soft delete primeiro: o índice único parcial `(workspace_id) WHERE
         # is_default AND deleted_at IS NULL` rejeitaria promover um novo

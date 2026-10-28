@@ -18,8 +18,10 @@ from src.features.github.exceptions import (
 )
 from src.features.github.identifiers import extract_issue_numbers
 from src.features.github.models import (
+    GitHubAutomationEvent,
     GitHubInstallation,
     GitHubPullRequestLink,
+    GitHubPullRequestState,
     GitHubWebhookOutcome,
 )
 from src.features.github.repository import (
@@ -27,6 +29,8 @@ from src.features.github.repository import (
     GitHubConnectStateRepositoryProtocol,
     GitHubInstallationRepositoryProtocol,
     GitHubPullRequestLinkRepositoryProtocol,
+    GitHubSenderRepositoryProtocol,
+    GitHubStatusAutomationRepositoryProtocol,
     GitHubWebhookDeliveryRepositoryProtocol,
 )
 from src.features.github.schemas import (
@@ -34,12 +38,20 @@ from src.features.github.schemas import (
     GitHubConnectionStart,
     GitHubIntegrationStatus,
     GitHubPullRequestEventPayload,
+    GitHubSenderRef,
+    GitHubStatusAutomationView,
     GitHubWebhookDeliveryInput,
     GitHubWebhookResult,
 )
 from src.features.issues.exceptions import IssueNotFoundError
+from src.features.issues.models import ActivityActorSource, Issue
 from src.features.issues.repository import IssueRepositoryProtocol
+from src.features.issues.schemas import AutomationActor
+from src.features.issues.service import IssueService
 from src.features.permissions.repository import PermissionOverrideRepositoryProtocol
+from src.features.workflow_states.exceptions import WorkflowStateNotFoundError
+from src.features.workflow_states.models import WorkflowState, WorkflowStateCategory
+from src.features.workflow_states.repository import WorkflowStateRepositoryProtocol
 from src.features.workspaces.exceptions import WorkspaceNotFoundError
 from src.features.workspaces.repository import WorkspaceRepositoryProtocol
 
@@ -58,6 +70,19 @@ HANDLED_WEBHOOK_EVENTS = frozenset(
 _PULL_REQUEST_ACTIONS = frozenset(
     {"opened", "reopened", "edited", "ready_for_review", "converted_to_draft", "closed"}
 )
+# Ações em que o PR muda de situação: a regra correspondente vale para todas as
+# issues que ele cita. Em `edited` a situação não muda; a regra só vale para as
+# issues que o PR passou a citar agora (ADR-075).
+_STATE_CHANGE_ACTIONS = frozenset(
+    {"opened", "reopened", "ready_for_review", "converted_to_draft", "closed"}
+)
+_AUTOMATION_EVENT_BY_STATE = {
+    GitHubPullRequestState.DRAFT: GitHubAutomationEvent.PR_DRAFT,
+    GitHubPullRequestState.OPEN: GitHubAutomationEvent.PR_OPEN,
+    GitHubPullRequestState.MERGED: GitHubAutomationEvent.PR_MERGED,
+    GitHubPullRequestState.CLOSED: GitHubAutomationEvent.PR_CLOSED,
+}
+_GITHUB_ACTOR_NAME = "GitHub"
 # Motivo gravado em `github_webhook_deliveries.reason` quando a entrega é ignorada —
 # a resposta para "o GitHub mandou e o FlowDesk ignorou por quê?".
 _REASON_UNHANDLED_EVENT = "unhandled_event"
@@ -79,6 +104,8 @@ class GitHubIntegrationService:
         workspace_repo: WorkspaceRepositoryProtocol,
         override_repo: PermissionOverrideRepositoryProtocol,
         permission_service: PermissionService,
+        automation_repo: GitHubStatusAutomationRepositoryProtocol,
+        workflow_state_repo: WorkflowStateRepositoryProtocol,
         client: GitHubAppClientProtocol | None,
     ) -> None:
         """`client` é `None` quando o GitHub App não está configurado neste ambiente
@@ -89,6 +116,8 @@ class GitHubIntegrationService:
         self._workspace_repo = workspace_repo
         self._override_repo = override_repo
         self._permission_service = permission_service
+        self._automation_repo = automation_repo
+        self._workflow_state_repo = workflow_state_repo
         self._client = client
 
     async def get_status(self, workspace_id: uuid.UUID) -> GitHubIntegrationStatus:
@@ -172,6 +201,7 @@ class GitHubIntegrationService:
                 suspended_at=info.suspended_at,
             )
         )
+        await self._ensure_default_automations(intent.workspace_id)
         logger.info(
             "github_installation_connected",
             workspace_id=str(intent.workspace_id),
@@ -179,6 +209,40 @@ class GitHubIntegrationService:
             installation_id=info.installation_id,
         )
         return installation
+
+    async def list_automations(self, workspace_id: uuid.UUID) -> list[GitHubStatusAutomationView]:
+        """Uma entrada por evento, sempre na mesma ordem; evento sem regra gravada
+        (workspace que nunca conectou o GitHub) aparece como "sem ação"."""
+        stored = {
+            rule.event: rule.target_state_id
+            for rule in await self._automation_repo.list_by_workspace(workspace_id)
+        }
+        return [
+            GitHubStatusAutomationView(event=event, target_state_id=stored.get(event))
+            for event in GitHubAutomationEvent
+        ]
+
+    async def set_automation(
+        self,
+        workspace_id: uuid.UUID,
+        event: GitHubAutomationEvent,
+        target_state_id: uuid.UUID | None,
+    ) -> list[GitHubStatusAutomationView]:
+        if (
+            target_state_id is not None
+            and await self._workflow_state_repo.get_by_id(workspace_id, target_state_id) is None
+        ):
+            raise WorkflowStateNotFoundError()
+        await self._automation_repo.upsert(workspace_id, event, target_state_id)
+        return await self.list_automations(workspace_id)
+
+    async def _ensure_default_automations(self, workspace_id: uuid.UUID) -> None:
+        """Só na primeira conexão: quem reconecta mantém as regras que já editou."""
+        if await self._automation_repo.list_by_workspace(workspace_id):
+            return
+        states = await self._workflow_state_repo.list_by_workspace(workspace_id)
+        for event, target_state_id in default_automation_targets(states).items():
+            await self._automation_repo.upsert(workspace_id, event, target_state_id)
 
     async def disconnect(self, workspace_id: uuid.UUID, installation_pk: uuid.UUID) -> None:
         installation = await self._installation_repo.get_by_id(workspace_id, installation_pk)
@@ -225,11 +289,20 @@ class GitHubWebhookService:
         delivery_repo: GitHubWebhookDeliveryRepositoryProtocol,
         link_repo: GitHubPullRequestLinkRepositoryProtocol,
         issue_repo: IssueRepositoryProtocol,
+        automation_repo: GitHubStatusAutomationRepositoryProtocol,
+        sender_repo: GitHubSenderRepositoryProtocol,
+        issue_service: IssueService,
     ) -> None:
+        """`issue_service` aplica a mudança de status das regras: a regra de negócio
+        de transição (guarda de status terminal, atividade, notificação, versão) é de
+        Issues, e o webhook só decide quando e para onde."""
         self._installation_repo = installation_repo
         self._delivery_repo = delivery_repo
         self._link_repo = link_repo
         self._issue_repo = issue_repo
+        self._automation_repo = automation_repo
+        self._sender_repo = sender_repo
+        self._issue_service = issue_service
 
     async def handle(self, delivery: GitHubWebhookDeliveryInput) -> GitHubWebhookResult:
         payload = delivery.payload
@@ -331,11 +404,12 @@ class GitHubWebhookService:
         if not issues and not existing:
             return GitHubWebhookOutcome.IGNORED, _REASON_NO_ISSUE_REFERENCE, workspace_id
 
+        links_by_issue = {link.issue_id: link for link in existing}
+        newly_linked = [issue for issue in issues if issue.id not in links_by_issue]
         cited_issue_ids = {issue.id for issue in issues}
         await self._link_repo.delete(
             workspace_id, [link.id for link in existing if link.issue_id not in cited_issue_ids]
         )
-        links_by_issue = {link.issue_id: link for link in existing}
         for issue in issues:
             link = links_by_issue.get(issue.id)
             if link is None:
@@ -352,7 +426,56 @@ class GitHubWebhookService:
                 )
             else:
                 await self._link_repo.update(_apply_pull_request(link, installation, payload))
+
+        automation_targets = issues if payload.action in _STATE_CHANGE_ACTIONS else newly_linked
+        await self._apply_status_automation(workspace_id, payload, automation_targets)
         return GitHubWebhookOutcome.PROCESSED, None, workspace_id
+
+    async def _apply_status_automation(
+        self,
+        workspace_id: uuid.UUID,
+        payload: GitHubPullRequestEventPayload,
+        issues: Sequence[Issue],
+    ) -> None:
+        if not issues:
+            return
+        event = _AUTOMATION_EVENT_BY_STATE[payload.pull_request.flowdesk_state]
+        rule = await self._automation_repo.get(workspace_id, event)
+        if rule is None or rule.target_state_id is None:
+            return
+        actor = await self._resolve_actor(workspace_id, payload.sender)
+        moved = 0
+        for issue in issues:
+            if await self._issue_service.apply_automation_transition(
+                workspace_id, issue.id, rule.target_state_id, actor
+            ):
+                moved += 1
+        logger.info(
+            "github_automation_applied",
+            workspace_id=str(workspace_id),
+            automation_event=event.value,
+            pull_request_id=payload.pull_request.id,
+            issues_moved=moved,
+            actor_user_id=str(actor.user_id) if actor.user_id else None,
+        )
+
+    async def _resolve_actor(
+        self, workspace_id: uuid.UUID, sender: GitHubSenderRef | None
+    ) -> AutomationActor:
+        member = (
+            await self._sender_repo.find_workspace_member(workspace_id, sender.id)
+            if sender is not None
+            else None
+        )
+        if member is None:
+            return AutomationActor(
+                source=ActivityActorSource.GITHUB, user_id=None, name=_GITHUB_ACTOR_NAME
+            )
+        return AutomationActor(
+            source=ActivityActorSource.GITHUB,
+            user_id=member.user_id,
+            name=f"{member.name} via {_GITHUB_ACTOR_NAME}",
+        )
 
 
 class GitHubPullRequestLinkService:
@@ -370,6 +493,25 @@ class GitHubPullRequestLinkService:
         if await self._issue_repo.get_by_id(workspace_id, issue_id) is None:
             raise IssueNotFoundError()
         return await self._link_repo.list_by_issue(workspace_id, issue_id)
+
+
+def default_automation_targets(
+    states: Sequence[WorkflowState],
+) -> dict[GitHubAutomationEvent, uuid.UUID | None]:
+    """Defaults gravados na primeira conexão (ADR-070), pela posição no board: o
+    primeiro status `STARTED` para rascunho ("In Progress" no seed), o último
+    `STARTED` para PR aberto ("In Review"), o primeiro `COMPLETED` para merge. PR
+    fechado sem merge não move nada. A categoria sozinha não basta: "In Progress" e
+    "In Review" são os dois `STARTED`."""
+    ordered = sorted(states, key=lambda state: state.position)
+    started = [state.id for state in ordered if state.category == WorkflowStateCategory.STARTED]
+    completed = [state.id for state in ordered if state.category == WorkflowStateCategory.COMPLETED]
+    return {
+        GitHubAutomationEvent.PR_DRAFT: started[0] if started else None,
+        GitHubAutomationEvent.PR_OPEN: started[-1] if started else None,
+        GitHubAutomationEvent.PR_MERGED: completed[0] if completed else None,
+        GitHubAutomationEvent.PR_CLOSED: None,
+    }
 
 
 def _apply_pull_request(

@@ -2,15 +2,27 @@ import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime
 
+from src.core.authorization import PermissionService
 from src.features.github.client import GitHubInstallationInfo
 from src.features.github.models import (
+    GitHubAutomationEvent,
     GitHubInstallation,
     GitHubPullRequestLink,
+    GitHubStatusAutomation,
     GitHubWebhookDelivery,
     GitHubWebhookOutcome,
 )
-from src.features.github.repository import GitHubConnectIntent
+from src.features.github.repository import GitHubConnectIntent, GitHubSenderMember
+from src.features.issues.service import IssueService
+from src.features.notifications.service import NotificationService
 from uuid6 import uuid7
+
+from tests.unit.features.issues.fakes import FakeIssueRepository
+from tests.unit.features.labels.fakes import FakeLabelRepository
+from tests.unit.features.notifications.fakes import FakeNotificationRepository
+from tests.unit.features.projects.fakes import FakeProjectRepository
+from tests.unit.features.workflow_states.fakes import FakeWorkflowStateRepository
+from tests.unit.features.workspaces.fakes import FakeWorkspaceRepository
 
 
 class FakeGitHubInstallationRepository:
@@ -183,3 +195,62 @@ class FakeGitHubPullRequestLinkRepository:
             link = self.links.get(link_id)
             if link is not None and link.workspace_id == workspace_id:
                 del self.links[link_id]
+
+
+class FakeGitHubStatusAutomationRepository:
+    def __init__(self) -> None:
+        self.rules: dict[tuple[uuid.UUID, GitHubAutomationEvent], GitHubStatusAutomation] = {}
+
+    async def list_by_workspace(self, workspace_id: uuid.UUID) -> Sequence[GitHubStatusAutomation]:
+        return [rule for (ws, _), rule in self.rules.items() if ws == workspace_id]
+
+    async def get(
+        self, workspace_id: uuid.UUID, event: GitHubAutomationEvent
+    ) -> GitHubStatusAutomation | None:
+        return self.rules.get((workspace_id, event))
+
+    async def upsert(
+        self,
+        workspace_id: uuid.UUID,
+        event: GitHubAutomationEvent,
+        target_state_id: uuid.UUID | None,
+    ) -> None:
+        rule = self.rules.get((workspace_id, event))
+        if rule is None:
+            self.rules[(workspace_id, event)] = GitHubStatusAutomation(
+                id=uuid7(), workspace_id=workspace_id, event=event, target_state_id=target_state_id
+            )
+        else:
+            rule.target_state_id = target_state_id
+
+
+class FakeGitHubSenderRepository:
+    """`members` mapeia (workspace, id da conta do GitHub) → membro, simulando o
+    join `OAuthIdentity` × `WorkspaceMember` × `User` do repository real."""
+
+    def __init__(self) -> None:
+        self.members: dict[tuple[uuid.UUID, int], GitHubSenderMember] = {}
+
+    async def find_workspace_member(
+        self, workspace_id: uuid.UUID, github_user_id: int
+    ) -> GitHubSenderMember | None:
+        return self.members.get((workspace_id, github_user_id))
+
+
+def make_issue_service(
+    issue_repo: FakeIssueRepository,
+    workflow_state_repo: FakeWorkflowStateRepository,
+    notification_repo: FakeNotificationRepository | None = None,
+) -> IssueService:
+    """`IssueService` real sobre fakes — o webhook delega a ele a transição de
+    status, e o teste precisa da regra de negócio de verdade (guarda de status
+    terminal, atividade, notificação), não de um dublê."""
+    return IssueService(
+        issue_repo,
+        PermissionService(),
+        FakeProjectRepository(),
+        FakeLabelRepository(),
+        NotificationService(notification_repo or FakeNotificationRepository()),
+        workflow_state_repo,
+        FakeWorkspaceRepository(),
+    )

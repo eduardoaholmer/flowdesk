@@ -14,6 +14,11 @@ from src.features.workflow_states.models import WorkflowState
 # mappers da feature Issues (incluindo seu relationship com `Comment`) só para
 # contar/reatribuir por `status_id`.
 _issues_table = table("issues", column("id"), column("status_id"), column("deleted_at"))
+# Mesmo racional para as regras de automação do GitHub (Sprint 10.4): excluir um
+# status reaponta as regras que miram nele sem importar a feature `github`.
+_github_automations_table = table(
+    "github_status_automations", column("target_state_id"), column("updated_at")
+)
 
 
 class WorkflowStateRepositoryProtocol(Protocol):
@@ -27,6 +32,9 @@ class WorkflowStateRepositoryProtocol(Protocol):
     async def max_position(self, workspace_id: uuid.UUID) -> int | None: ...
     async def issue_counts(self, state_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, int]: ...
     async def reassign_issues(self, from_status_id: uuid.UUID, to_status_id: uuid.UUID) -> None: ...
+    async def repoint_github_automations(
+        self, from_status_id: uuid.UUID, to_status_id: uuid.UUID | None
+    ) -> None: ...
     async def update(self, state: WorkflowState) -> WorkflowState: ...
     async def soft_delete(self, state_id: uuid.UUID) -> None: ...
 
@@ -100,6 +108,16 @@ class WorkflowStateRepository:
             update(_issues_table)
             .where(_issues_table.c.status_id == from_status_id)
             .values(status_id=to_status_id)
+        )
+        await self._session.execute(stmt)
+
+    async def repoint_github_automations(
+        self, from_status_id: uuid.UUID, to_status_id: uuid.UUID | None
+    ) -> None:
+        stmt = (
+            update(_github_automations_table)
+            .where(_github_automations_table.c.target_state_id == from_status_id)
+            .values(target_state_id=to_status_id, updated_at=func.now())
         )
         await self._session.execute(stmt)
 

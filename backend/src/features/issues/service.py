@@ -12,9 +12,9 @@ from src.features.issues.exceptions import (
     IssueNotFoundError,
     IssueVersionConflictError,
 )
-from src.features.issues.models import ActivityLog, Issue, IssuePriority
+from src.features.issues.models import ActivityActorSource, ActivityLog, Issue, IssuePriority
 from src.features.issues.repository import IssueRepositoryProtocol, IssueSort
-from src.features.issues.schemas import IssueCreateRequest, IssueUpdateRequest
+from src.features.issues.schemas import AutomationActor, IssueCreateRequest, IssueUpdateRequest
 from src.features.labels.exceptions import LabelNotFoundError
 from src.features.labels.models import Label
 from src.features.labels.repository import LabelRepositoryProtocol
@@ -23,9 +23,11 @@ from src.features.notifications.service import NotificationService
 from src.features.projects.exceptions import ProjectNotFoundError
 from src.features.projects.repository import ProjectRepositoryProtocol
 from src.features.workflow_states.exceptions import WorkflowStateNotFoundError
-from src.features.workflow_states.models import WorkflowState
+from src.features.workflow_states.models import WorkflowState, WorkflowStateCategory
 from src.features.workflow_states.repository import WorkflowStateRepositoryProtocol
 from src.features.workspaces.repository import WorkspaceRepositoryProtocol
+
+_TERMINAL_CATEGORIES = frozenset({WorkflowStateCategory.COMPLETED, WorkflowStateCategory.CANCELED})
 
 
 class IssueService:
@@ -305,7 +307,9 @@ class IssueService:
                 old_value=old_state.name,
                 new_value=new_state.name,
             )
-            await self._notify_status_change(current_user, issue, old_state, new_state)
+            await self._notify_status_change(
+                issue, old_state, new_state, actor_id=current_user.id, actor_name=current_user.name
+            )
             issue.status_id = new_state.id
             changed = True
 
@@ -367,6 +371,53 @@ class IssueService:
             issue.version += 1
             await self._issue_repo.update(issue)
         return issue
+
+    async def apply_automation_transition(
+        self,
+        workspace_id: uuid.UUID,
+        issue_id: uuid.UUID,
+        target_state_id: uuid.UUID,
+        actor: AutomationActor,
+    ) -> bool:
+        """Mudança de status feita por automação (Sprint 10.4, ADR-070) — separada de
+        `update` de propósito: não há `CurrentUser` nem checagem de
+        `issue.change_status`. Quem autorizou a mudança foi quem configurou a regra
+        (`workspace.manage_integrations`), não a pessoa que fez o merge, e o caminho
+        de `update` continua sem nenhuma exceção ao RBAC.
+
+        Nunca tira uma issue de um status `COMPLETED`/`CANCELED`: uma conclusão ou um
+        cancelamento manual não é desfeito por um PR reaberto ou por um segundo PR.
+        `version` sobe como em `update`, então uma edição concorrente na UI recebe o
+        `409` de conflito otimista de sempre. Devolve se a issue mudou."""
+        issue = await self._issue_repo.get_by_id(workspace_id, issue_id)
+        if issue is None or issue.status_id == target_state_id:
+            return False
+        current_state = await self._get_workflow_state(workspace_id, issue.status_id)
+        if current_state.category in _TERMINAL_CATEGORIES:
+            return False
+        # A regra pode apontar para um status já excluído; nesse caso não há o que
+        # aplicar (`WorkflowStateService.delete` normalmente reaponta a regra antes).
+        target_state = await self._workflow_state_repo.get_by_id(workspace_id, target_state_id)
+        if target_state is None:
+            return False
+
+        await self._record_activity(
+            workspace_id,
+            issue.id,
+            actor.user_id,
+            "issue.status_changed",
+            field="status",
+            old_value=current_state.name,
+            new_value=target_state.name,
+            actor_source=actor.source,
+        )
+        await self._notify_status_change(
+            issue, current_state, target_state, actor_id=actor.user_id, actor_name=actor.name
+        )
+        issue.status_id = target_state.id
+        issue.version += 1
+        await self._issue_repo.update(issue)
+        return True
 
     async def delete(
         self, acting: WorkspaceContext, workspace_id: uuid.UUID, issue_id: uuid.UUID
@@ -461,14 +512,16 @@ class IssueService:
 
     async def _notify_status_change(
         self,
-        current_user: CurrentUser,
         issue: Issue,
         old_state: WorkflowState,
         new_state: WorkflowState,
+        *,
+        actor_id: uuid.UUID | None,
+        actor_name: str,
     ) -> None:
         """Sem responsável, ou o próprio responsável mudou o status: nada a notificar
         (mesmo racional de `CommentService._notify_mentions` para auto-menção)."""
-        if issue.assignee_id is None or issue.assignee_id == current_user.id:
+        if issue.assignee_id is None or issue.assignee_id == actor_id:
             return
         await self._notification_service.notify(
             user_id=issue.assignee_id,
@@ -477,7 +530,7 @@ class IssueService:
             payload={
                 "issue_id": str(issue.id),
                 "issue_identifier": issue.identifier,
-                "actor_name": current_user.name,
+                "actor_name": actor_name,
                 "old_status": old_state.name,
                 "new_status": new_state.name,
             },
@@ -487,18 +540,20 @@ class IssueService:
         self,
         workspace_id: uuid.UUID,
         issue_id: uuid.UUID,
-        actor_id: uuid.UUID,
+        actor_id: uuid.UUID | None,
         action: str,
         *,
         field: str | None = None,
         old_value: str | None = None,
         new_value: str | None = None,
+        actor_source: ActivityActorSource = ActivityActorSource.USER,
     ) -> None:
         await self._issue_repo.record_activity(
             ActivityLog(
                 workspace_id=workspace_id,
                 issue_id=issue_id,
                 actor_id=actor_id,
+                actor_source=actor_source,
                 action=action,
                 field=field,
                 old_value=old_value,

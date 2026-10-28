@@ -25,8 +25,10 @@ from tests.unit.features.github.fakes import (
     FakeGitHubAppClient,
     FakeGitHubConnectStateRepository,
     FakeGitHubInstallationRepository,
+    FakeGitHubStatusAutomationRepository,
 )
 from tests.unit.features.permissions.fakes import FakePermissionOverrideRepository
+from tests.unit.features.workflow_states.fakes import FakeWorkflowStateRepository
 from tests.unit.features.workspaces.fakes import FakeWorkspaceRepository
 
 _INSTALLATION = GitHubInstallationInfo(
@@ -68,7 +70,14 @@ def service(
     client: FakeGitHubAppClient,
 ) -> GitHubIntegrationService:
     return GitHubIntegrationService(
-        installation_repo, state_repo, workspace_repo, override_repo, PermissionService(), client
+        installation_repo,
+        state_repo,
+        workspace_repo,
+        override_repo,
+        PermissionService(),
+        FakeGitHubStatusAutomationRepository(),
+        FakeWorkflowStateRepository(),
+        client,
     )
 
 
@@ -132,7 +141,14 @@ async def test_start_connection_fails_when_app_not_configured(
     override_repo: FakePermissionOverrideRepository,
 ) -> None:
     service = GitHubIntegrationService(
-        installation_repo, state_repo, workspace_repo, override_repo, PermissionService(), None
+        installation_repo,
+        state_repo,
+        workspace_repo,
+        override_repo,
+        PermissionService(),
+        FakeGitHubStatusAutomationRepository(),
+        FakeWorkflowStateRepository(),
+        None,
     )
 
     with pytest.raises(GitHubIntegrationNotConfiguredError):

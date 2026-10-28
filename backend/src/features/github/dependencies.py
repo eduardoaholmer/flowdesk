@@ -19,6 +19,10 @@ from src.features.github.repository import (
     GitHubInstallationRepositoryProtocol,
     GitHubPullRequestLinkRepository,
     GitHubPullRequestLinkRepositoryProtocol,
+    GitHubSenderRepository,
+    GitHubSenderRepositoryProtocol,
+    GitHubStatusAutomationRepository,
+    GitHubStatusAutomationRepositoryProtocol,
     GitHubWebhookDeliveryRepository,
     GitHubWebhookDeliveryRepositoryProtocol,
 )
@@ -28,9 +32,13 @@ from src.features.github.service import (
     GitHubWebhookService,
 )
 from src.features.github.signature import is_valid_webhook_signature
+from src.features.issues.dependencies import get_issue_service
 from src.features.issues.repository import IssueRepository, IssueRepositoryProtocol
+from src.features.issues.service import IssueService
 from src.features.permissions.dependencies import get_permission_override_repository
 from src.features.permissions.repository import PermissionOverrideRepositoryProtocol
+from src.features.workflow_states.dependencies import get_workflow_state_repository
+from src.features.workflow_states.repository import WorkflowStateRepositoryProtocol
 from src.features.workspaces.dependencies import get_workspace_repository
 from src.features.workspaces.repository import WorkspaceRepositoryProtocol
 
@@ -39,6 +47,18 @@ logger = get_logger(__name__)
 SIGNATURE_HEADER = "X-Hub-Signature-256"
 DELIVERY_HEADER = "X-GitHub-Delivery"
 EVENT_HEADER = "X-GitHub-Event"
+
+
+def get_github_status_automation_repository(
+    session: AsyncSession = Depends(get_db_session),
+) -> GitHubStatusAutomationRepository:
+    return GitHubStatusAutomationRepository(session)
+
+
+def get_github_sender_repository(
+    session: AsyncSession = Depends(get_db_session),
+) -> GitHubSenderRepository:
+    return GitHubSenderRepository(session)
 
 
 def get_github_installation_repository(
@@ -79,6 +99,10 @@ def get_github_integration_service(
         get_permission_override_repository
     ),
     permission_service: PermissionService = Depends(get_permission_service),
+    automation_repo: GitHubStatusAutomationRepositoryProtocol = Depends(
+        get_github_status_automation_repository
+    ),
+    workflow_state_repo: WorkflowStateRepositoryProtocol = Depends(get_workflow_state_repository),
     client: GitHubAppClientProtocol | None = Depends(get_github_app_client),
 ) -> GitHubIntegrationService:
     return GitHubIntegrationService(
@@ -87,6 +111,8 @@ def get_github_integration_service(
         workspace_repo,
         override_repo,
         permission_service,
+        automation_repo,
+        workflow_state_repo,
         client,
     )
 
@@ -120,8 +146,21 @@ def get_github_webhook_service(
         get_github_pull_request_link_repository
     ),
     issue_repo: IssueRepositoryProtocol = Depends(get_github_issue_repository),
+    automation_repo: GitHubStatusAutomationRepositoryProtocol = Depends(
+        get_github_status_automation_repository
+    ),
+    sender_repo: GitHubSenderRepositoryProtocol = Depends(get_github_sender_repository),
+    issue_service: IssueService = Depends(get_issue_service),
 ) -> GitHubWebhookService:
-    return GitHubWebhookService(installation_repo, delivery_repo, link_repo, issue_repo)
+    return GitHubWebhookService(
+        installation_repo,
+        delivery_repo,
+        link_repo,
+        issue_repo,
+        automation_repo,
+        sender_repo,
+        issue_service,
+    )
 
 
 def get_github_pull_request_link_service(

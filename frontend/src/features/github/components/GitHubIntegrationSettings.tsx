@@ -12,6 +12,7 @@ import { formatDate } from "@/shared/lib/date";
 
 import { useConnectGitHub, useDisconnectGitHubInstallation, useGitHubIntegration } from "../hooks";
 import type { GitHubInstallation } from "../types";
+import { GitHubAutomationRules } from "./GitHubAutomationRules";
 
 function InstallationRow({
   installation,
@@ -105,16 +106,19 @@ export function GitHubIntegrationSettings({
           description="Conecte uma organização ou conta pessoal do GitHub a este workspace."
         />
       ) : (
-        <div className="rounded-xl border border-border bg-panel px-4">
-          {data.installations.map((installation) => (
-            <InstallationRow
-              key={installation.id}
-              installation={installation}
-              connectedByName={memberName(installation.connected_by_id)}
-              workspaceId={workspaceId}
-            />
-          ))}
-        </div>
+        <>
+          <div className="rounded-xl border border-border bg-panel px-4">
+            {data.installations.map((installation) => (
+              <InstallationRow
+                key={installation.id}
+                installation={installation}
+                connectedByName={memberName(installation.connected_by_id)}
+                workspaceId={workspaceId}
+              />
+            ))}
+          </div>
+          <GitHubAutomationRules workspaceId={workspaceId} />
+        </>
       )}
     </div>
   );

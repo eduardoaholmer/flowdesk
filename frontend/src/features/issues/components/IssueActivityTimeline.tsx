@@ -49,6 +49,7 @@ export function IssueActivityTimeline({
                 — {entry.field}: {entry.old_value ?? "—"} → {entry.new_value ?? "—"}
               </span>
             )}
+            {entry.actor_source === "GITHUB" && <span className="text-t3"> · via GitHub</span>}
           </span>
           <span className="shrink-0 text-[11.5px] text-t3">{formatDateTime(entry.created_at)}</span>
         </li>

@@ -145,3 +145,41 @@ Index(
     GitHubPullRequestLink.workspace_id,
     GitHubPullRequestLink.pull_request_id,
 )
+
+
+class GitHubAutomationEvent(enum.StrEnum):
+    """Situação do PR que dispara uma regra (ADR-070). Derivada do estado do PR, não
+    da ação do evento: `opened` como rascunho e `converted_to_draft` são ambos
+    `PR_DRAFT`; `opened`, `reopened` e `ready_for_review` são `PR_OPEN`."""
+
+    PR_DRAFT = "PR_DRAFT"
+    PR_OPEN = "PR_OPEN"
+    PR_MERGED = "PR_MERGED"
+    PR_CLOSED = "PR_CLOSED"
+
+
+class GitHubStatusAutomation(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """Regra "quando o PR estiver assim, mova as issues vinculadas para este status"
+    (Sprint 10.4, ADR-070). Uma por evento por workspace; `target_state_id` nulo é
+    "sem ação". Gravada com os defaults na primeira conexão do GitHub, e editável na
+    aba Integrações. Sem soft delete: é configuração, não dado de negócio."""
+
+    __tablename__ = "github_status_automations"
+
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="RESTRICT"), nullable=False
+    )
+    event: Mapped[GitHubAutomationEvent] = mapped_column(
+        domain_enum(GitHubAutomationEvent), nullable=False
+    )
+    target_state_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("workflow_states.id", ondelete="RESTRICT"), default=None
+    )
+
+
+Index(
+    "uq_github_status_automations_workspace_id_event",
+    GitHubStatusAutomation.workspace_id,
+    GitHubStatusAutomation.event,
+    unique=True,
+)

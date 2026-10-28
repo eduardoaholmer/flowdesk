@@ -16,9 +16,13 @@ from tests.github_payloads import pull_request_payload
 from tests.unit.features.github.fakes import (
     FakeGitHubInstallationRepository,
     FakeGitHubPullRequestLinkRepository,
+    FakeGitHubSenderRepository,
+    FakeGitHubStatusAutomationRepository,
     FakeGitHubWebhookDeliveryRepository,
+    make_issue_service,
 )
 from tests.unit.features.issues.fakes import FakeIssueRepository
+from tests.unit.features.workflow_states.fakes import FakeWorkflowStateRepository
 
 _INSTALLATION_ID = 4242
 
@@ -50,7 +54,15 @@ def service(
     link_repo: FakeGitHubPullRequestLinkRepository,
     issue_repo: FakeIssueRepository,
 ) -> GitHubWebhookService:
-    return GitHubWebhookService(installation_repo, delivery_repo, link_repo, issue_repo)
+    return GitHubWebhookService(
+        installation_repo,
+        delivery_repo,
+        link_repo,
+        issue_repo,
+        FakeGitHubStatusAutomationRepository(),
+        FakeGitHubSenderRepository(),
+        make_issue_service(issue_repo, FakeWorkflowStateRepository()),
+    )
 
 
 @pytest.fixture

@@ -33,3 +33,11 @@ export interface GitHubPullRequestLink {
   head_branch: string;
   pr_updated_at: string;
 }
+
+export type GitHubAutomationEvent = "PR_DRAFT" | "PR_OPEN" | "PR_MERGED" | "PR_CLOSED";
+
+/** Regra "PR nesta situação → issues vinculadas neste status"; `null` é sem ação. */
+export interface GitHubStatusAutomation {
+  event: GitHubAutomationEvent;
+  target_state_id: string | null;
+}

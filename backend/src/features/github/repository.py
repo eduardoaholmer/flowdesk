@@ -7,16 +7,21 @@ from datetime import UTC, datetime
 from typing import Protocol
 
 from redis.asyncio import Redis
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
+from uuid6 import uuid7
 
+from src.features.auth.models import OAuthIdentity, User
 from src.features.github.models import (
+    GitHubAutomationEvent,
     GitHubInstallation,
     GitHubPullRequestLink,
+    GitHubStatusAutomation,
     GitHubWebhookDelivery,
     GitHubWebhookOutcome,
 )
+from src.features.workspaces.models import WorkspaceMember
 
 _CONNECT_STATE_KEY_PREFIX = "github:connect:"
 
@@ -74,6 +79,33 @@ class GitHubPullRequestLinkRepositoryProtocol(Protocol):
     async def create(self, link: GitHubPullRequestLink) -> GitHubPullRequestLink: ...
     async def update(self, link: GitHubPullRequestLink) -> GitHubPullRequestLink: ...
     async def delete(self, workspace_id: uuid.UUID, link_ids: Sequence[uuid.UUID]) -> None: ...
+
+
+@dataclass(frozen=True)
+class GitHubSenderMember:
+    user_id: uuid.UUID
+    name: str
+
+
+class GitHubStatusAutomationRepositoryProtocol(Protocol):
+    async def list_by_workspace(
+        self, workspace_id: uuid.UUID
+    ) -> Sequence[GitHubStatusAutomation]: ...
+    async def get(
+        self, workspace_id: uuid.UUID, event: GitHubAutomationEvent
+    ) -> GitHubStatusAutomation | None: ...
+    async def upsert(
+        self,
+        workspace_id: uuid.UUID,
+        event: GitHubAutomationEvent,
+        target_state_id: uuid.UUID | None,
+    ) -> None: ...
+
+
+class GitHubSenderRepositoryProtocol(Protocol):
+    async def find_workspace_member(
+        self, workspace_id: uuid.UUID, github_user_id: int
+    ) -> GitHubSenderMember | None: ...
 
 
 class GitHubConnectStateRepositoryProtocol(Protocol):
@@ -240,6 +272,85 @@ class GitHubPullRequestLinkRepository:
                 GitHubPullRequestLink.id.in_(link_ids),
             )
         )
+
+
+class GitHubStatusAutomationRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def list_by_workspace(self, workspace_id: uuid.UUID) -> Sequence[GitHubStatusAutomation]:
+        # `populate_existing`: o `upsert` é Core e não atualiza objetos que esta
+        # sessão já carregou — sem isso, o `PUT` devolveria o valor antigo.
+        stmt = (
+            select(GitHubStatusAutomation)
+            .where(GitHubStatusAutomation.workspace_id == workspace_id)
+            .execution_options(populate_existing=True)
+        )
+        return (await self._session.scalars(stmt)).all()
+
+    async def get(
+        self, workspace_id: uuid.UUID, event: GitHubAutomationEvent
+    ) -> GitHubStatusAutomation | None:
+        stmt = (
+            select(GitHubStatusAutomation)
+            .where(
+                GitHubStatusAutomation.workspace_id == workspace_id,
+                GitHubStatusAutomation.event == event,
+            )
+            .execution_options(populate_existing=True)
+        )
+        result: GitHubStatusAutomation | None = await self._session.scalar(stmt)
+        return result
+
+    async def upsert(
+        self,
+        workspace_id: uuid.UUID,
+        event: GitHubAutomationEvent,
+        target_state_id: uuid.UUID | None,
+    ) -> None:
+        stmt = (
+            insert(GitHubStatusAutomation)
+            .values(
+                id=uuid7(),
+                workspace_id=workspace_id,
+                event=event,
+                target_state_id=target_state_id,
+            )
+            .on_conflict_do_update(
+                index_elements=[GitHubStatusAutomation.workspace_id, GitHubStatusAutomation.event],
+                set_={"target_state_id": target_state_id, "updated_at": func.now()},
+            )
+        )
+        await self._session.execute(stmt)
+
+
+class GitHubSenderRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def find_workspace_member(
+        self, workspace_id: uuid.UUID, github_user_id: int
+    ) -> GitHubSenderMember | None:
+        """Quem fez a ação no GitHub, se for membro ativo do workspace e tiver entrado
+        no FlowDesk com a mesma conta do GitHub (`OAuthIdentity`, ADR-061). É a única
+        forma de saber que a conta do GitHub é dessa pessoa; e-mail ou login iguais não
+        provam nada."""
+        stmt = (
+            select(User.id, User.name)
+            .join(OAuthIdentity, OAuthIdentity.user_id == User.id)
+            .join(WorkspaceMember, WorkspaceMember.user_id == User.id)
+            .where(
+                OAuthIdentity.provider == "github",
+                OAuthIdentity.provider_user_id == str(github_user_id),
+                WorkspaceMember.workspace_id == workspace_id,
+                WorkspaceMember.deleted_at.is_(None),
+                User.deleted_at.is_(None),
+            )
+        )
+        row = (await self._session.execute(stmt)).first()
+        if row is None:
+            return None
+        return GitHubSenderMember(user_id=row.id, name=row.name)
 
 
 class GitHubConnectStateRepository:

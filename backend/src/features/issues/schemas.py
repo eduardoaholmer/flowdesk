@@ -1,9 +1,10 @@
 import uuid
+from dataclasses import dataclass
 from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from src.features.issues.models import IssuePriority
+from src.features.issues.models import ActivityActorSource, IssuePriority
 
 _TITLE_MIN_LENGTH = 1
 _TITLE_MAX_LENGTH = 255
@@ -150,9 +151,21 @@ class IssueActivityLogResponse(BaseModel):
 
     id: uuid.UUID
     issue_id: uuid.UUID
-    actor_id: uuid.UUID
+    actor_id: uuid.UUID | None
+    actor_source: ActivityActorSource
     action: str
     field: str | None
     old_value: str | None
     new_value: str | None
     created_at: datetime
+
+
+@dataclass(frozen=True)
+class AutomationActor:
+    """Quem aparece como autor de uma mudança feita por automação (Sprint 10.4).
+    `user_id` é o membro do workspace correspondente, quando existe; `name` é o que
+    vai na notificação ("Ada via GitHub" ou só "GitHub")."""
+
+    source: ActivityActorSource
+    user_id: uuid.UUID | None
+    name: str

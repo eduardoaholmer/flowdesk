@@ -5,6 +5,7 @@ import { getApiErrorMessage } from "@/shared/lib/errors";
 
 import * as api from "./api";
 import { rememberGitHubConnectWorkspace } from "./connectReturn";
+import type { GitHubStatusAutomation } from "./types";
 
 function githubIntegrationKey(workspaceId: string) {
   return ["workspaces", workspaceId, "integrations", "github"] as const;
@@ -51,6 +52,31 @@ export function useDisconnectGitHubInstallation(workspaceId: string) {
       toast.success("Conta do GitHub desconectada.");
       void queryClient.invalidateQueries({ queryKey: githubIntegrationKey(workspaceId) });
     },
+    onError: (error) => toast.error(getApiErrorMessage(error)),
+  });
+}
+
+function githubAutomationsKey(workspaceId: string) {
+  return ["workspaces", workspaceId, "integrations", "github", "automations"] as const;
+}
+
+export function useGitHubAutomations(workspaceId: string) {
+  return useQuery({
+    queryKey: githubAutomationsKey(workspaceId),
+    queryFn: () => api.listGitHubAutomations(workspaceId),
+    enabled: Boolean(workspaceId),
+    staleTime: 30_000,
+  });
+}
+
+export function useSetGitHubAutomation(workspaceId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (rule: GitHubStatusAutomation) => api.setGitHubAutomation(workspaceId, rule),
+    // A resposta já traz as quatro regras recalculadas (mesmo padrão da matriz de
+    // permissões): substitui o cache em vez de refazer a consulta.
+    onSuccess: (rules) => queryClient.setQueryData(githubAutomationsKey(workspaceId), rules),
     onError: (error) => toast.error(getApiErrorMessage(error)),
   });
 }

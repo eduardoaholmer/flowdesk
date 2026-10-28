@@ -11,9 +11,13 @@ from tests.github_payloads import load_payload
 from tests.unit.features.github.fakes import (
     FakeGitHubInstallationRepository,
     FakeGitHubPullRequestLinkRepository,
+    FakeGitHubSenderRepository,
+    FakeGitHubStatusAutomationRepository,
     FakeGitHubWebhookDeliveryRepository,
+    make_issue_service,
 )
 from tests.unit.features.issues.fakes import FakeIssueRepository
+from tests.unit.features.workflow_states.fakes import FakeWorkflowStateRepository
 
 _INSTALLATION_ID = 4242
 
@@ -33,11 +37,15 @@ def service(
     installation_repo: FakeGitHubInstallationRepository,
     delivery_repo: FakeGitHubWebhookDeliveryRepository,
 ) -> GitHubWebhookService:
+    issue_repo = FakeIssueRepository()
     return GitHubWebhookService(
         installation_repo,
         delivery_repo,
         FakeGitHubPullRequestLinkRepository(),
-        FakeIssueRepository(),
+        issue_repo,
+        FakeGitHubStatusAutomationRepository(),
+        FakeGitHubSenderRepository(),
+        make_issue_service(issue_repo, FakeWorkflowStateRepository()),
     )
 
 

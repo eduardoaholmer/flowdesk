@@ -17,6 +17,7 @@ class FakeWorkflowStateRepository:
         # `Issue` real neste fake, só o efeito observável (a contagem some do
         # status de origem e aparece no de destino).
         self.reassignments: list[tuple[uuid.UUID, uuid.UUID]] = []
+        self.automation_repoints: list[tuple[uuid.UUID, uuid.UUID | None]] = []
 
     async def create(self, state: WorkflowState) -> WorkflowState:
         if state.id is None:
@@ -76,6 +77,11 @@ class FakeWorkflowStateRepository:
             self.issue_count_by_state.get(to_status_id, 0) + count
         )
         self.reassignments.append((from_status_id, to_status_id))
+
+    async def repoint_github_automations(
+        self, from_status_id: uuid.UUID, to_status_id: uuid.UUID | None
+    ) -> None:
+        self.automation_repoints.append((from_status_id, to_status_id))
 
     async def update(self, state: WorkflowState) -> WorkflowState:
         state.updated_at = datetime.now(UTC)

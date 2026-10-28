@@ -1721,3 +1721,43 @@ Migration puramente aditiva (`actor_id` passa de `NOT NULL` para `NULL`, coluna 
   - seção "Pull requests" no rail, com o mais recente primeiro;
   - botão de copiar com o nome `fd-1-corrigir-login-no-safari` lido de volta da área de transferência;
   - largura de 390px sem rolagem horizontal.
+
+## ADR-075 — Sprint 10.4: automação de status por PR, desvios da ADR-070 e correção de CORS
+
+**Contexto**: implementação da Sprint 10.4 (`docs/08-roadmap.md`). A parte de automação da ADR-070 continua valendo: regras por evento gravadas com defaults na conexão e editáveis; `IssueService.apply_automation_transition` separado de `update` e sem RBAC do autor do merge; nenhuma issue sai de `COMPLETED`/`CANCELED`; `activity_logs.actor_id` anulável com `actor_source`; autor mapeado por `OAuthIdentity`; reapontamento das regras na exclusão de status. Esta ADR registra o que mudou ao escrever o código e um bug anterior encontrado na QA.
+
+**Decisão 1 — `edited` aplica a regra só às issues recém-citadas**: a ADR-070 previa automação só nas ações que mudam a situação do PR. Ficava de fora um fluxo comum: abrir o PR e só depois acrescentar `FD-123` ao título. A issue seria vinculada mas ficaria parada até o próximo evento de situação. Agora, em `edited`, a regra da situação atual do PR vale para as issues que o PR passou a citar naquele evento. As que já estavam vinculadas não são tocadas: uma issue movida à mão não volta por causa de uma edição de título. Nas ações de mudança de situação (`opened`, `reopened`, `ready_for_review`, `converted_to_draft`, `closed`), a regra vale para todas as issues citadas.
+
+**Decisão 2 — a regra vem da situação do PR, não da ação**: `PR_DRAFT`/`PR_OPEN`/`PR_MERGED`/`PR_CLOSED` são derivados do estado do PR no payload (`draft`, `state`, `merged`), o mesmo usado para o vínculo da 10.3. Assim `opened` como rascunho e `converted_to_draft` caem na mesma regra sem uma tabela de ação → evento.
+
+**Decisão 3 — sem retrocesso, e sem mudança quando já está no destino**: além da guarda de status terminal, a transição é ignorada quando a issue já está no status de destino ou quando a regra aponta para um status excluído. Nos três casos não há atividade nem notificação, e `version` não sobe. A transição usa a mesma atividade (`issue.status_changed`) e a mesma notificação ao responsável de uma mudança manual, com `actor_name` "Ada via GitHub" ou só "GitHub".
+
+**Decisão 4 — `IssueService` chamado pelo service do webhook**: `GitHubWebhookService` recebe o `IssueService` (como `IssueService` já recebe `NotificationService`), e não um repository de issues para mudar status por conta própria. A regra de transição (guarda, atividade, notificação, versão) é de Issues; o webhook só decide quando e para onde. Os dois compartilham a mesma sessão de banco por requisição, então vínculo, mudança de status e registro da entrega ficam na mesma transação.
+
+**Decisão 5 — busca do autor num join só**: `GitHubSenderRepository.find_workspace_member` junta `oauth_identities` (provedor `github`, `provider_user_id` = `sender.id`), `users` e `workspace_members` ativos numa consulta. Login ou e-mail iguais não são usados: só a identidade OAuth prova que a conta do GitHub é daquela pessoa (ADR-061/066). O `sender` só é lido no formato do evento `pull_request`, como o resto do PR (ADR-074, Decisão 6).
+
+**Decisão 6 — reapontamento das regras dentro de Workflow States, por referência Core**: `WorkflowStateService.delete` reaponta as regras para o mesmo `reassign_to_id` das issues, ou para `NULL` quando não havia issues a mover. Quem faz isso é `WorkflowStateRepository.repoint_github_automations`, com uma referência Core à tabela `github_status_automations`, mesmo padrão de `_issues_table`: a feature `workflow_states` não importa a feature `github`.
+
+**Decisão 7 — backfill em SQL**: a migration replica em SQL a regra de `default_automation_targets` (posição no board por categoria) para os workspaces que já tinham instalação conectada. No banco local, com instalações criadas pelos testes das sprints anteriores, o resultado foi de 55 workspaces × 4 regras, com "In Progress"/"In Review"/"Done"/sem ação nos workspaces com o seed padrão.
+
+**Correção — CORS não permitia `PUT`**: a QA em navegador real desta sprint mostrou que salvar uma regra não tinha efeito. O preflight `OPTIONS` do `PUT .../automations` respondia 400, porque `allow_methods` em `main.py` não incluía `PUT`. O bug existe desde a Sprint 9.3: o `PUT .../permission-overrides` tem o mesmo problema. Ele não aparecia em produção porque o proxy da Vercel (ADR-063) deixa SPA e API na mesma origem, e os testes de componente usam MSW, sem CORS. `PUT` entrou na lista, e um teste de contrato novo confere o preflight de cada método que a API usa. O teste foi rodado sem a correção e falhou só para `PUT`.
+
+**Verificação**:
+- Backend: `ruff`/`ruff format`/`mypy` limpos.
+- `pytest`: 36 testes novos.
+  - Unitários de `apply_automation_transition`: move e registra `GITHUB` sem autor, notifica o responsável; membro mapeado é o autor e não é notificado da própria mudança; `Done`/`Canceled` nunca saem; já no destino; regra para status excluído; issue inexistente.
+  - Unitários do webhook: ciclo rascunho → pronto → merge pelo board, autor mapeado, fechado sem merge sem ação, `edited` só nas recém-citadas, evento fora de ordem sem efeito, regra "sem ação".
+  - Unitários dos defaults: pela posição; sem `STARTED`/`COMPLETED`. Também do CRUD das regras e do reapontamento na exclusão de status.
+  - Integração contra Postgres: `CHECK` da atividade, default `USER`, `upsert`, reapontamento real e o join do `sender`, incluindo membro removido.
+  - Contrato: defaults gravados na conexão, PR mergeado levando a issue a Done com atividade `GITHUB` e `version` + 1, alterar e limpar regra, status de outro workspace dá 404, `MEMBER` dá 403, exclusão de status vira "sem ação", preflight CORS.
+- Suíte completa: 673 passed, com os mesmos 3 erros de infra já conhecidos (MinIO/MailHog).
+- Migrations `b1ec8ae65958` e `0ebd683a090e` com ciclo `downgrade`/`upgrade` contra Postgres real; `alembic check` só acusa o falso positivo conhecido do índice FTS de `issues`.
+- Frontend: `tsc`/`eslint`/`prettier` limpos e `npm run build` ok; `vitest` com 34 arquivos/103 testes, 4 novos (`GitHubAutomationRules`, `IssueActivityTimeline`).
+- QA em navegador real (Chromium via Playwright, backend e Vite locais):
+  - regras configuradas pela UI ("PR aberto" → In Review, "PR mergeado" → Done);
+  - webhook assinado movendo a issue de Backlog para In Review e depois para Done;
+  - PR reaberto sem tirar a issue de Done;
+  - atividade com "via GitHub";
+  - editor em 390px sem rolagem horizontal.
+
+**Pendências**: o mapeamento do autor só cobre quem tem conta 100% social com GitHub (ADR-066); os demais aparecem como "GitHub" até existir um fluxo autenticado de "vincular provedor". A validação contra um GitHub App real continua na Sprint 10.5.
